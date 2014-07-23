@@ -255,6 +255,10 @@ BlockRingConnect(
 
     BlockRing->StoreInterface = FdoAcquireStore(Fdo);
 
+    status = STATUS_UNSUCCESSFUL;
+    if (BlockRing->StoreInterface == NULL)
+        goto fail1;
+
     status = FrontendStoreReadBackend(BlockRing->Frontend, "max-ring-page-order", &Value);
     if (NT_SUCCESS(status)) {
         BlockRing->Order = __min(strtoul(Value, NULL, 10), XENVBD_MAX_RING_PAGE_ORDER);
@@ -266,7 +270,7 @@ BlockRingConnect(
     status = STATUS_NO_MEMORY;
     BlockRing->SharedRing = __AllocPages((SIZE_T)PAGE_SIZE << BlockRing->Order, &BlockRing->Mdl);
     if (BlockRing->SharedRing == NULL)
-        goto fail1;
+        goto fail2;
 
 #pragma warning(push)
 #pragma warning(disable: 4305)
@@ -279,13 +283,13 @@ BlockRingConnect(
         status = GranterGet(Granter, __Pfn((PUCHAR)BlockRing->SharedRing + (Index * PAGE_SIZE)), 
                                 FALSE, &BlockRing->Grants[Index]);
         if (!NT_SUCCESS(status))
-            goto fail2;
+            goto fail3;
     }
 
     BlockRing->Connected = TRUE;
     return STATUS_SUCCESS;
 
-fail2:
+fail3:
     for (Index = 0; Index < XENVBD_MAX_RING_PAGES; ++Index) {
         if (BlockRing->Grants[Index])
             GranterPut(Granter, BlockRing->Grants[Index]);
@@ -297,6 +301,7 @@ fail2:
     BlockRing->SharedRing = NULL;
     BlockRing->Mdl = NULL;
 
+fail2:
 fail1:
     return status;
 }
@@ -312,25 +317,25 @@ BlockRingStoreWrite(
     NTSTATUS                        status;
 
     if (BlockRing->Order == 0) {
-        status = STORE(Printf, 
-                       BlockRing->StoreInterface, 
-                        Transaction, 
-                       FrontendPath,
-                       "ring-ref", 
-                       "%u", 
-                       GranterReference(Granter, BlockRing->Grants[0]));
+        status = XENBUS_STORE(Printf, 
+                              BlockRing->StoreInterface, 
+                              Transaction, 
+                              FrontendPath,
+                              "ring-ref", 
+                              "%u", 
+                              GranterReference(Granter, BlockRing->Grants[0]));
         if (!NT_SUCCESS(status))
             return status;
     } else {
         ULONG   Index, RingPages;
 
-        status = STORE(Printf, 
-                        BlockRing->StoreInterface, 
-                        Transaction, 
-                        FrontendPath, 
-                        "ring-page-order", 
-                        "%u", 
-                        BlockRing->Order);
+        status = XENBUS_STORE(Printf, 
+                              BlockRing->StoreInterface, 
+                              Transaction, 
+                              FrontendPath, 
+                              "ring-page-order", 
+                              "%u", 
+                              BlockRing->Order);
         if (!NT_SUCCESS(status))
             return status;
 
@@ -340,24 +345,24 @@ BlockRingStoreWrite(
             status = RtlStringCchPrintfA(Name, MAX_NAME_LEN, "ring-ref%u", Index);
             if (!NT_SUCCESS(status))
                 return status;
-            status = STORE(Printf, 
-                           BlockRing->StoreInterface, 
-                           Transaction, 
-                           FrontendPath,
-                           Name, 
-                           "%u", 
-                           GranterReference(Granter, BlockRing->Grants[Index]));
+            status = XENBUS_STORE(Printf, 
+                                  BlockRing->StoreInterface, 
+                                  Transaction, 
+                                  FrontendPath,
+                                  Name, 
+                                  "%u", 
+                                  GranterReference(Granter, BlockRing->Grants[Index]));
             if (!NT_SUCCESS(status))
                 return status;
         }
     }
 
-    status = STORE(Write, 
-                    BlockRing->StoreInterface, 
-                    Transaction, 
-                    FrontendPath,
-                    "protocol", 
-                    XEN_IO_PROTO_ABI);
+    status = XENBUS_STORE(Printf, 
+                          BlockRing->StoreInterface, 
+                          Transaction, 
+                          FrontendPath,
+                          "protocol", 
+                          XEN_IO_PROTO_ABI);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -406,7 +411,7 @@ BlockRingDisconnect(
     BlockRing->SharedRing = NULL;
     BlockRing->Mdl = NULL;
 
-    STORE(Release, BlockRing->StoreInterface);
+    XENBUS_STORE(Release, BlockRing->StoreInterface);
     BlockRing->StoreInterface = NULL;
 
     BlockRing->Connected = FALSE;
@@ -415,47 +420,46 @@ BlockRingDisconnect(
 VOID
 BlockRingDebugCallback(
     IN  PXENVBD_BLOCKRING           BlockRing,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PXENBUS_DEBUG_CALLBACK      Callback
+    IN  PXENBUS_DEBUG_INTERFACE     Debug
     )
 {
     ULONG           Index;
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
-    DEBUG(Printf, Debug, Callback,
-            "BLOCKRING: Requests  : %d / %d / %d\n",
-            BlockRing->Outstanding,
-            BlockRing->Submitted,
-            BlockRing->Recieved);
+    XENBUS_DEBUG(Printf, Debug,
+                 "BLOCKRING: Requests  : %d / %d / %d\n",
+                 BlockRing->Outstanding,
+                 BlockRing->Submitted,
+                 BlockRing->Recieved);
 
-    DEBUG(Printf, Debug, Callback,
-            "BLOCKRING: SharedRing : 0x%p\n", 
-            BlockRing->SharedRing);
+    XENBUS_DEBUG(Printf, Debug,
+                 "BLOCKRING: SharedRing : 0x%p\n", 
+                 BlockRing->SharedRing);
 
     if (BlockRing->SharedRing) {
-        DEBUG(Printf, Debug, Callback,
-                "BLOCKRING: SharedRing : %d / %d - %d / %d\n",
-                BlockRing->SharedRing->req_prod,
-                BlockRing->SharedRing->req_event,
-                BlockRing->SharedRing->rsp_prod,
-                BlockRing->SharedRing->rsp_event);
+        XENBUS_DEBUG(Printf, Debug,
+                     "BLOCKRING: SharedRing : %d / %d - %d / %d\n",
+                     BlockRing->SharedRing->req_prod,
+                     BlockRing->SharedRing->req_event,
+                     BlockRing->SharedRing->rsp_prod,
+                     BlockRing->SharedRing->rsp_event);
     }
 
-    DEBUG(Printf, Debug, Callback,
-            "BLOCKRING: FrontRing  : %d / %d (%d)\n",
-            BlockRing->FrontRing.req_prod_pvt,
-            BlockRing->FrontRing.rsp_cons,
-            BlockRing->FrontRing.nr_ents);
+    XENBUS_DEBUG(Printf, Debug,
+                 "BLOCKRING: FrontRing  : %d / %d (%d)\n",
+                 BlockRing->FrontRing.req_prod_pvt,
+                 BlockRing->FrontRing.rsp_cons,
+                 BlockRing->FrontRing.nr_ents);
 
-    DEBUG(Printf, Debug, Callback,
-            "BLOCKRING: Order      : %d\n",
-            BlockRing->Order);
+    XENBUS_DEBUG(Printf, Debug,
+                 "BLOCKRING: Order      : %d\n",
+                 BlockRing->Order);
     for (Index = 0; Index < (1ul << BlockRing->Order); ++Index) {
-        DEBUG(Printf, Debug, Callback,
-                "BLOCKRING: Grants[%-2d] : 0x%p (%u)\n", 
-                Index,
-                BlockRing->Grants[Index],
-                GranterReference(Granter, BlockRing->Grants[Index]));
+        XENBUS_DEBUG(Printf, Debug,
+                     "BLOCKRING: Grants[%-2d] : 0x%p (%u)\n", 
+                     Index,
+                     BlockRing->Grants[Index],
+                     GranterReference(Granter, BlockRing->Grants[Index]));
     }
 
     BlockRing->Submitted = BlockRing->Recieved = 0;

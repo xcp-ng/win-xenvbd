@@ -80,8 +80,7 @@ BlockRingDisconnect(
 extern VOID
 BlockRingDebugCallback(
     IN  PXENVBD_BLOCKRING           BlockRing,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PXENBUS_DEBUG_CALLBACK      Callback
+    IN  PXENBUS_DEBUG_INTERFACE     Debug
     );
 
 extern VOID

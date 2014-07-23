@@ -73,8 +73,7 @@ BufferCopyOut(
 
 extern VOID 
 BufferDebugCallback(
-    __in PXENBUS_DEBUG_INTERFACE DebugInterface,
-    __in PXENBUS_DEBUG_CALLBACK  DebugCallback
+    __in PXENBUS_DEBUG_INTERFACE DebugInterface
     );
 
    

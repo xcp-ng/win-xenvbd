@@ -228,14 +228,13 @@ static FORCEINLINE VOID
 __LookasideDebug(
     IN  PXENVBD_LOOKASIDE           Lookaside,
     IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PXENBUS_DEBUG_CALLBACK      Callback,
     IN  PCHAR                       Name
     )
 {
-    DEBUG(Printf, Debug, Callback,
-          "LOOKASIDE: %s: %u / %u (%u failed)\n",
-          Name, Lookaside->Used,
-          Lookaside->Max, Lookaside->Failed);
+    XENBUS_DEBUG(Printf, Debug,
+                 "LOOKASIDE: %s: %u / %u (%u failed)\n",
+                 Name, Lookaside->Used,
+                 Lookaside->Max, Lookaside->Failed);
 
     Lookaside->Max = Lookaside->Used;
     Lookaside->Failed = 0;
@@ -266,60 +265,59 @@ __PnpStateName(
 DECLSPEC_NOINLINE VOID
 PdoDebugCallback(
     __in PXENVBD_PDO Pdo,
-    __in PXENBUS_DEBUG_INTERFACE DebugInterface,
-    __in PXENBUS_DEBUG_CALLBACK  DebugCallback
+    __in PXENBUS_DEBUG_INTERFACE DebugInterface
     )
 {
-    if (Pdo == NULL || DebugInterface == NULL || DebugCallback == NULL)
+    if (Pdo == NULL || DebugInterface == NULL)
         return;
     if (Pdo->Signature != PDO_SIGNATURE)
         return;
 
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: Fdo 0x%p DeviceObject 0x%p\n",
-          Pdo->Fdo,
-          Pdo->DeviceObject);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: ReferenceCount %d\n",
-          Pdo->ReferenceCount);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: DevicePnpState %s (%s)\n",
-          __PnpStateName(Pdo->DevicePnpState),
-          __PnpStateName(Pdo->PrevPnpState));
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: DevicePowerState %s\n",
-          PowerDeviceStateName(Pdo->DevicePowerState));
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: %s %s\n",
-          Pdo->EmulatedUnplugged ? "PV" : "EMULATED",
-          Pdo->Missing ? Pdo->Reason : "Not Missing");
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: Fdo 0x%p DeviceObject 0x%p\n",
+                 Pdo->Fdo,
+                 Pdo->DeviceObject);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: ReferenceCount %d\n",
+                 Pdo->ReferenceCount);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: DevicePnpState %s (%s)\n",
+                 __PnpStateName(Pdo->DevicePnpState),
+                 __PnpStateName(Pdo->PrevPnpState));
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: DevicePowerState %s\n",
+                 PowerDeviceStateName(Pdo->DevicePowerState));
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: %s %s\n",
+                 Pdo->EmulatedUnplugged ? "PV" : "EMULATED",
+                 Pdo->Missing ? Pdo->Reason : "Not Missing");
 
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: BLKIF_OPs: READ=%u WRITE=%u\n",
-          Pdo->BlkOpRead, Pdo->BlkOpWrite);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
-          Pdo->BlkOpIndirectRead, Pdo->BlkOpIndirectWrite);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: BLKIF_OPs: BARRIER=%u DISCARD=%u\n",
-          Pdo->BlkOpBarrier, Pdo->BlkOpDiscard);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: Failed: Maps=%u Bounces=%u Grants=%u\n",
-          Pdo->FailedMaps, Pdo->FailedBounces, Pdo->FailedGrants);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-          "PDO: Segments Granted=%llu Bounced=%llu\n",
-          Pdo->SegsGranted, Pdo->SegsBounced);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: BLKIF_OPs: READ=%u WRITE=%u\n",
+                 Pdo->BlkOpRead, Pdo->BlkOpWrite);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
+                 Pdo->BlkOpIndirectRead, Pdo->BlkOpIndirectWrite);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: BLKIF_OPs: BARRIER=%u DISCARD=%u\n",
+                 Pdo->BlkOpBarrier, Pdo->BlkOpDiscard);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: Failed: Maps=%u Bounces=%u Grants=%u\n",
+                 Pdo->FailedMaps, Pdo->FailedBounces, Pdo->FailedGrants);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "PDO: Segments Granted=%llu Bounced=%llu\n",
+                 Pdo->SegsGranted, Pdo->SegsBounced);
 
-    __LookasideDebug(&Pdo->RequestList, DebugInterface, DebugCallback, "REQUESTs");
-    __LookasideDebug(&Pdo->SegmentList, DebugInterface, DebugCallback, "SEGMENTs");
-    __LookasideDebug(&Pdo->MappingList, DebugInterface, DebugCallback, "MAPPINGs");
+    __LookasideDebug(&Pdo->RequestList, DebugInterface, "REQUESTs");
+    __LookasideDebug(&Pdo->SegmentList, DebugInterface, "SEGMENTs");
+    __LookasideDebug(&Pdo->MappingList, DebugInterface, "MAPPINGs");
 
-    QueueDebugCallback(&Pdo->FreshSrbs,    "Fresh    ", DebugInterface, DebugCallback);
-    QueueDebugCallback(&Pdo->PreparedReqs, "Prepared ", DebugInterface, DebugCallback);
-    QueueDebugCallback(&Pdo->SubmittedReqs, "Submitted", DebugInterface, DebugCallback);
-    QueueDebugCallback(&Pdo->ShutdownSrbs, "Shutdown ", DebugInterface, DebugCallback);
+    QueueDebugCallback(&Pdo->FreshSrbs,    "Fresh    ", DebugInterface);
+    QueueDebugCallback(&Pdo->PreparedReqs, "Prepared ", DebugInterface);
+    QueueDebugCallback(&Pdo->SubmittedReqs, "Submitted", DebugInterface);
+    QueueDebugCallback(&Pdo->ShutdownSrbs, "Shutdown ", DebugInterface);
 
-    FrontendDebugCallback(Pdo->Frontend, DebugInterface, DebugCallback);
+    FrontendDebugCallback(Pdo->Frontend, DebugInterface);
 
     Pdo->BlkOpRead = Pdo->BlkOpWrite = 0;
     Pdo->BlkOpIndirectRead = Pdo->BlkOpIndirectWrite = 0;

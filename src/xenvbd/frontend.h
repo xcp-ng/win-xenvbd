@@ -196,8 +196,7 @@ FrontendDestroy(
 extern VOID
 FrontendDebugCallback(
     __in  PXENVBD_FRONTEND        Frontend,
-    __in  PXENBUS_DEBUG_INTERFACE Debug,
-    __in  PXENBUS_DEBUG_CALLBACK  Callback
+    __in  PXENBUS_DEBUG_INTERFACE Debug
     );
 
 #endif // _XENVBD_FRONTEND_H

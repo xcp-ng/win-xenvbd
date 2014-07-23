@@ -45,8 +45,7 @@ typedef struct _XENVBD_PDO XENVBD_PDO, *PXENVBD_PDO;
 extern VOID
 PdoDebugCallback(
     __in PXENVBD_PDO             Pdo,
-    __in PXENBUS_DEBUG_INTERFACE Debug,
-    __in PXENBUS_DEBUG_CALLBACK  Callback
+    __in PXENBUS_DEBUG_INTERFACE Debug
     );
 
 // Creation/Deletion

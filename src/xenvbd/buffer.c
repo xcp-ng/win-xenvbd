@@ -392,31 +392,30 @@ BufferCopyOut(
 
 VOID 
 BufferDebugCallback(
-    __in PXENBUS_DEBUG_INTERFACE DebugInterface,
-    __in PXENBUS_DEBUG_CALLBACK  DebugCallback
+    __in PXENBUS_DEBUG_INTERFACE DebugInterface
     )
 {
     PLIST_ENTRY Entry;
 
-    DEBUG(Printf, DebugInterface, DebugCallback,
-            "BUFFER: Allocated/Freed : %d / %d\n",
-            __Buffer.Allocated, __Buffer.Freed);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-            "BUFFER: Free (Cur/Max)  : %d / %d\n",
-            __Buffer.FreeSize, __Buffer.FreeMaxSize);
-    DEBUG(Printf, DebugInterface, DebugCallback,
-            "BUFFER: Used (Cur/Max)  : %d / %d\n",
-            __Buffer.UsedSize, __Buffer.UsedMaxSize);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "BUFFER: Allocated/Freed : %d / %d\n",
+                 __Buffer.Allocated, __Buffer.Freed);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "BUFFER: Free (Cur/Max)  : %d / %d\n",
+                 __Buffer.FreeSize, __Buffer.FreeMaxSize);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "BUFFER: Used (Cur/Max)  : %d / %d\n",
+                 __Buffer.UsedSize, __Buffer.UsedMaxSize);
 
     for (Entry = __Buffer.UsedList.Flink; Entry != &__Buffer.UsedList; Entry = Entry->Flink) {
         PXENVBD_BUFFER BufferId = CONTAINING_RECORD(Entry, XENVBD_BUFFER, Entry);
 
-        DEBUG(Printf, DebugInterface, DebugCallback,
-                "BUFFER: (Used)          : VADDR:0x%p PFN:%p (SRB 0x%p)\n",
-                BufferId->VAddr, (void*)BufferId->Pfn, BufferId->Context);
+        XENBUS_DEBUG(Printf, DebugInterface,
+                     "BUFFER: (Used)          : VADDR:0x%p PFN:%p (SRB 0x%p)\n",
+                     BufferId->VAddr, (void*)BufferId->Pfn, BufferId->Context);
     }
 
-    DEBUG(Printf, DebugInterface, DebugCallback,
-            "BUFFER: Reaped          : %d / %d\n", 
-            __Buffer.Reaped, __Buffer.ReapThreadCount);
+    XENBUS_DEBUG(Printf, DebugInterface,
+                 "BUFFER: Reaped          : %d / %d\n", 
+                 __Buffer.Reaped, __Buffer.ReapThreadCount);
 }

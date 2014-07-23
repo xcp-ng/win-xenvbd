@@ -80,8 +80,7 @@ NotifierDisconnect(
 extern VOID
 NotifierDebugCallback(
     IN  PXENVBD_NOTIFIER            Notifier,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PXENBUS_DEBUG_CALLBACK      Callback
+    IN  PXENBUS_DEBUG_INTERFACE     Debug
     );
 
 extern VOID

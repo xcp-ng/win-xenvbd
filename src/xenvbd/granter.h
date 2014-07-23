@@ -80,8 +80,7 @@ GranterDisconnect(
 extern VOID
 GranterDebugCallback(
     IN  PXENVBD_GRANTER             Granter,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PXENBUS_DEBUG_CALLBACK      Callback
+    IN  PXENBUS_DEBUG_INTERFACE     Debug
     );
 
 extern NTSTATUS

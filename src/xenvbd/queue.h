@@ -80,8 +80,7 @@ extern VOID
 QueueDebugCallback(
     __in PXENVBD_QUEUE                  Queue,
     __in __nullterminated const CHAR*   Name,
-    __in PXENBUS_DEBUG_INTERFACE        Debug,
-    __in PXENBUS_DEBUG_CALLBACK         Callback
+    __in PXENBUS_DEBUG_INTERFACE        Debug
     );
 
 #endif // _XENVBD_QUEUE_H

@@ -320,8 +320,6 @@ DllInitialize(
     )
 {
     PWSTR       Name;
-    NTSTATUS    Status;
-    LogTrace("===>\n");
 
     Name = wcsrchr(RegistryPath->Buffer, L'\\');
     if (Name) {
@@ -335,9 +333,7 @@ DllInitialize(
         }
     }
 
-    Status = STATUS_SUCCESS;
-    LogTrace("<=== (%08x)\n", Status);
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

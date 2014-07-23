@@ -127,13 +127,12 @@ VOID
 QueueDebugCallback(
     __in PXENVBD_QUEUE                  Queue,
     __in __nullterminated const CHAR*   Name,
-    __in PXENBUS_DEBUG_INTERFACE        Debug,
-    __in PXENBUS_DEBUG_CALLBACK         Callback
+    __in PXENBUS_DEBUG_INTERFACE        Debug
     )
 {
-    DEBUG(Printf, Debug, Callback,
-            "QUEUE: %s : %u / %u\n",
-            Name, Queue->Current, Queue->Maximum);
+    XENBUS_DEBUG(Printf, Debug,
+                 "QUEUE: %s : %u / %u\n",
+                 Name, Queue->Current, Queue->Maximum);
 
     Queue->Maximum = Queue->Current;
 }

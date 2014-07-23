@@ -228,4 +228,42 @@ __FreePages(
     }
 }
 
+static FORCEINLINE PCHAR
+__strtok_r(
+    IN      PCHAR   Buffer,
+    IN      PCHAR   Delimiter,
+    IN OUT  PCHAR   *Context
+    )
+{
+    PCHAR           Token;
+    PCHAR           End;
+
+    if (Buffer != NULL)
+        *Context = Buffer;
+
+    Token = *Context;
+
+    if (Token == NULL)
+        return NULL;
+
+    while (*Token != L'\0' &&
+           strchr(Delimiter, *Token) != NULL)
+        Token++;
+
+    if (*Token == L'\0')
+        return NULL;
+
+    End = Token + 1;
+    while (*End != L'\0' &&
+           strchr(Delimiter, *End) == NULL)
+        End++;
+
+    if (*End != L'\0')
+        *End++ = L'\0';
+
+    *Context = End;
+
+    return Token;
+}
+
 #endif  // _UTIL_H
