@@ -32,7 +32,7 @@
 Signature="$Windows NT$" 
 Class=SCSIAdapter
 ClassGUID={4D36E97B-E325-11CE-BFC1-08002BE10318} 
-Provider=%Citrix% 
+Provider=%Company% 
 CatalogFile=xenvbd.cat
 DriverVer=01/01/1900,0.0.0.0
 
@@ -49,9 +49,9 @@ xencrsh.sys=0,,
 xenvbd_coinst.dll=0,,
 
 [Manufacturer] 
-%Citrix%=Citrix,NT$ARCH$
+%Company%=Inst,NT$ARCH$
 
-[Citrix.NT$ARCH$]
+[Inst.NT$ARCH$]
 %XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XSC000&DEV_VBD&REV_00000001
 %XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0001&DEV_VBD&REV_00000001
 %XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0002&DEV_VBD&REV_00000001
@@ -92,9 +92,9 @@ HKR,,CoInstallers32,0x00010000,"xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@M
 
 [Strings] 
 
-Citrix= "Citrix Systems, Inc." 
-DiskDesc = "XenServer Tools for Virtual Machines" 
-XenVbdDesc= "XenServer PV Storage Host Adapter"
+Company = "@COMPANY_NAME@"
+DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
+XenVbdDesc= "@PRODUCT_NAME@ PV Storage Host Adapter"
 
 SERVICE_BOOT_START = 0x0 
 SERVICE_SYSTEM_START = 0x1 

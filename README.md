@@ -1,12 +1,11 @@
-XenVbd - The XenServer Paravitual Storage Class Driver for Windows
-==================================================================
+XenVbd - The Xen Paravitual Storage Class Driver for Windows
+============================================================
 
 The XenVbd package consists of two single device drivers:
 
 *    xenvbd.sys is a STORPORT miniport driver which attaches to a virtual
-     device created by XenBus (see https://github.com/xenserver/win-xenbus)
-     and creates a child device for each VBD for the generic disk driver to
-     attach to.
+     device created by XenBus and creates a child device for each VBD for
+     the generic disk driver (disk.sys) to attach to.
      It is also a protocol driver for the blkif wire protocol (see
      include\\xen\\io\\blkif.h).
 
