@@ -562,6 +562,7 @@ __AllocRing(
 
 #pragma warning(push)
 #pragma warning(disable: 4305)
+#pragma warning(disable: 4311)
     SHARED_RING_INIT(Frontend->SharedRing);
     FRONT_RING_INIT(&Frontend->FrontRing, Frontend->SharedRing, PAGE_SIZE);
 #pragma warning (pop)

@@ -9,8 +9,16 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xencrsh", "xencrsh\xencrsh.vcxproj", "{58F5BC43-B92E-4A2B-975D-0066EAB29092}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xenvbd_coinst", "coinst\xenvbd_coinst.vcxproj", "{50C08437-C1F3-4349-BF6A-7B55A06BF999}"
+    ProjectSection(ProjectDependencies) = postProject
+		{58F5BC43-B92E-4A2B-975D-0066EAB29092} = {58F5BC43-B92E-4A2B-975D-0066EAB29092}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "package", "package\package.vcxproj", "{AB8DAED3-9D70-4907-99A3-C643F1FC1972}"
+    ProjectSection(ProjectDependencies) = postProject
+		{50C08437-C1F3-4349-BF6A-7B55A06BF999} = {50C08437-C1F3-4349-BF6A-7B55A06BF999}
+		{58F5BC43-B92E-4A2B-975D-0066EAB29092} = {58F5BC43-B92E-4A2B-975D-0066EAB29092}
+        {EF236371-3145-41B1-99C9-82B33E353F17} = {EF236371-3145-41B1-99C9-82B33E353F17}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

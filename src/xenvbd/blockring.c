@@ -274,6 +274,7 @@ BlockRingConnect(
 
 #pragma warning(push)
 #pragma warning(disable: 4305)
+#pragma warning(disable: 4311)
     SHARED_RING_INIT(BlockRing->SharedRing);
     FRONT_RING_INIT(&BlockRing->FrontRing, BlockRing->SharedRing, PAGE_SIZE << BlockRing->Order);
 #pragma warning(pop)
