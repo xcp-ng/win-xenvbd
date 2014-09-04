@@ -146,22 +146,68 @@ __BlockRingInsert(
     )
 {
     PXENVBD_GRANTER                 Granter = FrontendGetGranter(BlockRing->Frontend);
-    ULONG                           Index;
-    blkif_request_discard_t*        req_discard;
-    blkif_request_indirect_t*       req_indirect;
 
     switch (Request->Operation) {
     case BLKIF_OP_READ:
     case BLKIF_OP_WRITE:
-        req->operation                  = Request->Operation;
-        req->nr_segments                = Request->u.ReadWrite.NrSegments;
-        req->handle                     = (USHORT)BlockRing->DeviceId;
-        req->id                         = __BlockRingGetTag(BlockRing, Request);
-        req->sector_number              = Request->u.ReadWrite.FirstSector;
-        for (Index = 0; Index < Request->u.ReadWrite.NrSegments; ++Index) {
-            req->seg[Index].gref        = GranterReference(Granter, Request->u.ReadWrite.Segments[Index].Grant);
-            req->seg[Index].first_sect  = Request->u.ReadWrite.Segments[Index].FirstSector;
-            req->seg[Index].last_sect   = Request->u.ReadWrite.Segments[Index].LastSector;
+        if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
+            // Indirect
+            ULONG                       PageIndex;
+            ULONG                       SegmentIndex;
+            PLIST_ENTRY                 Entry;
+            blkif_request_indirect_t*   req_indirect;
+
+            req_indirect = (blkif_request_indirect_t*)req;
+            req_indirect->operation         = BLKIF_OP_INDIRECT;
+            req_indirect->indirect_op       = Request->Operation;
+            req_indirect->nr_segments       = Request->NrSegments;
+            req_indirect->id                = __BlockRingGetTag(BlockRing, Request);
+            req_indirect->sector_number     = Request->FirstSector;
+            req_indirect->handle            = (USHORT)BlockRing->DeviceId;
+
+            for (PageIndex = 0, SegmentIndex = 0, Entry = Request->Segments.Flink;
+                    PageIndex < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
+                    Entry != &Request->Segments;
+                        Entry = Entry->Flink) {
+                PBLKIF_SEGMENT  Indirect = Request->Pages[PageIndex];
+                PXENVBD_SEGMENT Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+
+                Indirect[SegmentIndex].GrantRef = GranterReference(Granter, Segment->Grant);
+                Indirect[SegmentIndex].First    = Segment->FirstSector;
+                Indirect[SegmentIndex].Last     = Segment->LastSector;
+
+                ++SegmentIndex;
+                if (SegmentIndex >= XENVBD_MAX_SEGMENTS_PER_PAGE) {
+                    ++PageIndex;
+                    SegmentIndex = 0;
+                }
+            }
+            for (PageIndex = 0;
+                    PageIndex < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
+                    Request->Grants[PageIndex] != NULL;
+                        ++PageIndex) {
+                req_indirect->indirect_grefs[PageIndex] = GranterReference(Granter, Request->Grants[PageIndex]);
+            }
+        } else {
+            // Direct
+            ULONG           Index;
+            PLIST_ENTRY     Entry;
+
+            req->operation                  = Request->Operation;
+            req->nr_segments                = (UCHAR)Request->NrSegments;
+            req->handle                     = (USHORT)BlockRing->DeviceId;
+            req->id                         = __BlockRingGetTag(BlockRing, Request);
+            req->sector_number              = Request->FirstSector;
+
+            for (Index = 0, Entry = Request->Segments.Flink;
+                    Index < BLKIF_MAX_SEGMENTS_PER_REQUEST &&
+                    Entry != &Request->Segments;
+                        ++Index, Entry = Entry->Flink) {
+                PXENVBD_SEGMENT Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+                req->seg[Index].gref        = GranterReference(Granter, Segment->Grant);
+                req->seg[Index].first_sect  = Segment->FirstSector;
+                req->seg[Index].last_sect   = Segment->LastSector;
+            }
         }
         break;
 
@@ -170,31 +216,19 @@ __BlockRingInsert(
         req->nr_segments                = 0;
         req->handle                     = (USHORT)BlockRing->DeviceId;
         req->id                         = __BlockRingGetTag(BlockRing, Request);
-        req->sector_number              = Request->u.Barrier.FirstSector;
+        req->sector_number              = Request->FirstSector;
         break;
 
-    case BLKIF_OP_DISCARD:
+    case BLKIF_OP_DISCARD: {
+        blkif_request_discard_t*        req_discard;
         req_discard = (blkif_request_discard_t*)req;
         req_discard->operation          = BLKIF_OP_DISCARD;
-        req_discard->flag               = Request->u.Discard.Flags;
+        req_discard->flag               = Request->Flags;
         req_discard->handle             = (USHORT)BlockRing->DeviceId;
         req_discard->id                 = __BlockRingGetTag(BlockRing, Request);
-        req_discard->sector_number      = Request->u.Discard.FirstSector;
-        req_discard->nr_sectors         = Request->u.Discard.NrSectors;
-        break;
-
-    case BLKIF_OP_INDIRECT:
-        req_indirect = (blkif_request_indirect_t*)req;
-        req_indirect->operation         = BLKIF_OP_INDIRECT;
-        req_indirect->indirect_op       = Request->u.Indirect.Operation;
-        req_indirect->nr_segments       = Request->u.Indirect.NrSegments;
-        req_indirect->id                = __BlockRingGetTag(BlockRing, Request);
-        req_indirect->sector_number     = Request->u.Indirect.FirstSector;
-        req_indirect->handle            = (USHORT)BlockRing->DeviceId;
-        for (Index = 0; Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST; ++Index) {
-            req_indirect->indirect_grefs[Index] = GranterReference(Granter, Request->u.Indirect.Grants[Index]);
-        }
-        break;
+        req_discard->sector_number      = Request->FirstSector;
+        req_discard->nr_sectors         = Request->NrSectors;
+        } break;
 
     default:
         ASSERT(FALSE);

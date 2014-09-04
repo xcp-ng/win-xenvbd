@@ -37,61 +37,47 @@
 #include <xen.h>
 #include "assert.h"
 
-// Segments - extension of blkif_segment_t
+#pragma pack(push, 1)
+typedef struct _BLKIF_SEGMENT {
+    ULONG                   GrantRef;
+    UCHAR                   First;
+    UCHAR                   Last;
+    USHORT                  __Padding;
+} BLKIF_SEGMENT, *PBLKIF_SEGMENT;
+#pragma pack(pop)
+
+#define XENVBD_MAX_SEGMENTS_PER_PAGE    (PAGE_SIZE / sizeof(BLKIF_SEGMENT))
+
+// Internal segment context
 typedef struct _XENVBD_SEGMENT {
-    PVOID               Grant;
-    UCHAR               FirstSector;
-    UCHAR               LastSector;
+    LIST_ENTRY              Entry;
+    PVOID                   Grant;
+    UCHAR                   FirstSector;
+    UCHAR                   LastSector;
+    ULONG                   Length;
+    PVOID                   BufferId;
+    PVOID                   Buffer; // VirtAddr mapped to PhysAddr(s)
+    MDL                     Mdl;
+    PFN_NUMBER              Pfn[2];
 } XENVBD_SEGMENT, *PXENVBD_SEGMENT;
 
-typedef struct _XENVBD_MAPPING {
-    PVOID               BufferId;
-    PVOID               Buffer; // VirtAddr mapped to PhysAddr(s)
-    ULONG               Length;
-    MDL                 Mdl;
-    PFN_NUMBER          Pfn[2];
-} XENVBD_MAPPING, *PXENVBD_MAPPING;
-
-// Request - extension of blkif_request_t
-typedef struct _XENVBD_REQUEST_READWRITE {
-    UCHAR               NrSegments;
-    ULONG64             FirstSector;
-    XENVBD_SEGMENT      Segments[BLKIF_MAX_SEGMENTS_PER_REQUEST];
-    XENVBD_MAPPING      Mappings[BLKIF_MAX_SEGMENTS_PER_REQUEST];
-} XENVBD_REQUEST_READWRITE, *PXENVBD_REQUEST_READWRITE;
-
-typedef struct _XENVBD_REQUEST_BARRIER {
-    ULONG64             FirstSector;
-} XENVBD_REQUEST_BARRIER, *PXENVBD_REQUEST_BARRIER;
-
-typedef struct _XENVBD_REQUEST_DISCARD {
-    UCHAR               Flags;  // {0, BLKIF_DISCARD_SECURE}
-    ULONG64             FirstSector;
-    ULONG64             NrSectors;
-} XENVBD_REQUEST_DISCARD, *PXENVBD_REQUEST_DISCARD;
-
-typedef struct _XENVBD_REQUEST_INDIRECT {
-    UCHAR               Operation;  // BLKIF_OP_{READ/WRITE}
-    USHORT              NrSegments; // 1-4096
-    ULONG64             FirstSector;
-    PVOID               Grants[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
-    PXENVBD_SEGMENT     Segments[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
-    PXENVBD_MAPPING     Mappings[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
-} XENVBD_REQUEST_INDIRECT, *PXENVBD_REQUEST_INDIRECT;
-
+// Internal request context
 typedef struct _XENVBD_REQUEST {
-    PSCSI_REQUEST_BLOCK Srb;
-    LIST_ENTRY          Entry;
-    ULONG               Id; // atomically increasing number
+    PSCSI_REQUEST_BLOCK     Srb;
+    LIST_ENTRY              Entry;
+    ULONG                   Id;
 
-    UCHAR               Operation;
-    union _XENVBD_REQUEST_TYPE {
-        XENVBD_REQUEST_READWRITE    ReadWrite;  // BLKIF_OP_{READ/WRITE}
-        XENVBD_REQUEST_BARRIER      Barrier;    // BLKIF_OP_WRITE_BARRIER
-        // nothing                              // BLKIF_OP_FLUSH_DISKCACHE
-        XENVBD_REQUEST_DISCARD      Discard;    // BLKIF_OP_DISCARD
-        XENVBD_REQUEST_INDIRECT     Indirect;   // BLKIF_OP_INDIRECT
-    } u;
+    UCHAR                   Operation;  // BLKIF_OP_{READ/WRITE/BARRIER/DISCARD}
+    UCHAR                   Flags;      // BLKIF_OP_DISCARD only
+    USHORT                  NrSegments; // BLKIF_OP_{READ/WRITE} only, 0-11 (direct) or 11-4096 (indirect)
+    LIST_ENTRY              Segments;   // BLKIF_OP_{READ/WRITE} only
+
+    ULONG64                 FirstSector;
+    ULONG64                 NrSectors;  // BLKIF_OP_DISCARD only
+
+    // BLKIF_OP_{READ/WRITE} with NrSegments > 11 only
+    PVOID                   Pages[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
+    PVOID                   Grants[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
 } XENVBD_REQUEST, *PXENVBD_REQUEST;
 
 // SRBExtension - context for SRBs
