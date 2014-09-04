@@ -613,66 +613,90 @@ abort:
     }    
 }
 
-static FORCEINLINE ULONG
-__ReadValue32(
-    __in  PXENVBD_FRONTEND          Frontend,
-    __in  PCHAR                     Name,
-    __in  ULONG                     Default,
-    __inout_opt PBOOLEAN            Changed
+static FORCEINLINE BOOLEAN
+FrontendReadFeature(
+    IN  PXENVBD_FRONTEND            Frontend,
+    IN  PCHAR                       Name,
+    IN  PBOOLEAN                    Value
     )
 {
     NTSTATUS        status;
     PCHAR           Buffer;
-    ULONG           Value = Default;
+    BOOLEAN         Old = *Value;
 
-    status = XENBUS_STORE(Read, 
-                          Frontend->Store, 
+    status = XENBUS_STORE(Read,
+                          Frontend->Store,
                           NULL,
                           Frontend->BackendPath,
                           Name,
                           &Buffer);
-    if (NT_SUCCESS(status)) {
-        Value = strtoul(Buffer, NULL, 10);
-        XENBUS_STORE(Free,
-                     Frontend->Store,
-                     Buffer);
+    if (!NT_SUCCESS(status))
+        return FALSE;   // no value, unchanged
 
-        if (Default != Value && Changed)
-            *Changed = TRUE;
-    }
+    *Value = !!(strtoul(Buffer, NULL, 10));
+    XENBUS_STORE(Free,
+                    Frontend->Store,
+                    Buffer);
 
-    return Value;
+    return Old != *Value;
 }
-static FORCEINLINE ULONG64
-__ReadValue64(
-    __in  PXENVBD_FRONTEND          Frontend,
-    __in  PCHAR                     Name,
-    __in  ULONG64                   Default,
-    __inout_opt PBOOLEAN            Changed
+
+static FORCEINLINE BOOLEAN
+FrontendReadValue32(
+    IN  PXENVBD_FRONTEND            Frontend,
+    IN  PCHAR                       Name,
+    IN  PULONG                      Value
     )
 {
     NTSTATUS        status;
     PCHAR           Buffer;
-    ULONG64         Value = Default;
+    ULONG           Old = *Value;
 
-    status = XENBUS_STORE(Read, 
-                          Frontend->Store, 
-                          NULL, 
+    status = XENBUS_STORE(Read,
+                          Frontend->Store,
+                          NULL,
                           Frontend->BackendPath,
                           Name,
                           &Buffer);
-    if (NT_SUCCESS(status)) {
-        Value = _strtoui64(Buffer, NULL, 10);
-        XENBUS_STORE(Free,
-                     Frontend->Store,
-                     Buffer);
+    if (!NT_SUCCESS(status))
+        return FALSE;   // no value, unchanged
 
-        if (Default != Value && Changed)
-            *Changed = TRUE;
-    }
+    *Value = strtoul(Buffer, NULL, 10);
+    XENBUS_STORE(Free,
+                    Frontend->Store,
+                    Buffer);
 
-    return Value;
+    return Old != *Value;
 }
+
+static FORCEINLINE BOOLEAN
+FrontendReadValue64(
+    IN  PXENVBD_FRONTEND            Frontend,
+    IN  PCHAR                       Name,
+    IN OUT PULONG64                 Value
+    )
+{
+    NTSTATUS        status;
+    PCHAR           Buffer;
+    ULONG64         Old = *Value;
+
+    status = XENBUS_STORE(Read,
+                          Frontend->Store,
+                          NULL,
+                          Frontend->BackendPath,
+                          Name,
+                          &Buffer);
+    if (!NT_SUCCESS(status))
+        return FALSE;   // no value, unchanged
+
+    *Value = _strtoui64(Buffer, NULL, 10);
+    XENBUS_STORE(Free,
+                    Frontend->Store,
+                    Buffer);
+
+    return Old != *Value;
+}
+
 static FORCEINLINE ULONG
 __Size(
     __in  PXENVBD_DISKINFO          Info
@@ -693,49 +717,130 @@ __Units(
         return "MB";
     return "GB";
 }
+
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static VOID
 __ReadDiskInfo(
     __in  PXENVBD_FRONTEND        Frontend
     )
 {
-    BOOLEAN     Updated = FALSE;
+    BOOLEAN Changed = FALSE;
 
-    Frontend->DiskInfo.DiskInfo     = __ReadValue32(Frontend, "info", 
-                                                    Frontend->DiskInfo.DiskInfo, &Updated);
-    Frontend->DiskInfo.SectorSize   = __ReadValue32(Frontend, "sector-size", 
-                                                    Frontend->DiskInfo.SectorSize, &Updated);
-    Frontend->DiskInfo.PhysSectorSize = __ReadValue32(Frontend, "physical-sector-size",
-                                                    Frontend->DiskInfo.PhysSectorSize, &Updated);
-    Frontend->DiskInfo.SectorCount  = __ReadValue64(Frontend, "sectors", 
-                                                    Frontend->DiskInfo.SectorCount, &Updated);
+    Changed |= FrontendReadValue32(Frontend,
+                                  "info",
+                                  &Frontend->DiskInfo.DiskInfo);
+    Changed |= FrontendReadValue32(Frontend,
+                                  "sector-size",
+                                  &Frontend->DiskInfo.SectorSize);
+    Changed |= FrontendReadValue32(Frontend,
+                                  "physical-sector-size",
+                                  &Frontend->DiskInfo.PhysSectorSize);
+    Changed |= FrontendReadValue64(Frontend,
+                                  "sectors",
+                                  &Frontend->DiskInfo.SectorCount);
 
-    if (Updated) {
-        Frontend->Caps.SurpriseRemovable = !!(Frontend->DiskInfo.DiskInfo & VDISK_REMOVABLE);
-        if (Frontend->DiskInfo.DiskInfo & VDISK_READONLY) {
-            Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n", Frontend->TargetId);
-        }
-        if (Frontend->DiskInfo.DiskInfo & VDISK_CDROM) {
-            Warning("Target[%d] : DiskInfo contains VDISK_CDROM flag!\n", Frontend->TargetId);
-        }
-        if (Frontend->DiskInfo.SectorSize == 0) {
-            Error("Target[%d] : Invalid SectorSize!\n", Frontend->TargetId);
-        }
-        if (Frontend->DiskInfo.SectorCount == 0) {
-            Error("Target[%d] : Invalid SectorCount!\n", Frontend->TargetId);
-        }
-        if (Frontend->DiskInfo.PhysSectorSize == 0) {
-            Frontend->DiskInfo.PhysSectorSize = Frontend->DiskInfo.SectorSize;
-        }
+    if (!Changed)
+        return;
 
-        // dump actual values
-        Verbose("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
-                    Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
-                    Frontend->DiskInfo.PhysSectorSize);
-        Verbose("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
-                    __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-                    Frontend->DiskInfo.DiskInfo, 
-                    Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+    Frontend->Caps.SurpriseRemovable = !!(Frontend->DiskInfo.DiskInfo & VDISK_REMOVABLE);
+    if (Frontend->DiskInfo.DiskInfo & VDISK_READONLY) {
+        Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n", Frontend->TargetId);
+    }
+    if (Frontend->DiskInfo.DiskInfo & VDISK_CDROM) {
+        Warning("Target[%d] : DiskInfo contains VDISK_CDROM flag!\n", Frontend->TargetId);
+    }
+    if (Frontend->DiskInfo.SectorSize == 0) {
+        Error("Target[%d] : Invalid SectorSize!\n", Frontend->TargetId);
+    }
+    if (Frontend->DiskInfo.SectorCount == 0) {
+        Error("Target[%d] : Invalid SectorCount!\n", Frontend->TargetId);
+    }
+    if (Frontend->DiskInfo.PhysSectorSize == 0) {
+        Frontend->DiskInfo.PhysSectorSize = Frontend->DiskInfo.SectorSize;
+    }
+
+    // dump actual values
+    Verbose("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
+                Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
+                Frontend->DiskInfo.PhysSectorSize);
+    Verbose("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
+                __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
+                Frontend->DiskInfo.DiskInfo,
+                Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+}
+
+static FORCEINLINE VOID
+FrontendReadFeatures(
+    IN  PXENVBD_FRONTEND            Frontend
+    )
+{
+    BOOLEAN Changed = FALSE;
+
+    Changed |= FrontendReadFeature(Frontend,
+                                   "removable",
+                                   &Frontend->Caps.Removable);
+    Changed |= FrontendReadValue32(Frontend,
+                                   "feature-max-indirect-segments",
+                                   &Frontend->Features.Indirect);
+    Changed |= FrontendReadFeature(Frontend,
+                                   "feature-persistent",
+                                   &Frontend->Features.Persistent);
+
+    if (!Changed)
+        return;
+
+    Verbose("Target[%d] : Features: %s%s%s\n",
+                Frontend->TargetId,
+                Frontend->Features.Persistent ? "PERSISTENT " : "",
+                Frontend->Features.Indirect ? "INDIRECT " : "",
+                Frontend->Caps.Removable ? "REMOVABLE" : "");
+    if (Frontend->Features.Indirect) {
+        Verbose("Target[%d] : INDIRECT %x\n",
+                    Frontend->TargetId,
+                    Frontend->Features.Indirect);
+    }
+}
+
+static FORCEINLINE VOID
+FrontendReadDiskInfo(
+    IN  PXENVBD_FRONTEND            Frontend
+    )
+{
+    BOOLEAN Changed = FALSE;
+
+    Changed |= FrontendReadFeature(Frontend,
+                                   "feature-barrier",
+                                   &Frontend->DiskInfo.Barrier);
+    Changed |= FrontendReadFeature(Frontend,
+                                   "feature-flush-cache",
+                                   &Frontend->DiskInfo.FlushCache);
+    Changed |= FrontendReadFeature(Frontend,
+                                   "feature-discard",
+                                   &Frontend->DiskInfo.Discard);
+    Changed |= FrontendReadFeature(Frontend,
+                                   "discard-secure",
+                                   &Frontend->DiskInfo.DiscardSecure);
+    Changed |= FrontendReadValue32(Frontend,
+                                   "discard-alignment",
+                                   &Frontend->DiskInfo.DiscardAlignment);
+    Changed |= FrontendReadValue32(Frontend,
+                                   "discard-granularity",
+                                   &Frontend->DiskInfo.DiscardGranularity);
+
+    if (!Changed)
+        return;
+
+    Verbose("Target[%d] : Features: %s%s%s\n",
+                Frontend->TargetId,
+                Frontend->DiskInfo.Barrier ? "BARRIER " : "",
+                Frontend->DiskInfo.FlushCache ?  "FLUSH " : "",
+                Frontend->DiskInfo.Discard ? "DISCARD " : "");
+    if (Frontend->DiskInfo.Discard) {
+        Verbose("Target[%d] : DISCARD %s%x/%x\n",
+                    Frontend->TargetId,
+                    Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
+                    Frontend->DiskInfo.DiscardAlignment,
+                    Frontend->DiskInfo.DiscardGranularity);
     }
 }
 
@@ -921,24 +1026,12 @@ FrontendPrepare(
     PdoUpdateInquiryData(Frontend, Frontend->Inquiry);
 
     // read features and caps (removable, ring-order, ...)
-    Frontend->Caps.Removable        = (__ReadValue32(Frontend, "removable", 0, NULL) == 1);
-    Frontend->Features.Indirect     =  __ReadValue32(Frontend, "feature-max-indirect-segments", 0, NULL);
-    Frontend->Features.Persistent   = (__ReadValue32(Frontend, "feature-persistent", 0, NULL) == 1);
-
     Verbose("Target[%d] : BackendId %d (%s)\n",
-                Frontend->TargetId,
-                Frontend->BackendId,
-                Frontend->BackendPath);
-    Verbose("Target[%d] : RingFeatures %s%s%s\n",
-                Frontend->TargetId,
-                Frontend->Features.Persistent ? "PERSISTENT " : "",
-                Frontend->Features.Indirect ? "INDIRECT " : "",
-                Frontend->Caps.Removable ? "REMOVABLE" : "");
-    if (Frontend->Features.Indirect) {
-        Verbose("Target[%d] : INDIRECT %x\n",
-                    Frontend->TargetId,
-                    Frontend->Features.Indirect);
-    }
+            Frontend->TargetId,
+            Frontend->BackendId,
+            Frontend->BackendPath);
+
+    FrontendReadFeatures(Frontend);
     
     return STATUS_SUCCESS;
 
@@ -1100,26 +1193,10 @@ abort:
 
     // read disk info
     __ReadDiskInfo(Frontend);
+    FrontendReadDiskInfo(Frontend);
 
-    Frontend->DiskInfo.Barrier      = (__ReadValue32(Frontend, "feature-barrier", 0, NULL) == 1);
-    Frontend->DiskInfo.FlushCache   = (__ReadValue32(Frontend, "feature-flush-cache", 0, NULL) == 1);
-    Frontend->DiskInfo.Discard      = (__ReadValue32(Frontend, "feature-discard", 0, NULL) == 1);
-    Frontend->DiskInfo.DiscardSecure= (__ReadValue32(Frontend, "discard-secure", 0, NULL) == 1);
-    Frontend->DiskInfo.DiscardAlignment = __ReadValue32(Frontend, "discard-alignment", 0, NULL);
-    Frontend->DiskInfo.DiscardGranularity = __ReadValue32(Frontend, "discard-granularity", 0, NULL);
-
-    Verbose("Target[%d] : VBDFeatures %s%s%s\n",
-                Frontend->TargetId,
-                Frontend->DiskInfo.Barrier ? "BARRIER " : "",
-                Frontend->DiskInfo.FlushCache ?  "FLUSH " : "",
-                Frontend->DiskInfo.Discard ? "DISCARD " : "");
-    if (Frontend->DiskInfo.Discard) {
-        Verbose("Target[%d] : DISCARD %s%x/%x\n",
-                    Frontend->TargetId,
-                    Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
-                    Frontend->DiskInfo.DiscardAlignment,
-                    Frontend->DiskInfo.DiscardGranularity);
-    }
+    // blkback doesnt write features before InitWait, blkback writes features before Connected!
+    FrontendReadFeatures(Frontend);
 
     return STATUS_SUCCESS;
 
