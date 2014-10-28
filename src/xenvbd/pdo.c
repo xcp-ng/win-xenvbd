@@ -1452,26 +1452,65 @@ PrepareUnmap(
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
-    PXENVBD_REQUEST Request = __LookasideAlloc(&Pdo->RequestList);
-    if (Request == NULL)
-        return STATUS_UNSUCCESSFUL;
+    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PUNMAP_LIST_HEADER  Unmap = Srb->DataBuffer;
+    ULONG               Count = _byteswap_ushort(*(PUSHORT)Unmap->DataLength) /
+                                _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength);
+    ULONG               Index;
+    LIST_ENTRY          List;
 
-    SrbExt->Count = 1;
-    // mark the SRB as pending, completion will check for pending to detect failures
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
-    Request->Srb        = Srb;
-    Request->Id         = PdoGetTag(Pdo);
-    Request->Operation  = BLKIF_OP_DISCARD;
-    Request->FirstSector = Cdb_LogicalBlock(Srb);
-    Request->NrSectors   = Cdb_TransferBlock(Srb);
-    Request->Flags       = 0;
-    InitializeListHead(&Request->Segments);
+    for (Index = 0; Index < Count; ++Index) {
+        PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
+        PXENVBD_REQUEST         Request = __LookasideAlloc(&Pdo->RequestList);
+        if (Request == NULL)
+            goto fail1;
 
-    __PdoIncBlkifOpCount(Pdo, Request);
-    QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
+        ++SrbExt->Count;
+        InsertTailList(&List, &Request->Entry);
+
+        Request->Srb            = Srb;
+        Request->Id             = PdoGetTag(Pdo);
+        Request->Operation      = BLKIF_OP_DISCARD;
+        Request->FirstSector    = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
+        Request->NrSectors      = _byteswap_ulong(*(PULONG)Descr->LbaCount);
+        Request->Flags          = 0;
+        InitializeListHead(&Request->Segments);
+    }
+
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(&List);
+        if (Entry == &List)
+            break;
+
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        __PdoIncBlkifOpCount(Pdo, Request);
+        QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
+    }
+
     return STATUS_SUCCESS;
+
+
+fail1:
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(&List);
+        if (Entry == &List)
+            break;
+
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        __LookasideFree(&Pdo->RequestList, Request);
+        --SrbExt->Count;
+    }
+    return STATUS_NO_MEMORY;
 }
 
 //=============================================================================
