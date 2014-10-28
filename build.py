@@ -364,6 +364,7 @@ if __name__ == '__main__':
 
     if len(sys.argv) <= 2 or sdv[sys.argv[2]]:
         run_sdv('xencrsh', driver, vs)
+        run_sdv('xendisk', driver, vs)
         run_sdv('xenvbd', driver, vs)
 
     archive(driver + '\\source.tgz', manifest().splitlines(), tgz=True)

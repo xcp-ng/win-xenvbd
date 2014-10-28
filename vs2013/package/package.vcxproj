@@ -80,6 +80,9 @@
     <ProjectReference Include="..\xenvbd\xenvbd.vcxproj">
       <Project>{ef236371-3145-41b1-99c9-82b33e353f17}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\xendisk\xendisk.vcxproj">
+      <Project>{d7411b2c-2c43-434d-9f56-e10a3d2f5bad}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <FilesToPackage Include="$(KIT)\Redist\DIFx\dpinst\EngMui\x86\dpinst.exe" Condition="'$(Platform)'=='Win32'" />

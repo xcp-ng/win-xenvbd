@@ -46,6 +46,7 @@ CoInst_CopyFiles=11
 [SourceDisksFiles]
 xenvbd.sys=0,,
 xencrsh.sys=0,,
+xendisk.sys=0,,
 xenvbd_coinst.dll=0,,
 
 [Manufacturer] 
@@ -62,9 +63,25 @@ CopyFiles=XenVbd_Copyfiles
 [XenVbd_Copyfiles]
 xenvbd.sys
 xencrsh.sys
+xendisk.sys
+
+[XenVbd_Inst.HW]
+AddReg=XenVbd_AddReg
+
+[XenVbd_AddReg]
+HKR,,"UpperFilters",0x00010000,"xendisk"
 
 [XenVbd_Inst.Services] 
 AddService=xenvbd,2,XenVbd_Service,
+AddService=xendisk,,XenDisk_Service,
+
+[XenDisk_Service]
+DisplayName=%XenDiskDesc%
+ServiceType=%SERVICE_KERNEL_DRIVER%
+StartType=%SERVICE_BOOT_START%
+ErrorControl=%SERVICE_ERROR_NORMAL%
+ServiceBinary=%12%\xendisk.sys
+LoadOrderGroup="Scsi Miniport"
 
 [XenVbd_Service] 
 DisplayName=%XenVbdDesc%
@@ -95,6 +112,7 @@ HKR,,CoInstallers32,0x00010000,"xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@M
 Company = "@COMPANY_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdDesc= "@PRODUCT_NAME@ PV Storage Host Adapter"
+XenDiskDesc= "@PRODUCT_NAME@ PV Storage Filter"
 
 SERVICE_BOOT_START = 0x0 
 SERVICE_SYSTEM_START = 0x1 
