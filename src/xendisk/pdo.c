@@ -380,7 +380,10 @@ __PdoQueryProperty(
     if (!NT_SUCCESS(Irp->IoStatus.Status))
         goto done;
 
-    Descriptor = Irp->UserBuffer;
+    if (Irp->IoStatus.Information != (ULONG_PTR)sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR))
+        goto done;
+
+    Descriptor = Irp->AssociatedIrp.SystemBuffer;
     Pdo->SectorSize = Descriptor->BytesPerLogicalSector;
     Verbose("%p : %u bytes per sector\n", Pdo->Dx->DeviceObject, Pdo->SectorSize);
 
@@ -392,37 +395,58 @@ done:
 
 static DECLSPEC_NOINLINE NTSTATUS
 PdoQueryProperty(
-    IN  PXENDISK_PDO    Pdo,
-    IN  PIRP            Irp
+    IN  PXENDISK_PDO        Pdo,
+    IN  PIRP                Irp
     )
 {
+    PIO_STACK_LOCATION      StackLocation;
     PSTORAGE_PROPERTY_QUERY Query;
-    PDEVICE_TRIM_DESCRIPTOR Trim;
     NTSTATUS                status;
+
+    StackLocation = IoGetCurrentIrpStackLocation(Irp);
+
+    if (StackLocation->Parameters.DeviceIoControl.InputBufferLength <
+        sizeof (STORAGE_PROPERTY_QUERY))
+        return PdoCompleteIrp(Pdo, Irp, STATUS_INFO_LENGTH_MISMATCH);
 
     Query = Irp->AssociatedIrp.SystemBuffer;
 
     switch (Query->PropertyId) {
     case StorageAccessAlignmentProperty:
-        IoCopyCurrentIrpStackLocationToNext(Irp);
-        IoSetCompletionRoutine(Irp,
-                                __PdoQueryProperty,
-                                Pdo,
-                                TRUE,
-                                TRUE,
-                                TRUE);
+        if (Query->QueryType == PropertyStandardQuery) {
+            IoCopyCurrentIrpStackLocationToNext(Irp);
+            IoSetCompletionRoutine(Irp,
+                                   __PdoQueryProperty,
+                                   Pdo,
+                                   TRUE,
+                                   TRUE,
+                                   TRUE);
 
-        status = IoCallDriver(Pdo->LowerDeviceObject, Irp);
+            status = IoCallDriver(Pdo->LowerDeviceObject, Irp);
+        } else {
+            status = PdoForwardIrpAndForget(Pdo, Irp);
+        }
         break;
 
     case StorageDeviceTrimProperty:
-        Trim = Irp->AssociatedIrp.SystemBuffer;
+        if (Query->QueryType == PropertyStandardQuery) {
+            PDEVICE_TRIM_DESCRIPTOR Trim;
 
-        Trim->Version = 0;
-        Trim->Size = sizeof(DEVICE_TRIM_DESCRIPTOR);
-        Trim->TrimEnabled = TRUE;
+            if (StackLocation->Parameters.DeviceIoControl.OutputBufferLength <
+                sizeof (DEVICE_TRIM_DESCRIPTOR))
+                return PdoCompleteIrp(Pdo, Irp, STATUS_BUFFER_OVERFLOW);
 
-        Irp->IoStatus.Information = (ULONG_PTR)sizeof(DEVICE_TRIM_DESCRIPTOR);
+            Trim = Irp->AssociatedIrp.SystemBuffer;
+
+            Trim->Version = 0;
+            Trim->Size = sizeof(DEVICE_TRIM_DESCRIPTOR);
+            Trim->TrimEnabled = TRUE;
+
+            Irp->IoStatus.Information = (ULONG_PTR)sizeof(DEVICE_TRIM_DESCRIPTOR);
+        } else {
+            Irp->IoStatus.Information = 0;
+        }
+
         status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
         break;
 
@@ -646,6 +670,7 @@ PdoDispatchControl(
 {
     PIO_STACK_LOCATION  StackLocation;
     ULONG               ControlCode;
+    ULONG               Method;
     NTSTATUS            status;
 
     status = IoAcquireRemoveLock(&Pdo->Dx->RemoveLock, Irp);
@@ -654,13 +679,16 @@ PdoDispatchControl(
 
     StackLocation = IoGetCurrentIrpStackLocation(Irp);
     ControlCode = StackLocation->Parameters.DeviceIoControl.IoControlCode;
+    Method = METHOD_FROM_CTL_CODE(ControlCode);
 
     switch (ControlCode) {
     case IOCTL_STORAGE_QUERY_PROPERTY:
+        ASSERT(Method == METHOD_BUFFERED);
         status = PdoQueryProperty(Pdo, Irp);
         break;
 
     case IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES:
+        ASSERT(Method == METHOD_BUFFERED);
         status = PdoManageDataSetAttributes(Pdo, Irp);
         break;
 
