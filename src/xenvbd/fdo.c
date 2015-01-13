@@ -261,73 +261,29 @@ FdoUnlinkPdo(
 //=============================================================================
 // QueryInterface
 
-#define SERVICES_KEY        L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
-
-__checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
-static FORCEINLINE NTSTATUS
-__QueryInterface(
-    __in    PDEVICE_OBJECT  DeviceObject,
-    __in    const WCHAR     *ProviderName,
-    __in    const CHAR      *InterfaceName,
-    __in    const GUID      *Guid,
-    __in    ULONG           Version,
-    __inout PINTERFACE      Interface,
-    __in    ULONG           Size,
-    __in    BOOLEAN         Optional
+static NTSTATUS
+FdoQueryInterface(
+    IN  PXENVBD_FDO     Fdo,
+    IN  const GUID      *Guid,
+    IN  ULONG           Version,
+    OUT PINTERFACE      Interface,
+    IN  ULONG           Size,
+    IN  BOOLEAN         Optional
     )
 {
-    UNICODE_STRING          Unicode;
-    HANDLE                  InterfacesKey;
-    HANDLE                  SubscriberKey;
-    KEVENT                  Event;
-    IO_STATUS_BLOCK         StatusBlock;
-    PIRP                    Irp;
-    PIO_STACK_LOCATION      StackLocation;
-    NTSTATUS                status;
+    KEVENT              Event;
+    IO_STATUS_BLOCK     StatusBlock;
+    PIRP                Irp;
+    PIO_STACK_LOCATION  StackLocation;
+    NTSTATUS            status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
-    Unicode.MaximumLength = (USHORT)((wcslen(SERVICES_KEY) +
-                                      1 +
-                                      wcslen(ProviderName) +
-                                      1 +
-                                      wcslen(L"Interfaces") +
-                                      1) * sizeof (WCHAR));
-
-    Unicode.Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                                   __LINE__,
-                                                   Unicode.MaximumLength,
-                                                   FDO_SIGNATURE);
-
-    status = STATUS_NO_MEMORY;
-    if (Unicode.Buffer == NULL)
-        goto fail1;
-
-    status = RtlStringCbPrintfW(Unicode.Buffer,
-                                Unicode.MaximumLength,
-                                SERVICES_KEY L"\\%ws\\Interfaces",
-                                ProviderName);
-    ASSERT(NT_SUCCESS(status));
-
-    Unicode.Length = (USHORT)(wcslen(Unicode.Buffer) * sizeof (WCHAR));
-
-    status = RegistryOpenKey(NULL, &Unicode, KEY_READ, &InterfacesKey);
-    if (!NT_SUCCESS(status))
-        goto fail2;
-
-    status = RegistryCreateSubKey(InterfacesKey, 
-                                  "XENVBD",
-                                  REG_OPTION_NON_VOLATILE, 
-                                  &SubscriberKey);
-    if (!NT_SUCCESS(status))
-        goto fail3;
-                   
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
     RtlZeroMemory(&StatusBlock, sizeof(IO_STATUS_BLOCK));
 
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
-                                       DeviceObject,
+                                       Fdo->LowerDeviceObject,
                                        NULL,
                                        0,
                                        NULL,
@@ -336,7 +292,7 @@ __QueryInterface(
 
     status = STATUS_UNSUCCESSFUL;
     if (Irp == NULL)
-        goto fail4;
+        goto fail1;
 
     StackLocation = IoGetNextIrpStackLocation(Irp);
     StackLocation->MinorFunction = IRP_MN_QUERY_INTERFACE;
@@ -348,7 +304,7 @@ __QueryInterface(
     
     Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
 
-    status = IoCallDriver(DeviceObject, Irp);
+    status = IoCallDriver(Fdo->LowerDeviceObject, Irp);
     if (status == STATUS_PENDING) {
         (VOID) KeWaitForSingleObject(&Event,
                                      Executive,
@@ -362,44 +318,14 @@ __QueryInterface(
         if (status == STATUS_NOT_SUPPORTED && Optional)
             goto done;
 
-        goto fail5;
+        goto fail2;
     }
 
-    status = RegistryUpdateDwordValue(SubscriberKey,
-                                      (PCHAR)InterfaceName,
-                                      Version);
-    if (!NT_SUCCESS(status))
-        goto fail6;
-
 done:
-    RegistryCloseKey(SubscriberKey);
-
-    RegistryCloseKey(InterfacesKey);
-
-    __FreePoolWithTag(Unicode.Buffer, FDO_SIGNATURE);
-
     return STATUS_SUCCESS;
-
-fail6:
-    Error("fail6\n");
-
-fail5:
-    Error("fail5\n");
-
-fail4:
-    Error("fail4\n");
-
-    RegistryCloseKey(SubscriberKey);
-
-fail3:
-    Error("fail3\n");
-
-    RegistryCloseKey(InterfacesKey);
 
 fail2:
     Error("fail2\n");
-
-    __FreePoolWithTag(Unicode.Buffer, FDO_SIGNATURE);
 
 fail1:
     Error("fail1 (%08x)\n", status);
@@ -407,22 +333,19 @@ fail1:
     return status;
 }
 
-#define QUERY_INTERFACE(                                                                \
-    _DeviceObject,                                                                      \
+#define QUERY_INTERFACE(                                                            \
+    _Fdo,                                                                               \
     _ProviderName,                                                                      \
     _InterfaceName,                                                                     \
-    _Version,                                                                           \
     _Interface,                                                                         \
     _Size,                                                                              \
     _Optional)                                                                          \
-    __QueryInterface((_DeviceObject),                                                   \
-                     L ## #_ProviderName,                                               \
-                     #_InterfaceName,                                                   \
-                     &GUID_ ## _ProviderName ## _ ## _InterfaceName ## _INTERFACE,      \
-                     (_Version),                                                        \
-                     (_Interface),                                                      \
-                     (_Size),                                                           \
-                     (_Optional))
+    FdoQueryInterface((_Fdo),                                                           \
+                      &GUID_ ## _ProviderName ## _ ## _InterfaceName ## _INTERFACE,     \
+                      _ProviderName ## _ ## _InterfaceName ## _INTERFACE_VERSION_MAX,   \
+                      (_Interface),                                                     \
+                      (_Size),                                                          \
+                      (_Optional))
 
 //=============================================================================
 // Debug
@@ -921,10 +844,9 @@ __FdoQueryInterfaces(
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
     // Get STORE Interface
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENBUS,
                              STORE,
-                             XENBUS_STORE_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Store,
                              sizeof (Fdo->Store),
                              FALSE);
@@ -932,10 +854,9 @@ __FdoQueryInterfaces(
         goto fail1;
 
     // Get EVTCHN Interface
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENBUS,
                              EVTCHN,
-                             XENBUS_EVTCHN_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Evtchn,
                              sizeof (Fdo->Evtchn),
                              FALSE);
@@ -943,10 +864,9 @@ __FdoQueryInterfaces(
         goto fail2;
 
     // Get GNTTAB Interface
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENBUS,
                              GNTTAB,
-                             XENBUS_GNTTAB_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Gnttab,
                              sizeof (Fdo->Gnttab),
                              FALSE);
@@ -954,10 +874,9 @@ __FdoQueryInterfaces(
         goto fail3;
 
     // Get SUSPEND Interface
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENBUS,
                              SUSPEND,
-                             XENBUS_SUSPEND_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Suspend,
                              sizeof (Fdo->Suspend),
                              FALSE);
@@ -965,10 +884,9 @@ __FdoQueryInterfaces(
         goto fail4;
 
     // Get DEBUG Interface
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENBUS,
                              DEBUG,
-                             XENBUS_DEBUG_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Debug,
                              sizeof (Fdo->Debug),
                              FALSE);
@@ -976,10 +894,9 @@ __FdoQueryInterfaces(
         goto fail5;
 
     // Get EMULATED Interface (optional)
-    Status = QUERY_INTERFACE(Fdo->LowerDeviceObject,
+    Status = QUERY_INTERFACE(Fdo,
                              XENFILT,
                              EMULATED,
-                             XENFILT_EMULATED_INTERFACE_VERSION_MAX,
                              (PINTERFACE)&Fdo->Emulated,
                              sizeof (Fdo->Emulated),
                              TRUE);
