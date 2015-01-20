@@ -1579,12 +1579,15 @@ FrontendBackendPathChanged(
     __in  PXENVBD_FRONTEND        Frontend
     )
 {
+    KIRQL       Irql;
+    KeAcquireSpinLock(&Frontend->StateLock, &Irql);
     // Only attempt this if Active, Active is set/cleared on D3->D0/D0->D3
     if (Frontend->Active) {
         // Note: Nothing may have changed with this target, this could be caused by another target changing
         __ReadDiskInfo(Frontend);
         __CheckBackendForEject(Frontend);
     }
+    KeReleaseSpinLock(&Frontend->StateLock, Irql);
 }
 
 __checkReturn
