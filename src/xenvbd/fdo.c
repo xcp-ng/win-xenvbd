@@ -447,8 +447,8 @@ __ParseVbd(
         case 89:    return ((DeviceId & 0xC0) >> 6) + 14;   /* hdo..p */
         default:    break;
         }
-        ASSERT3U(DeviceId, ==, ~0);
     }
+    Error("Invalid DeviceId %s (%08x)\n", DeviceIdStr, DeviceId);
     return 0xFFFFFFFF; // OBVIOUS ERROR VALUE
 }
 static FORCEINLINE XENVBD_DEVICE_TYPE
