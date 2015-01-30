@@ -125,19 +125,15 @@ NotifierDpc(
             return;
     }
 
-    for (;;) {
-        if (Notifier->Connected)
-            FrontendNotifyResponses(Notifier->Frontend);
+    if (!Notifier->Connected)
+        return;
 
-        if (!Notifier->Connected)
-            break;
+    FrontendNotifyResponses(Notifier->Frontend);
 
-        if (!XENBUS_EVTCHN(Unmask,
-                           Notifier->EvtchnInterface,
-                           Notifier->Channel,
-                           FALSE))
-            break;
-    }
+    XENBUS_EVTCHN(Unmask,
+                  Notifier->EvtchnInterface,
+                  Notifier->Channel,
+                  FALSE);
 }
 
 NTSTATUS
@@ -211,13 +207,10 @@ NotifierConnect(
                                    Notifier->EvtchnInterface,
                                    Notifier->Channel);
 
-    if (XENBUS_EVTCHN(Unmask,
-                      Notifier->EvtchnInterface,
-                      Notifier->Channel,
-                      FALSE))
-        XENBUS_EVTCHN(Trigger,
-                      Notifier->EvtchnInterface,
-                      Notifier->Channel);
+    XENBUS_EVTCHN(Unmask,
+                  Notifier->EvtchnInterface,
+                  Notifier->Channel,
+                  FALSE);
 
     Notifier->Connected = TRUE;
     return STATUS_SUCCESS;
