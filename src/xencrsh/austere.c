@@ -262,6 +262,7 @@ __AllocSmall(
             SubHeap->Next->Prev = SubHeap->Prev;
         SubHeap->Prev = NULL;
         SubHeap->Next = AustereHeap.HeadSubHeap;
+        AustereHeap.HeadSubHeap->Prev = SubHeap;
         AustereHeap.HeadSubHeap = SubHeap;
     }
     return Res;
@@ -327,6 +328,7 @@ __FreeSmall(
             SubHeap->Next->Prev = SubHeap->Prev;
         SubHeap->Prev = NULL;
         SubHeap->Next = AustereHeap.HeadSubHeap;
+        AustereHeap.HeadSubHeap->Prev = SubHeap;
         AustereHeap.HeadSubHeap = SubHeap;
     }
 }
