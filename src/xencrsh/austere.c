@@ -130,7 +130,7 @@ retry:
 
     Res = (PVOID)(AustereHeap.BigHeapStart + i * PAGE_SIZE);
     if (AustereHeap.HeapBlockSizes[i] != (NumPages | FREE_CHUNK)) {
-        if (i + NumPages <= AUSTERE_HEAP_PAGES)
+        if (i + NumPages != AUSTERE_HEAP_PAGES)
             AustereHeap.HeapBlockSizes[i + NumPages] = AustereHeap.HeapBlockSizes[i] - NumPages;
     }
     AustereHeap.HeapBlockSizes[i] = NumPages;
@@ -262,7 +262,8 @@ __AllocSmall(
             SubHeap->Next->Prev = SubHeap->Prev;
         SubHeap->Prev = NULL;
         SubHeap->Next = AustereHeap.HeadSubHeap;
-        AustereHeap.HeadSubHeap->Prev = SubHeap;
+        if (AustereHeap.HeadSubHeap)
+            AustereHeap.HeadSubHeap->Prev = SubHeap;
         AustereHeap.HeadSubHeap = SubHeap;
     }
     return Res;
@@ -328,7 +329,8 @@ __FreeSmall(
             SubHeap->Next->Prev = SubHeap->Prev;
         SubHeap->Prev = NULL;
         SubHeap->Next = AustereHeap.HeadSubHeap;
-        AustereHeap.HeadSubHeap->Prev = SubHeap;
+        if (AustereHeap.HeadSubHeap)
+            AustereHeap.HeadSubHeap->Prev = SubHeap;
         AustereHeap.HeadSubHeap = SubHeap;
     }
 }
@@ -378,6 +380,9 @@ __AustereAllocate(
     )
 {
     PVOID   Res;
+
+    if (Size < sizeof(PVOID))
+        Size = sizeof(PVOID);
 
     if (Size > AUSTERE_MAX_ALLOC_SIZE) {
         LogError("%s failing alloc of %d bytes (%d maximum)\n", Caller, Size, AUSTERE_MAX_ALLOC_SIZE);
