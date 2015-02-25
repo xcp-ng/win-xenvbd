@@ -298,46 +298,64 @@ HvmOp(
 
 NTSTATUS
 HvmGetParameter(
-    IN  ULONG           Param,
-    OUT PULONG_PTR      Value
+    IN  ULONG               Param,
+    OUT PULONGLONG          Value
     )
 {
-    struct xen_hvm_param a;
-    LONG_PTR rc;
+    struct xen_hvm_param    op;
+    LONG_PTR                rc;
+    NTSTATUS                status;
 
-    a.domid = DOMID_SELF;
-    a.index = Param;
-    a.value = 0xf001dead;
+    op.domid = DOMID_SELF;
+    op.index = Param;
+    op.value = 0xf001dead;
 
-    rc = HvmOp(HVMOP_get_param, &a);
-    if (rc < 0) {
-        return STATUS_UNSUCCESSFUL;
-    }
+    rc = HvmOp(HVMOP_get_param, &op);
+    if (rc < 0)
+        goto fail1;
 
     /* Horrible hack to cope with the transition from
        return parameters through the hypercall return
        value to returning them through an in-memory
        structure. */
-    if (a.value != 0xf001dead)
-        *Value = (ULONG_PTR)a.value;
+    if (op.value != 0xf001dead)
+        *Value = (ULONG_PTR)op.value;
     else
         *Value = (ULONG_PTR)rc;
 
     return STATUS_SUCCESS;
+
+fail1:
+    ERRNO_TO_STATUS(-rc, status);
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
 }
 
 NTSTATUS
 HvmSetParameter(
-    IN  ULONG           Param,
-    IN  ULONG_PTR       Value
+    IN  ULONG               Param,
+    IN  ULONGLONG           Value
     )
 {
-    struct xen_hvm_param a;
-    a.domid = DOMID_SELF;
-    a.index = Param;
-    a.value = Value;
-    if (HvmOp(HVMOP_set_param, &a) == 0)
-        return STATUS_UNSUCCESSFUL;
-    else
-        return STATUS_SUCCESS;
+    struct xen_hvm_param    op;
+    LONG_PTR                rc;
+    NTSTATUS                status;
+
+    op.domid = DOMID_SELF;
+    op.index = Param;
+    op.value = Value;
+
+    rc = HvmOp(HVMOP_set_param, &op);
+
+    if (rc < 0)
+        goto fail1;
+
+    return STATUS_SUCCESS;
+
+fail1:
+    ERRNO_TO_STATUS(-rc, status);
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
 }

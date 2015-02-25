@@ -50,13 +50,13 @@ HvmAddToPhysMap(
 NTSTATUS
 HvmGetParameter(
     IN  ULONG           Param,
-    OUT PULONG_PTR      Value
+    OUT PULONGLONG      Value
     );
 
 NTSTATUS
 HvmSetParameter(
     IN  ULONG           Param,
-    IN  ULONG_PTR       Value
+    IN  ULONGLONG       Value
     );
 
 #endif // _XENVBD_HVM_H

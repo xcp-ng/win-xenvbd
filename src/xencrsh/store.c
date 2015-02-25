@@ -1062,8 +1062,8 @@ __Round(
 NTSTATUS
 StoreInitialize()
 {
-    ULONG_PTR                   Mfn;
-    ULONG_PTR                   Port;
+    ULONGLONG                   Mfn;
+    ULONGLONG                   Port;
     PHYSICAL_ADDRESS            PhysAddr;
     NTSTATUS                    Status;
     struct xenstore_domain_interface*  StoreRingPtr;
@@ -1082,7 +1082,7 @@ StoreInitialize()
     if (!NT_SUCCESS(Status))
         goto fail2;
     
-    LogVerbose("HVM_PARAM_STORE_PFN = %p\n", (PVOID)Mfn);
+    LogVerbose("HVM_PARAM_STORE_PFN = %p\n", (PVOID)(ULONG_PTR)Mfn);
     StoreRingPtr = __Round(&__StoreRingSection[0], PAGE_SIZE);
     PhysAddr = MmGetPhysicalAddress(StoreRingPtr);
 
@@ -1095,7 +1095,7 @@ StoreInitialize()
             LogWarning("Page Swizzle to map store ring succeeded, but didn't actually do anything!\n");
     } else {
         LogVerbose("Page Swizzle failed\n");
-        PhysAddr.QuadPart = (ULONGLONG)Mfn << PAGE_SHIFT;
+        PhysAddr.QuadPart = Mfn << PAGE_SHIFT;
         StoreRingPtr = MmMapIoSpace(PhysAddr, PAGE_SIZE, MmCached);
         if (StoreRingPtr == NULL)
             goto fail3;
