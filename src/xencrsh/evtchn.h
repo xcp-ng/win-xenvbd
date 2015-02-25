@@ -42,6 +42,25 @@ EventChannelSend(
     );
 
 NTSTATUS
+EventChannelReset(
+    VOID
+    );
+
+NTSTATUS
+EventChannelBindInterDomain(
+    IN  USHORT          RemoteDomain,
+    IN  ULONG           RemotePort,
+    OUT PULONG          LocalPort
+    );
+
+NTSTATUS
+EventChannelQueryInterDomain(
+    IN  ULONG           LocalPort,
+    OUT PUSHORT         RemoteDomain,
+    OUT PULONG          RemotePort
+    );
+
+NTSTATUS
 EventChannelAllocate(
     IN  ULONG           Domain,
     OUT PULONG          LocalPort

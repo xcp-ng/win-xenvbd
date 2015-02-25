@@ -87,6 +87,102 @@ fail1:
 }
 
 NTSTATUS
+EventChannelReset(
+    VOID
+    )
+{
+    struct evtchn_reset op;
+    LONG_PTR            rc;
+    NTSTATUS            status;
+
+    op.dom = DOMID_SELF;
+
+    rc = EventChannelOp(EVTCHNOP_reset, &op);
+
+    if (rc < 0) {
+        ERRNO_TO_STATUS(-rc, status);
+        goto fail1;
+    }
+
+    return STATUS_SUCCESS;
+
+fail1:
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+NTSTATUS
+EventChannelBindInterDomain(
+    IN  USHORT                      RemoteDomain,
+    IN  ULONG                       RemotePort,
+    OUT PULONG                      LocalPort
+    )
+{
+    struct evtchn_bind_interdomain  op;
+    LONG_PTR                        rc;
+    NTSTATUS                        status;
+
+    op.remote_dom = RemoteDomain,
+    op.remote_port = RemotePort;
+
+    rc = EventChannelOp(EVTCHNOP_bind_interdomain, &op);
+
+    if (rc < 0) {
+        ERRNO_TO_STATUS(-rc, status);
+        goto fail1;
+    }
+
+    *LocalPort = op.local_port;
+
+    return STATUS_SUCCESS;
+
+fail1:
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+NTSTATUS
+EventChannelQueryInterDomain(
+    IN  ULONG               LocalPort,
+    OUT PUSHORT             RemoteDomain,
+    OUT PULONG              RemotePort
+    )
+{
+    struct evtchn_status    op;
+    LONG_PTR                rc;
+    NTSTATUS                status;
+
+    op.dom = DOMID_SELF;
+    op.port = LocalPort;
+
+    rc = EventChannelOp(EVTCHNOP_status, &op);
+
+    if (rc < 0) {
+        ERRNO_TO_STATUS(-rc, status);
+        goto fail1;
+    }
+
+    status = STATUS_INVALID_PARAMETER;
+    if (op.status != EVTCHNSTAT_interdomain)
+        goto fail2;
+
+    *RemoteDomain = op.u.interdomain.dom;
+    *RemotePort = op.u.interdomain.port;
+
+    return STATUS_SUCCESS;
+
+fail2:
+    LogError("fail2\n");
+
+fail1:
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+NTSTATUS
 EventChannelAllocate(
     IN  ULONG           Domain,
     OUT PULONG          LocalPort

@@ -1063,7 +1063,10 @@ NTSTATUS
 StoreInitialize()
 {
     ULONGLONG                   Mfn;
-    ULONGLONG                   Port;
+    ULONGLONG                   Value;
+    ULONG                       LocalPort;
+    ULONG                       RemotePort;
+    USHORT                      RemoteDomain;
     PHYSICAL_ADDRESS            PhysAddr;
     NTSTATUS                    Status;
     struct xenstore_domain_interface*  StoreRingPtr;
@@ -1071,12 +1074,34 @@ StoreInitialize()
     InitializeListHead(&StoreContext.SubmittedList);
     InitializeListHead(&StoreContext.PendingList);
 
-    Status = HvmGetParameter(HVM_PARAM_STORE_EVTCHN, &Port);
+    Status = HvmGetParameter(HVM_PARAM_STORE_EVTCHN, &Value);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
-    LogVerbose("HVM_PARAM_STORE_EVTCHN = %08x\n", (ULONG)Port);
-    StoreContext.Port = (evtchn_port_t)Port;
+    LocalPort = (ULONG)Value;
+
+    LogVerbose("OLD HVM_PARAM_STORE_EVTCHN = %08x\n", LocalPort);
+
+    Status = EventChannelQueryInterDomain(LocalPort,
+                                          &RemoteDomain,
+                                          &RemotePort);
+    LogTrace("EventChannelQueryInterDomain(&u) (%08x) %u:%u\n",
+             LocalPort, Status, RemoteDomain, RemotePort);
+
+    Status = EventChannelReset();
+    LogTrace("EventChannelReset() (%08x)\n", Status);
+
+    Status = EventChannelBindInterDomain(RemoteDomain,
+                                         RemotePort,
+                                         &LocalPort);
+    LogTrace("EventChannelBindInterDomain(%u:%u) (%08x) %u\n",
+             RemoteDomain, RemotePort, Status, LocalPort);
+
+    Value = LocalPort;
+    Status = HvmSetParameter(HVM_PARAM_STORE_EVTCHN, Value);
+    LogTrace("HvmSetParameter(STORE_EVTCHN, %u) (%08x)\n", Value, Status);
+
+    StoreContext.Port = (evtchn_port_t)LocalPort;
 
     Status = HvmGetParameter(HVM_PARAM_STORE_PFN, &Mfn);
     if (!NT_SUCCESS(Status))
