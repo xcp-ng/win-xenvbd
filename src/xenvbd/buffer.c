@@ -130,6 +130,7 @@ __IsOnList(
     ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
 
     for (Entry = ListHead->Flink; Entry != ListHead; Entry = Entry->Flink) {
+        ASSERT3P(Entry, !=, NULL);
         if (Entry == ListItem) {
             Found = TRUE;
             break;

@@ -120,10 +120,12 @@ __DriverGetSystemStartParams(
 
     RtlInitUnicodeString(&Unicode, L"SystemStartOptions");
     Status = ZwQueryValueKey(Key, &Unicode, KeyValuePartialInformation, NULL, 0, &Size);
-    if (Status != STATUS_BUFFER_TOO_SMALL)
+    if (Status != STATUS_BUFFER_TOO_SMALL &&
+        Status != STATUS_BUFFER_OVERFLOW)
         goto fail2;
 
     Status = STATUS_NO_MEMORY;
+#pragma prefast(suppress:6102)
     Value = (PKEY_VALUE_PARTIAL_INFORMATION)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Size, XENVBD_POOL_TAG);
     if (Value == NULL)
         goto fail3;

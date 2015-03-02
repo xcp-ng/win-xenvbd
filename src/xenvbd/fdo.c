@@ -1211,7 +1211,7 @@ FdoDevicePower(
 }
 
 __checkReturn
-__drv_maxIRQL(DISPATCH_LEVEL)
+__drv_maxIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 __FdoInitialize(
     __in PXENVBD_FDO             Fdo
@@ -1796,9 +1796,8 @@ FdoMapDeviceObjectToPdo(
     Status = __FdoExtractTargetId(String, &TargetId);
     if (NT_SUCCESS(Status)) {
         __FdoSetDeviceObject(Fdo, TargetId, DeviceObject);
+        Verbose("0x%p --> Target %d (%ws)\n", DeviceObject, TargetId, String);
     }
-
-    Verbose("0x%p --> Target %d (%ws)\n", DeviceObject, TargetId, String);
 
     // String is PagedPool, allocated by lower driver
     ASSERT3U(KeGetCurrentIrql(), <=, APC_LEVEL);

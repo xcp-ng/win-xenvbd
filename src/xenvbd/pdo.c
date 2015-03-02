@@ -621,6 +621,7 @@ PdoDestroy(
                                  FALSE,
                                  NULL,
                                  WaitBlock);
+#pragma prefast(suppress:6102)
         __PdoFree(WaitBlock);
     }
 
