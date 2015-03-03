@@ -129,6 +129,7 @@ __IsOnList(
     ASSERT3P(ListHead, !=, ListItem);
     ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
 
+#pragma prefast(suppress:6011)
     for (Entry = ListHead->Flink; Entry != ListHead; Entry = Entry->Flink) {
         ASSERT3P(Entry, !=, NULL);
         if (Entry == ListItem) {
