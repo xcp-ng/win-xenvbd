@@ -58,7 +58,7 @@ struct _XENVBD_BLOCKRING {
     PVOID                           Grants[XENVBD_MAX_RING_PAGES];
     ULONG                           Outstanding;
     ULONG                           Submitted;
-    ULONG                           Recieved;
+    ULONG                           Received;
 };
 
 #define MAX_NAME_LEN                64
@@ -266,7 +266,6 @@ BlockRingDestroy(
 {
     BlockRing->Frontend = NULL;
     BlockRing->DeviceId = 0;
-    BlockRing->Order = 0;
     RtlZeroMemory(&BlockRing->Lock, sizeof(KSPIN_LOCK));
     
     ASSERT(IsZeroMemory(BlockRing, sizeof(XENVBD_BLOCKRING)));
@@ -433,6 +432,10 @@ BlockRingDisconnect(
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
     ASSERT(BlockRing->Connected == TRUE);
+    ASSERT3U(BlockRing->Outstanding, ==, 0);
+
+    BlockRing->Submitted = 0;
+    BlockRing->Received = 0;
 
     for (Index = 0; Index < XENVBD_MAX_RING_PAGES; ++Index) {
         if (BlockRing->Grants[Index]) {
@@ -445,6 +448,8 @@ BlockRingDisconnect(
     __FreePages(BlockRing->SharedRing, BlockRing->Mdl);
     BlockRing->SharedRing = NULL;
     BlockRing->Mdl = NULL;
+
+    BlockRing->Order = 0;
 
     XENBUS_STORE(Release, BlockRing->StoreInterface);
     BlockRing->StoreInterface = NULL;
@@ -465,7 +470,7 @@ BlockRingDebugCallback(
                  "BLOCKRING: Requests  : %d / %d / %d\n",
                  BlockRing->Outstanding,
                  BlockRing->Submitted,
-                 BlockRing->Recieved);
+                 BlockRing->Received);
 
     XENBUS_DEBUG(Printf, Debug,
                  "BLOCKRING: SharedRing : 0x%p\n", 
@@ -497,7 +502,7 @@ BlockRingDebugCallback(
                      GranterReference(Granter, BlockRing->Grants[Index]));
     }
 
-    BlockRing->Submitted = BlockRing->Recieved = 0;
+    BlockRing->Submitted = BlockRing->Received = 0;
 }
 
 VOID
@@ -537,7 +542,7 @@ BlockRingPoll(
             ++rsp_cons;
 
             if (__BlockRingPutTag(BlockRing, Response->id, &Tag)) {
-                ++BlockRing->Recieved;
+                ++BlockRing->Received;
                 --BlockRing->Outstanding;
                 PdoCompleteResponse(Pdo, Tag, Response->status);
             }
