@@ -885,7 +885,7 @@ FdoQueryDeviceRelations(
          ListEntry = ListEntry->Flink)
         Count++;
 
-    Size = FIELD_OFFSET(DEVICE_RELATIONS, Objects) + (sizeof (DEVICE_OBJECT) * __min(Count, 1));
+    Size = sizeof(DEVICE_RELATIONS) + (sizeof (PDEVICE_OBJECT) * Count);
 
     Relations = ExAllocatePoolWithTag(PagedPool, Size, 'TLIF');
 
