@@ -86,6 +86,7 @@ GranterCreate(
         goto fail1;
 
     (*Granter)->Frontend = Frontend;
+    KeInitializeSpinLock(&(*Granter)->Lock);
 
     return STATUS_SUCCESS;
 
@@ -99,6 +100,7 @@ GranterDestroy(
     )
 {
     Granter->Frontend = NULL;
+    RtlZeroMemory(&Granter->Lock, sizeof(KSPIN_LOCK));
 
     ASSERT(IsZeroMemory(Granter, sizeof(XENVBD_GRANTER)));
     
@@ -160,8 +162,6 @@ GranterConnect(
                                 FrontendGetTargetId(Granter->Frontend));
     if (!NT_SUCCESS(status))
         goto fail2;
-
-    KeInitializeSpinLock(&Granter->Lock);
 
     status = XENBUS_GNTTAB(CreateCache,
                            Granter->GnttabInterface,
