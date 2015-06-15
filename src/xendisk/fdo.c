@@ -883,7 +883,15 @@ FdoQueryDeviceRelations(
     for (ListEntry = Fdo->Dx->ListEntry.Flink;
          ListEntry != &Fdo->Dx->ListEntry;
          ListEntry = ListEntry->Flink)
+    {
+        PXENDISK_DX     Dx = CONTAINING_RECORD(ListEntry, XENDISK_DX, ListEntry);
+        PXENDISK_PDO    Pdo = Dx->Pdo;
+
+        if (PdoIsMissing(Pdo))
+            continue;
+
         Count++;
+    }
 
     Size = sizeof(DEVICE_RELATIONS) + (sizeof (PDEVICE_OBJECT) * Count);
 
@@ -902,6 +910,9 @@ FdoQueryDeviceRelations(
         PXENDISK_PDO    Pdo = Dx->Pdo;
 
         ASSERT3U(Dx->Type, ==, PHYSICAL_DEVICE_OBJECT);
+
+        if (PdoIsMissing(Pdo))
+            continue;
 
         if (PdoGetDevicePnpState(Pdo) == Present)
             PdoSetDevicePnpState(Pdo, Enumerated);

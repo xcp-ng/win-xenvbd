@@ -1137,7 +1137,8 @@ done:
         FdoAcquireMutex(Fdo);
         PdoDestroy(Pdo);
         FdoReleaseMutex(Fdo);
-    }
+    } else if (__PdoGetDevicePnpState(Pdo) == Enumerated)
+        __PdoSetMissing(Pdo, "Device removed");
 
     return status;
 
