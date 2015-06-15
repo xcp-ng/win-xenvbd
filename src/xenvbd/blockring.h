@@ -94,4 +94,10 @@ BlockRingSubmit(
     IN  PXENVBD_REQUEST             Request
     );
 
+extern VOID
+BlockRingAbort(
+    IN  PXENVBD_BLOCKRING           BlockRing,
+    IN  PXENVBD_REQUEST             Request
+    );
+
 #endif // _XENVBD_BLOCKRING_H

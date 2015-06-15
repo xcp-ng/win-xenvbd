@@ -1714,7 +1714,8 @@ PdoPreResume(
     __in PXENVBD_PDO             Pdo
     )
 {
-    LIST_ENTRY      List;
+    LIST_ENTRY          List;
+    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
     
     InitializeListHead(&List);
 
@@ -1728,6 +1729,7 @@ PdoPreResume(
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
+        BlockRingAbort(BlockRing, Request);
         RequestCleanup(Pdo, Request);
         __LookasideFree(&Pdo->RequestList, Request);
 

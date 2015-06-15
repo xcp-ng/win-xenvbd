@@ -589,3 +589,24 @@ BlockRingSubmit(
 
     return TRUE;
 }
+
+VOID
+BlockRingAbort(
+    IN  PXENVBD_BLOCKRING           BlockRing,
+    IN  PXENVBD_REQUEST             Request
+    )
+{
+    KIRQL               Irql;
+
+    UNREFERENCED_PARAMETER(Request);
+
+    KeAcquireSpinLock(&BlockRing->Lock, &Irql);
+
+    // Should check Request is present on the ring, but
+    // the shared page(s) may not contain any valid data,
+    // due to suspend/resume
+    ASSERT3U(BlockRing->Outstanding, >, 0);
+    --BlockRing->Outstanding;
+
+    KeReleaseSpinLock(&BlockRing->Lock, Irql);
+}
