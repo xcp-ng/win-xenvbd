@@ -420,10 +420,8 @@ PdoSetDevicePnpState(
             __PnpStateName(Pdo->DevicePnpState),
             __PnpStateName(State));
 
-    if (Pdo->DevicePnpState == Deleted) {
-        ASSERT(State == Deleted);
+    if (Pdo->DevicePnpState == Deleted)
         return;
-    }
 
     Pdo->PrevPnpState = Pdo->DevicePnpState;
     Pdo->DevicePnpState = State;
@@ -2556,14 +2554,10 @@ __PdoRemoveDevice(
         StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
         break;
 
-    case Enumerated:
+    default:
         PdoSetMissing(Pdo, "Removed");
         PdoSetDevicePnpState(Pdo, Deleted);
         StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
-        break;
-
-    default:
-        PdoSetDevicePnpState(Pdo, Enumerated);
         break;
     }
 }
