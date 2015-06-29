@@ -415,8 +415,16 @@ PdoSetDevicePnpState(
     __in DEVICE_PNP_STATE        State
     )
 {
-    ASSERT(Pdo->DevicePnpState != Deleted || State == Deleted);
-    Verbose("Target[%d] : PNP %s to %s\n", PdoGetTargetId(Pdo), __PnpStateName(Pdo->DevicePnpState), __PnpStateName(State));
+    Verbose("Target[%d] : PNP %s to %s\n",
+            PdoGetTargetId(Pdo),
+            __PnpStateName(Pdo->DevicePnpState),
+            __PnpStateName(State));
+
+    if (Pdo->DevicePnpState == Deleted) {
+        ASSERT(State == Deleted);
+        return;
+    }
+
     Pdo->PrevPnpState = Pdo->DevicePnpState;
     Pdo->DevicePnpState = State;
 }

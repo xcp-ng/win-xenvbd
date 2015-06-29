@@ -619,31 +619,29 @@ __FdoEnumerate(
     *NeedReboot = FALSE;
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
+        BOOLEAN     Missing = TRUE;
+
         Pdo = __FdoGetPdo(Fdo, TargetId);
         if (Pdo == NULL)
             continue;
 
-        if (!PdoIsMissing(Pdo)) {
-            BOOLEAN Missing = TRUE;
-            for (Device = Devices; *Device; Device = __NextSz(Device)) {
-                ULONG DeviceTargetId = __ParseVbd(Device);
-                if (TargetId == DeviceTargetId) {
-                    Missing = FALSE;
-                    break;
-                }
-            }
-            if (Missing) {
-                PdoSetMissing(Pdo, "Device Dissappeared");
-                if (PdoGetDevicePnpState(Pdo) == Present)
-                    PdoSetDevicePnpState(Pdo, Deleted);
-                else
-                    *NeedInvalidate = TRUE;
+        for (Device = Devices; *Device; Device = __NextSz(Device)) {
+            ULONG DeviceTargetId = __ParseVbd(Device);
+            if (TargetId == DeviceTargetId) {
+                Missing = FALSE;
+                break;
             }
         }
-        
-        if (PdoIsMissing(Pdo) && 
-            PdoGetDevicePnpState(Pdo) == Deleted) {
-            // drop reference count before destroying
+
+        if (Missing && !PdoIsMissing(Pdo)) {
+            PdoSetMissing(Pdo, "Device Disappeared");
+            if (PdoGetDevicePnpState(Pdo) == Present)
+                PdoSetDevicePnpState(Pdo, Deleted);
+            else
+                *NeedInvalidate = TRUE;
+        }
+
+        if (PdoGetDevicePnpState(Pdo) == Deleted) {
             PdoDereference(Pdo);
             PdoDestroy(Pdo);
         } else {
