@@ -257,7 +257,7 @@ __FdoEnumerate(
                   Relations->Objects,
                   sizeof (PDEVICE_OBJECT) * Count);
 
-    AcquireMutex(&Fdo->Mutex);
+    __FdoAcquireMutex(Fdo);
 
     // Remove any PDOs that do not appear in the device list
     ListEntry = Fdo->Dx->ListEntry.Flink;
@@ -300,7 +300,7 @@ __FdoEnumerate(
         }
     }
 
-    ReleaseMutex(&Fdo->Mutex);
+    __FdoReleaseMutex(Fdo);
 
     __FdoFree(PhysicalDeviceObject);
     return;
@@ -787,10 +787,10 @@ done:
     status = FdoForwardIrpSynchronously(Fdo, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    AcquireMutex(&Fdo->Mutex);
+    __FdoAcquireMutex(Fdo);
     ASSERT3U(Fdo->References, !=, 0);
     --Fdo->References;
-    ReleaseMutex(&Fdo->Mutex);
+    __FdoReleaseMutex(Fdo);
 
     if (Fdo->References == 0)
         FdoDestroy(Fdo);
@@ -877,7 +877,7 @@ FdoQueryDeviceRelations(
 
     ExFreePool(Relations);
 
-    AcquireMutex(&Fdo->Mutex);
+    __FdoAcquireMutex(Fdo);
 
     Count = 0;
     for (ListEntry = Fdo->Dx->ListEntry.Flink;
@@ -925,7 +925,7 @@ FdoQueryDeviceRelations(
 
     Trace("%d PDO(s)\n", Relations->Count);
 
-    ReleaseMutex(&Fdo->Mutex);
+    __FdoReleaseMutex(Fdo);
 
     Irp->IoStatus.Information = (ULONG_PTR)Relations;
     status = STATUS_SUCCESS;
@@ -939,7 +939,7 @@ done:
     return status;
 
 fail3:
-    ReleaseMutex(&Fdo->Mutex);
+    __FdoReleaseMutex(Fdo);
 
 fail2:
     IoReleaseRemoveLock(&Fdo->Dx->RemoveLock, Irp);
