@@ -54,22 +54,6 @@ PdoGetPhysicalDeviceObject(
     IN  PXENDISK_PDO    Pdo
     );
 
-extern BOOLEAN
-PdoIsMissing(
-    IN  PXENDISK_PDO    Pdo
-    );
-
-extern VOID
-PdoSetMissing(
-    IN  PXENDISK_PDO    Pdo,
-    IN  const CHAR      *Reason
-    );
-
-extern BOOLEAN
-PdoIsMasked(
-    IN  PXENDISK_PDO    Pdo
-    );
-
 extern NTSTATUS
 PdoCreate(
     IN  PXENDISK_FDO    Fdo,

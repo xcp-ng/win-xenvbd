@@ -265,25 +265,12 @@ __FdoEnumerate(
         PLIST_ENTRY     Next = ListEntry->Flink;
         PXENDISK_DX     Dx = CONTAINING_RECORD(ListEntry, XENDISK_DX, ListEntry);
         PXENDISK_PDO    Pdo = Dx->Pdo;
-        BOOLEAN         Missing;
 
-        Missing = TRUE;
         for (Index = 0; Index < Count; Index++) {
             if (PdoGetPhysicalDeviceObject(Pdo) == PhysicalDeviceObject[Index]) {
-                Missing = FALSE;
 #pragma prefast(suppress:6387)  // PhysicalDeviceObject[Index] could be NULL
-                ObDereferenceObject(PhysicalDeviceObject[Index]);
                 PhysicalDeviceObject[Index] = NULL; // avoid duplication
                 break;
-            }
-        }
-
-        if (Missing && !PdoIsMissing(Pdo)) {
-            if (PdoGetDevicePnpState(Pdo) == Present) {
-                PdoSetDevicePnpState(Pdo, Deleted);
-                PdoDestroy(Pdo);
-            } else {
-                PdoSetMissing(Pdo, "device disappeared");
             }
         }
 
@@ -296,7 +283,6 @@ __FdoEnumerate(
         if (PhysicalDeviceObject[Index] != NULL) {
             (VOID) PdoCreate(Fdo,
                              PhysicalDeviceObject[Index]);
-            ObDereferenceObject(PhysicalDeviceObject[Index]);
         }
     }
 
@@ -831,7 +817,6 @@ FdoQueryDeviceRelations(
 {
     KEVENT              Event;
     PIO_STACK_LOCATION  StackLocation;
-    ULONG               Size;
     PDEVICE_RELATIONS   Relations;
     PLIST_ENTRY         ListEntry;
     ULONG               Count;
@@ -875,34 +860,9 @@ FdoQueryDeviceRelations(
     if (Relations->Count != 0)
         __FdoEnumerate(Fdo, Relations);
 
-    ExFreePool(Relations);
-
     __FdoAcquireMutex(Fdo);
 
     Count = 0;
-    for (ListEntry = Fdo->Dx->ListEntry.Flink;
-         ListEntry != &Fdo->Dx->ListEntry;
-         ListEntry = ListEntry->Flink)
-    {
-        PXENDISK_DX     Dx = CONTAINING_RECORD(ListEntry, XENDISK_DX, ListEntry);
-        PXENDISK_PDO    Pdo = Dx->Pdo;
-
-        if (PdoIsMissing(Pdo))
-            continue;
-
-        Count++;
-    }
-
-    Size = sizeof(DEVICE_RELATIONS) + (sizeof (PDEVICE_OBJECT) * Count);
-
-    Relations = ExAllocatePoolWithTag(PagedPool, Size, 'TLIF');
-
-    status = STATUS_NO_MEMORY;
-    if (Relations == NULL)
-        goto fail3;
-
-    RtlZeroMemory(Relations, Size);
-
     for (ListEntry = Fdo->Dx->ListEntry.Flink;
          ListEntry != &Fdo->Dx->ListEntry;
          ListEntry = ListEntry->Flink) {
@@ -911,23 +871,17 @@ FdoQueryDeviceRelations(
 
         ASSERT3U(Dx->Type, ==, PHYSICAL_DEVICE_OBJECT);
 
-        if (PdoIsMissing(Pdo))
-            continue;
-
         if (PdoGetDevicePnpState(Pdo) == Present)
             PdoSetDevicePnpState(Pdo, Enumerated);
 
-        ObReferenceObject(PdoGetPhysicalDeviceObject(Pdo));
-        Relations->Objects[Relations->Count++] = PdoGetPhysicalDeviceObject(Pdo);
+        Count++;
     }
-
     ASSERT3U(Relations->Count, ==, Count);
-
-    Trace("%d PDO(s)\n", Relations->Count);
 
     __FdoReleaseMutex(Fdo);
 
-    Irp->IoStatus.Information = (ULONG_PTR)Relations;
+    Trace("%d PDO(s)\n", Relations->Count);
+
     status = STATUS_SUCCESS;
 
 done:
@@ -937,9 +891,6 @@ done:
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
     return status;
-
-fail3:
-    __FdoReleaseMutex(Fdo);
 
 fail2:
     IoReleaseRemoveLock(&Fdo->Dx->RemoveLock, Irp);
