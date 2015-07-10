@@ -1369,12 +1369,7 @@ __FrontendSetState(
             case XENVBD_CLOSED:
             case XENVBD_PREPARED:
                 Status = FrontendClose(Frontend);
-                if (NT_SUCCESS(Status)) {
-                    Frontend->State = XENVBD_CLOSING;
-                } else {
-                    Frontend->State = XENVBD_STATE_INVALID;
-                    Failed = TRUE;
-                }
+                Frontend->State = XENVBD_CLOSING;
                 break;
             default:
                 Failed = TRUE;
