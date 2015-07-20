@@ -43,6 +43,7 @@ typedef struct _XENVBD_FDO XENVBD_FDO, *PXENVBD_FDO;
 #include <gnttab_interface.h>
 #include <debug_interface.h>
 #include <suspend_interface.h>
+#include <unplug_interface.h>
 
 // Reference Counting
 extern LONG
@@ -189,6 +190,11 @@ FdoAcquireDebug(
 
 extern PXENBUS_SUSPEND_INTERFACE
 FdoAcquireSuspend(
+    __in PXENVBD_FDO                 Fdo
+    );
+
+extern PXENBUS_UNPLUG_INTERFACE
+FdoAcquireUnplug(
     __in PXENVBD_FDO                 Fdo
     );
 

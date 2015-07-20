@@ -53,9 +53,9 @@ xenvbd_coinst.dll=0,,
 %Company%=Inst,NT$ARCH$
 
 [Inst.NT$ARCH$]
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XSC000&DEV_VBD&REV_08000008
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0001&DEV_VBD&REV_08000008
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0002&DEV_VBD&REV_08000008
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XSC000&DEV_VBD&REV_08000009
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0001&DEV_VBD&REV_08000009
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0002&DEV_VBD&REV_08000009
 
 [XenVbd_Inst] 
 CopyFiles=XenVbd_Copyfiles

@@ -35,13 +35,6 @@
 #include <stdlib.h>
 #include <strsafe.h>
 
-#include <debug_interface.h>
-#include <suspend_interface.h>
-#include <evtchn_interface.h>
-#include <store_interface.h>
-#include <gnttab_interface.h>
-#include <emulated_interface.h>
-
 #include <version.h>
 
 __user_code;
@@ -53,8 +46,8 @@ __user_code;
 #define SERVICE_KEY(_Driver)    \
         SERVICES_KEY ## "\\" ## #_Driver
 
-#define UNPLUG_KEY \
-        SERVICE_KEY(XENFILT) ## "\\Unplug"
+#define STATUS_KEY  \
+        SERVICE_KEY(XENVBD) ## "\\Status"
 
 #define CONTROL_KEY "SYSTEM\\CurrentControlSet\\Control"
 
@@ -187,271 +180,6 @@ __FunctionName(
     return "UNKNOWN";
 
 #undef  _NAME
-}
-
-static BOOLEAN
-InstallUnplugService(
-    IN  PTCHAR      ClassName,
-    IN  PTCHAR      ServiceName
-    )
-{
-    HKEY            UnplugKey;
-    HRESULT         Error;
-    DWORD           Type;
-    DWORD           OldLength;
-    DWORD           NewLength;
-    PTCHAR          ServiceNames;
-    ULONG           Offset;
-
-    Error = RegCreateKeyEx(HKEY_LOCAL_MACHINE,
-                           UNPLUG_KEY,
-                           0,
-                           NULL,
-                           REG_OPTION_NON_VOLATILE,
-                           KEY_ALL_ACCESS,
-                           NULL,
-                           &UnplugKey,
-                           NULL);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail1;
-    }
-
-    Error = RegQueryValueEx(UnplugKey,
-                            ClassName,
-                            NULL,
-                            &Type,
-                            NULL,
-                            &OldLength);
-    if (Error != ERROR_SUCCESS) {
-        if (Error == ERROR_FILE_NOT_FOUND) {
-            Type = REG_MULTI_SZ;
-            OldLength = sizeof (TCHAR);
-        } else {
-            SetLastError(Error);
-            goto fail2;
-        }
-    }
-
-    if (Type != REG_MULTI_SZ) {
-        SetLastError(ERROR_BAD_FORMAT);
-        goto fail3;
-    }
-
-    NewLength = OldLength + (DWORD)((strlen(ServiceName) + 1) * sizeof (TCHAR));
-
-    ServiceNames = calloc(1, NewLength);
-    if (ServiceNames == NULL)
-        goto fail4;
-
-    Offset = 0;
-    if (OldLength != sizeof (TCHAR)) {
-        Error = RegQueryValueEx(UnplugKey,
-                                ClassName,
-                                NULL,
-                                &Type,
-                                (LPBYTE)ServiceNames,
-                                &OldLength);
-        if (Error != ERROR_SUCCESS) {
-            SetLastError(ERROR_BAD_FORMAT);
-            goto fail5;
-        }
-
-        while (ServiceNames[Offset] != '\0') {
-            ULONG   ServiceNameLength;
-
-            ServiceNameLength = (ULONG)strlen(&ServiceNames[Offset]) / sizeof (TCHAR);
-
-            if (_stricmp(&ServiceNames[Offset], ServiceName) == 0) {
-                Log("%s already present", ServiceName);
-                goto done;
-            }
-
-            Offset += ServiceNameLength + 1;
-        }
-    }
-
-    memmove(&ServiceNames[Offset], ServiceName, strlen(ServiceName));
-    Log("added %s", ServiceName);
-
-    Error = RegSetValueEx(UnplugKey,
-                          ClassName,
-                          0,
-                          REG_MULTI_SZ,
-                          (LPBYTE)ServiceNames,
-                          NewLength);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail6;
-    }
-
-done:
-    free(ServiceNames);
-
-    RegCloseKey(UnplugKey);
-
-    return TRUE;
-
-fail6:
-    Log("fail5");
-
-fail5:
-    Log("fail5");
-
-    free(ServiceNames);
-
-fail4:
-    Log("fail5");
-
-fail3:
-    Log("fail5");
-
-fail2:
-    Log("fail5");
-
-    RegCloseKey(UnplugKey);
-
-fail1:
-    Error = GetLastError();
-
-    {
-        PTCHAR  Message;
-
-        Message = __GetErrorMessage(Error);
-        Log("fail1 (%s)", Message);
-        LocalFree(Message);
-    }
-
-    return FALSE;
-}
-
-static BOOLEAN
-RemoveUnplugService(
-    IN  PTCHAR      ClassName,
-    IN  PTCHAR      ServiceName
-    )
-{
-    HKEY            UnplugKey;
-    HRESULT         Error;
-    DWORD           Type;
-    DWORD           OldLength;
-    DWORD           NewLength;
-    PTCHAR          ServiceNames;
-    ULONG           Offset;
-    ULONG           ServiceNameLength;
-
-    Error = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-                         UNPLUG_KEY,
-                         0,
-                         KEY_ALL_ACCESS,
-                         &UnplugKey);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail1;
-    }
-
-    Error = RegQueryValueEx(UnplugKey,
-                            ClassName,
-                            NULL,
-                            &Type,
-                            NULL,
-                            &OldLength);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail2;
-    }
-
-    if (Type != REG_MULTI_SZ) {
-        SetLastError(ERROR_BAD_FORMAT);
-        goto fail3;
-    }
-
-    ServiceNames = calloc(1, OldLength);
-    if (ServiceNames == NULL)
-        goto fail4;
-
-    Error = RegQueryValueEx(UnplugKey,
-                            ClassName,
-                            NULL,
-                            &Type,
-                            (LPBYTE)ServiceNames,
-                            &OldLength);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(ERROR_BAD_FORMAT);
-        goto fail5;
-    }
-
-    Offset = 0;
-    ServiceNameLength = 0;
-    while (ServiceNames[Offset] != '\0') {
-        ServiceNameLength = (ULONG)strlen(&ServiceNames[Offset]) / sizeof (TCHAR);
-
-        if (_stricmp(&ServiceNames[Offset], ServiceName) == 0)
-            goto remove;
-
-        Offset += ServiceNameLength + 1;
-    }
-
-    goto done;
-
-remove:
-    NewLength = OldLength - ((ServiceNameLength + 1) * sizeof (TCHAR));
-
-    memmove(&ServiceNames[Offset],
-            &ServiceNames[Offset + ServiceNameLength + 1],
-            (NewLength - Offset) * sizeof (TCHAR));
-
-    Log("removed %s", ServiceName);
-
-    Error = RegSetValueEx(UnplugKey,
-                          ClassName,
-                          0,
-                          REG_MULTI_SZ,
-                          (LPBYTE)ServiceNames,
-                          NewLength);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail6;
-    }
-
-done:
-    free(ServiceNames);
-
-    RegCloseKey(UnplugKey);
-
-    return TRUE;
-
-fail6:
-    Log("fail6");
-
-fail5:
-    Log("fail5");
-
-    free(ServiceNames);
-
-fail4:
-    Log("fail4");
-
-fail3:
-    Log("fail3");
-
-fail2:
-    Log("fail2");
-
-    RegCloseKey(UnplugKey);
-
-fail1:
-    Error = GetLastError();
-
-    {
-        PTCHAR  Message;
-
-        Message = __GetErrorMessage(Error);
-        Log("fail1 (%s)", Message);
-        LocalFree(Message);
-    }
-
-    return FALSE;
 }
 
 static BOOLEAN
@@ -610,6 +338,80 @@ fail1:
 }
 
 static BOOLEAN
+CheckStatus(
+    OUT PBOOLEAN    NeedReboot
+    )
+{
+    HKEY            StatusKey;
+    HRESULT         Error;
+    DWORD           ValueLength;
+    DWORD           Value;
+    DWORD           Type;
+
+    Error = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                         STATUS_KEY,
+                         0,
+                         KEY_READ,
+                         &StatusKey);
+    if (Error != ERROR_SUCCESS) {
+        SetLastError(Error);
+        goto fail1;
+    }
+
+    ValueLength = sizeof (Value);
+
+    Error = RegQueryValueEx(StatusKey,
+                            "NeedReboot",
+                            NULL,
+                            &Type,
+                            (LPBYTE)&Value,
+                            &ValueLength);
+    if (Error != ERROR_SUCCESS) {
+        if (Error == ERROR_FILE_NOT_FOUND) {
+            Type = REG_DWORD;
+            Value = 0;
+        } else {
+            SetLastError(Error);
+            goto fail2;
+        }
+    }
+
+    if (Type != REG_DWORD) {
+        SetLastError(ERROR_BAD_FORMAT);
+        goto fail3;
+    }
+
+    *NeedReboot = (Value != 0) ? TRUE : FALSE;
+
+    if (*NeedReboot)
+        Log("NeedReboot");
+
+    RegCloseKey(StatusKey);
+
+    return TRUE;
+
+fail3:
+    Log("fail3");
+
+fail2:
+    Log("fail2");
+
+    RegCloseKey(StatusKey);
+
+fail1:
+    Error = GetLastError();
+
+    {
+        PTCHAR  Message;
+        Message = __GetErrorMessage(Error);
+        Log("fail1 (%s)", Message);
+        LocalFree(Message);
+    }
+
+    return FALSE;
+}
+
+static BOOLEAN
 RequestReboot(
     IN  HDEVINFO            DeviceInfoSet,
     IN  PSP_DEVINFO_DATA    DeviceInfoData
@@ -653,176 +455,6 @@ fail1:
     return FALSE;
 }
 
-static HKEY
-OpenInterfacesKey(
-    IN  PTCHAR  ProviderName
-    )
-{
-    HRESULT     Result;
-    TCHAR       KeyName[MAX_PATH];
-    HKEY        Key;
-    HRESULT     Error;
-
-    Result = StringCbPrintf(KeyName,
-                            MAX_PATH,
-                            "%s\\%s\\Interfaces",
-                            SERVICES_KEY,
-                            ProviderName);
-    if (!SUCCEEDED(Result)) {
-        SetLastError(ERROR_BUFFER_OVERFLOW);
-        goto fail1;
-    }
-
-    Error = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-                         KeyName,
-                         0,
-                         KEY_ALL_ACCESS,
-                         &Key);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail2;
-    }
-
-    return Key;
-
-fail2:
-    Log("fail2");
-
-fail1:
-    Error = GetLastError();
-
-    {
-        PTCHAR  Message;
-        Message = __GetErrorMessage(Error);
-        Log("fail1 (%s)", Message);
-        LocalFree(Message);
-    }
-
-    return NULL;
-}
-
-static BOOLEAN
-SubscribeInterface(
-    IN  PTCHAR  ProviderName,
-    IN  PTCHAR  SubscriberName,
-    IN  PTCHAR  InterfaceName,
-    IN  DWORD   InterfaceVersion
-    )
-{
-    HKEY        Key;
-    HKEY        InterfacesKey;
-    HRESULT     Error;
-
-    InterfacesKey = OpenInterfacesKey(ProviderName);
-    if (InterfacesKey == NULL)
-        goto fail1;
-
-    Error = RegCreateKeyEx(InterfacesKey,
-                           SubscriberName,
-                           0,
-                           NULL,
-                           REG_OPTION_NON_VOLATILE,
-                           KEY_ALL_ACCESS,
-                           NULL,
-                           &Key,
-                           NULL);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail2;
-    }
-
-    Error = RegSetValueEx(Key,
-                          InterfaceName,
-                          0,
-                          REG_DWORD,
-                          (const BYTE *)&InterfaceVersion,
-                          sizeof(DWORD));
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail3;
-    }
-
-    Log("%s: %s_%s_INTERFACE_VERSION %u",
-        SubscriberName,
-        ProviderName,
-        InterfaceName,
-        InterfaceVersion);
-
-    RegCloseKey(Key);
-    RegCloseKey(InterfacesKey);
-
-    return TRUE;
-
-fail3:
-    RegCloseKey(Key);
-
-fail2:
-    RegCloseKey(InterfacesKey);
-
-fail1:
-    Error = GetLastError();
-
-    {
-        PTCHAR  Message;
-        Message = __GetErrorMessage(Error);
-        Log("fail1 (%s)", Message);
-        LocalFree(Message);
-    }
-
-    return FALSE;
-}
-
-#define SUBSCRIBE_INTERFACE(_ProviderName, _SubscriberName, _InterfaceName)                        \
-    do {                                                                                           \
-        (VOID) SubscribeInterface(#_ProviderName,                                                  \
-                                  #_SubscriberName,                                                \
-                                  #_InterfaceName,                                                 \
-                                  _ProviderName ## _ ## _InterfaceName ## _INTERFACE_VERSION_MAX); \
-    } while (FALSE);
-
-static BOOLEAN
-UnsubscribeInterfaces(
-    IN  PTCHAR  ProviderName,
-    IN  PTCHAR  SubscriberName
-    )
-{
-    HKEY        InterfacesKey;
-    HRESULT     Error;
-
-    Log("%s: %s", SubscriberName, ProviderName);
-
-    InterfacesKey = OpenInterfacesKey(ProviderName);
-    if (InterfacesKey == NULL) {
-        goto fail1;
-    }
-
-    Error = RegDeleteTree(InterfacesKey,
-                          SubscriberName);
-    if (Error != ERROR_SUCCESS) {
-        SetLastError(Error);
-        goto fail2;
-    }
-
-    RegCloseKey(InterfacesKey);
-
-    return TRUE;
-
-fail2:
-    RegCloseKey(InterfacesKey);
-
-fail1:
-    Error = GetLastError();
-
-    {
-        PTCHAR  Message;
-        Message = __GetErrorMessage(Error);
-        Log("fail1 (%s)", Message);
-        LocalFree(Message);
-    }
-
-    return FALSE;
-}
-
 static FORCEINLINE HRESULT
 __DifInstallPreProcess(
     IN  HDEVINFO                    DeviceInfoSet,
@@ -846,26 +478,21 @@ __DifInstallPostProcess(
     IN  PCOINSTALLER_CONTEXT_DATA   Context
     )
 {
-    UNREFERENCED_PARAMETER(DeviceInfoSet);
-    UNREFERENCED_PARAMETER(DeviceInfoData);
+    BOOLEAN                         Success;
+    BOOLEAN                         NeedReboot;
+
     UNREFERENCED_PARAMETER(Context);
 
     Log("====>");
 
-    SUBSCRIBE_INTERFACE(XENBUS, XENVBD, STORE);
-    SUBSCRIBE_INTERFACE(XENBUS, XENVBD, EVTCHN);
-    SUBSCRIBE_INTERFACE(XENBUS, XENVBD, GNTTAB);
-    SUBSCRIBE_INTERFACE(XENBUS, XENVBD, SUSPEND);
-    SUBSCRIBE_INTERFACE(XENBUS, XENVBD, DEBUG);
-
-    SUBSCRIBE_INTERFACE(XENFILT, XENVBD, EMULATED);
-
     (VOID) OverrideGroupPolicyOptions();
     (VOID) IncreaseDiskTimeOut();
 
-    (VOID) InstallUnplugService("DISKS", "XENVBD");
+    NeedReboot = FALSE;
 
-    (VOID) RequestReboot(DeviceInfoSet, DeviceInfoData);
+    Success = CheckStatus(&NeedReboot);
+    if (Success && NeedReboot)
+        (VOID) RequestReboot(DeviceInfoSet, DeviceInfoData);
 
     Log("<====");
 
@@ -940,11 +567,6 @@ __DifRemovePreProcess(
     UNREFERENCED_PARAMETER(Context);
 
     Log("====>");
-
-    (VOID) RemoveUnplugService("DISKS", "XENVBD");
-
-    UnsubscribeInterfaces("XENFILT", "XENVBD");
-    UnsubscribeInterfaces("XENBUS", "XENVBD");
 
     return NO_ERROR; 
 }

@@ -652,11 +652,11 @@ PdoDestroy(
 __checkReturn
 NTSTATUS
 PdoD3ToD0(
-    __in PXENVBD_PDO             Pdo
+    __in PXENVBD_PDO            Pdo
     )
 {
-    NTSTATUS    Status;
-    const ULONG TargetId = PdoGetTargetId(Pdo);
+    NTSTATUS                    Status;
+    const ULONG                 TargetId = PdoGetTargetId(Pdo);
 
     if (!PdoSetDevicePowerState(Pdo, PowerDeviceD0))
         return STATUS_SUCCESS;
@@ -694,10 +694,10 @@ fail1:
 
 VOID
 PdoD0ToD3(
-    __in PXENVBD_PDO             Pdo
+    __in PXENVBD_PDO            Pdo
     )
 {
-    const ULONG TargetId = PdoGetTargetId(Pdo);
+    const ULONG                 TargetId = PdoGetTargetId(Pdo);
 
     if (!PdoSetDevicePowerState(Pdo, PowerDeviceD3))
         return;
@@ -2588,11 +2588,23 @@ PdoDispatchPnp(
     __PdoCheckEjectPending(Pdo);
 
     switch (Stack->MinorFunction) {
-    case IRP_MN_START_DEVICE:
+    case IRP_MN_START_DEVICE: {
+        PXENBUS_UNPLUG_INTERFACE    Unplug;
+
+        Unplug = FdoAcquireUnplug(PdoGetFdo(Pdo));
+        ASSERT(Unplug != NULL);
+
+        XENBUS_UNPLUG(Request,
+                      Unplug,
+                      XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                      TRUE);
+        XENBUS_UNPLUG(Release, Unplug);
+
         (VOID) PdoD3ToD0(Pdo);
+
         PdoSetDevicePnpState(Pdo, Started);
         break;
-
+    }
     case IRP_MN_QUERY_STOP_DEVICE:
         PdoSetDevicePnpState(Pdo, StopPending);
         break;
@@ -2601,10 +2613,22 @@ PdoDispatchPnp(
         __PdoRestoreDevicePnpState(Pdo, StopPending);
         break;
 
-    case IRP_MN_STOP_DEVICE:
-        PdoSetDevicePnpState(Pdo, Stopped);
-        break;
+    case IRP_MN_STOP_DEVICE: {
+        PXENBUS_UNPLUG_INTERFACE    Unplug;
 
+        Unplug = FdoAcquireUnplug(PdoGetFdo(Pdo));
+        ASSERT(Unplug != NULL);
+
+        PdoSetDevicePnpState(Pdo, Stopped);
+
+        XENBUS_UNPLUG(Request,
+                      Unplug,
+                      XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                      FALSE);
+        XENBUS_UNPLUG(Release, Unplug);
+
+        break;
+    }
     case IRP_MN_QUERY_REMOVE_DEVICE:
         PdoSetDevicePnpState(Pdo, RemovePending);
         break;
@@ -2618,10 +2642,22 @@ PdoDispatchPnp(
         PdoSetDevicePnpState(Pdo, SurpriseRemovePending);
         break;
 
-    case IRP_MN_REMOVE_DEVICE:
-        __PdoRemoveDevice(Pdo);
-        break;
+    case IRP_MN_REMOVE_DEVICE: {
+        PXENBUS_UNPLUG_INTERFACE    Unplug;
 
+        Unplug = FdoAcquireUnplug(PdoGetFdo(Pdo));
+        ASSERT(Unplug != NULL);
+
+        __PdoRemoveDevice(Pdo);
+
+        XENBUS_UNPLUG(Request,
+                      Unplug,
+                      XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                      FALSE);
+        XENBUS_UNPLUG(Release, Unplug);
+
+        break;
+    }
     case IRP_MN_EJECT:
         __PdoEject(Pdo);
         break;

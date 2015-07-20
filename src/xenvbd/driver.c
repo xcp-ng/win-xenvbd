@@ -47,7 +47,7 @@
 #define IS_PDO          ((ULONG)'odp')
 //=============================================================================
 XENVBD_PARAMETERS   DriverParameters;
-HANDLE              DriverServiceKey;
+HANDLE              DriverStatusKey;
 
 #define XENVBD_POOL_TAG     'dbvX'
 
@@ -615,7 +615,7 @@ DriverUnload(
          DAY_STR "/" MONTH_STR "/" YEAR_STR);
     StorPortDriverUnload(_DriverObject);
     BufferTerminate();
-    ZwClose(DriverServiceKey);
+    ZwClose(DriverStatusKey);
     Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
 }
 
@@ -631,6 +631,7 @@ DriverEntry(
     OBJECT_ATTRIBUTES       Attributes;
     UNICODE_STRING          Unicode;
     HW_INITIALIZATION_DATA  InitData;
+    HANDLE                  ServiceKey;
 
     // RegistryPath == NULL if crashing!
     if (RegistryPath == NULL) {
@@ -655,14 +656,33 @@ DriverEntry(
                                NULL,
                                NULL);
 
-    Status = ZwOpenKey(&DriverServiceKey,
+    Status = ZwOpenKey(&ServiceKey,
                        KEY_ALL_ACCESS,
                        &Attributes);
     if (!NT_SUCCESS(Status))
         goto done;
 
-    RtlInitUnicodeString(&Unicode, L"NeedReboot");
-    (VOID)ZwDeleteValueKey(DriverServiceKey, &Unicode);
+    RtlInitUnicodeString(&Unicode, L"Status");
+
+    InitializeObjectAttributes(&Attributes,
+                               &Unicode,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               ServiceKey,
+                               NULL);
+
+    Status = ZwCreateKey(&DriverStatusKey,
+                         KEY_ALL_ACCESS,
+                         &Attributes,
+                         0,
+                         NULL,
+                         REG_OPTION_VOLATILE,
+                         NULL
+                         );
+
+    ZwClose(ServiceKey);
+
+    if (!NT_SUCCESS(Status))
+        goto done;
 
     KeInitializeSpinLock(&__XenvbdLock);
     __XenvbdFdo = NULL;

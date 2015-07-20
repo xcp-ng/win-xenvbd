@@ -76,6 +76,7 @@ struct _XENVBD_FDO {
     XENBUS_GNTTAB_INTERFACE     Gnttab;
     XENBUS_DEBUG_INTERFACE      Debug;
     XENBUS_SUSPEND_INTERFACE    Suspend;
+    XENBUS_UNPLUG_INTERFACE     Unplug;
     XENFILT_EMULATED_INTERFACE  Emulated;
     
     // Debug Callback
@@ -583,7 +584,7 @@ __FdoNotifyInstaller(
 
     RtlInitUnicodeString(&Unicode, L"NeedReboot");
 
-    status = ZwSetValueKey(DriverServiceKey,
+    status = ZwSetValueKey(DriverStatusKey,
                            &Unicode,
                            Partial->TitleIndex,
                            Partial->Type,
@@ -759,8 +760,20 @@ FdoScan(
             StorPortNotification(BusChangeDetected, Fdo, 0);
         }
 
-        if (NeedReboot)
+        if (NeedReboot) {
+            PXENBUS_UNPLUG_INTERFACE    Unplug;
+
+            Unplug = FdoAcquireUnplug(Fdo);
+            ASSERT(Unplug != NULL);
+
+            XENBUS_UNPLUG(Request,
+                          Unplug,
+                          XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                          TRUE);
+            XENBUS_UNPLUG(Release, Unplug);
+
             __FdoNotifyInstaller(Fdo);
+        }
     }
 
     return STATUS_SUCCESS;
@@ -891,6 +904,16 @@ __FdoQueryInterfaces(
     if (!NT_SUCCESS(Status))
         goto fail5;
 
+    // Get UNPLUG Interface
+    Status = QUERY_INTERFACE(Fdo,
+                             XENBUS,
+                             UNPLUG,
+                             (PINTERFACE)&Fdo->Unplug,
+                             sizeof (Fdo->Unplug),
+                             FALSE);
+    if (!NT_SUCCESS(Status))
+        goto fail6;
+
     // Get EMULATED Interface (optional)
     Status = QUERY_INTERFACE(Fdo,
                              XENFILT,
@@ -899,10 +922,13 @@ __FdoQueryInterfaces(
                              sizeof (Fdo->Emulated),
                              TRUE);
     if (!NT_SUCCESS(Status))
-        goto fail6;
+        goto fail7;
 
     return STATUS_SUCCESS;
 
+fail7:
+    RtlZeroMemory(&Fdo->Unplug,
+                  sizeof (XENBUS_UNPLUG_INTERFACE));
 fail6:
     RtlZeroMemory(&Fdo->Debug,
                   sizeof (XENBUS_DEBUG_INTERFACE));
@@ -928,6 +954,8 @@ __FdoZeroInterfaces(
 {
     RtlZeroMemory(&Fdo->Emulated,
                   sizeof (XENFILT_EMULATED_INTERFACE));
+    RtlZeroMemory(&Fdo->Unplug,
+                  sizeof (XENBUS_UNPLUG_INTERFACE));
     RtlZeroMemory(&Fdo->Debug,
                   sizeof (XENBUS_DEBUG_INTERFACE));
     RtlZeroMemory(&Fdo->Suspend,
@@ -972,8 +1000,14 @@ __FdoAcquire(
     if (!NT_SUCCESS(status))
         goto fail6;
 
+    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
+    if (!NT_SUCCESS(status))
+        goto fail7;
+
     return STATUS_SUCCESS;
 
+fail7:
+    XENBUS_UNPLUG(Release, &Fdo->Unplug);
 fail6:
     XENBUS_EVTCHN(Release, &Fdo->Evtchn);
 fail5:
@@ -993,6 +1027,7 @@ __FdoRelease(
     __in PXENVBD_FDO             Fdo
     )
 {
+    XENBUS_UNPLUG(Release, &Fdo->Unplug);
     XENBUS_STORE(Release, &Fdo->Store);
     XENBUS_EVTCHN(Release, &Fdo->Evtchn);
     XENBUS_GNTTAB(Release, &Fdo->Gnttab);
@@ -1926,4 +1961,18 @@ FdoAcquireSuspend(
         return NULL;
 
     return &Fdo->Suspend;
+}
+
+PXENBUS_UNPLUG_INTERFACE
+FdoAcquireUnplug(
+    __in PXENVBD_FDO    Fdo
+    )
+{
+    NTSTATUS            status;
+
+    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
+    if (!NT_SUCCESS(status))
+        return NULL;
+
+    return &Fdo->Unplug;
 }
