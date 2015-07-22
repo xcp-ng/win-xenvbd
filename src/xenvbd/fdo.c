@@ -1680,6 +1680,21 @@ FdoDispatchPnp(
 
             if (NeedInvalidate)
                 FdoLogTargets("QUERY_RELATIONS", Fdo);
+
+            if (NeedReboot) {
+                PXENBUS_UNPLUG_INTERFACE    Unplug;
+
+                Unplug = FdoAcquireUnplug(Fdo);
+                ASSERT(Unplug != NULL);
+
+                XENBUS_UNPLUG(Request,
+                              Unplug,
+                              XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                              TRUE);
+                XENBUS_UNPLUG(Release, Unplug);
+
+                __FdoNotifyInstaller(Fdo);
+            }
         }
         FdoDereference(Fdo);
         break;
