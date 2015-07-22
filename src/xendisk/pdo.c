@@ -1098,6 +1098,9 @@ done:
     PdoDestroy(Pdo);
     FdoReleaseMutex(Fdo);
 
+    IoInvalidateDeviceRelations(FdoGetPhysicalDeviceObject(Fdo),
+                                BusRelations);
+
     return status;
 
 fail1:

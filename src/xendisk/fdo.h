@@ -59,6 +59,11 @@ FdoReleaseMutex(
     IN  PXENDISK_FDO     Fdo
     );
 
+extern PDEVICE_OBJECT
+FdoGetPhysicalDeviceObject(
+    IN  PXENDISK_FDO    Fdo
+    );
+
 extern NTSTATUS
 FdoDispatch(
     IN  PXENDISK_FDO    Fdo,

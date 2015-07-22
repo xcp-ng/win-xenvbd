@@ -165,6 +165,14 @@ __FdoGetPhysicalDeviceObject(
     return Fdo->PhysicalDeviceObject;
 }
 
+PDEVICE_OBJECT
+FdoGetPhysicalDeviceObject(
+    IN  PXENDISK_FDO    Fdo
+    )
+{
+    return __FdoGetPhysicalDeviceObject(Fdo);
+}
+
 VOID
 FdoAddPhysicalDeviceObject(
     IN  PXENDISK_FDO    Fdo,
