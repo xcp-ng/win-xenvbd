@@ -265,8 +265,6 @@ __FdoEnumerate(
                   Relations->Objects,
                   sizeof (PDEVICE_OBJECT) * Count);
 
-    __FdoAcquireMutex(Fdo);
-
     // Remove any PDOs that do not appear in the device list
     ListEntry = Fdo->Dx->ListEntry.Flink;
     while (ListEntry != &Fdo->Dx->ListEntry) {
@@ -293,8 +291,6 @@ __FdoEnumerate(
                              PhysicalDeviceObject[Index]);
         }
     }
-
-    __FdoReleaseMutex(Fdo);
 
     __FdoFree(PhysicalDeviceObject);
     return;
@@ -865,10 +861,10 @@ FdoQueryDeviceRelations(
 
     Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
 
+    __FdoAcquireMutex(Fdo);
+
     if (Relations->Count != 0)
         __FdoEnumerate(Fdo, Relations);
-
-    __FdoAcquireMutex(Fdo);
 
     Count = 0;
     for (ListEntry = Fdo->Dx->ListEntry.Flink;
