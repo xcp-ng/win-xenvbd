@@ -866,7 +866,6 @@ FdoQueryDeviceRelations(
     if (Relations->Count != 0)
         __FdoEnumerate(Fdo, Relations);
 
-    Count = 0;
     for (ListEntry = Fdo->Dx->ListEntry.Flink;
          ListEntry != &Fdo->Dx->ListEntry;
          ListEntry = ListEntry->Flink) {
@@ -877,10 +876,7 @@ FdoQueryDeviceRelations(
 
         if (PdoGetDevicePnpState(Pdo) == Present)
             PdoSetDevicePnpState(Pdo, Enumerated);
-
-        Count++;
     }
-    ASSERT3U(Relations->Count, ==, Count);
 
     __FdoReleaseMutex(Fdo);
 
