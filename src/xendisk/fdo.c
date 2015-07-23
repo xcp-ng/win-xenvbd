@@ -823,7 +823,6 @@ FdoQueryDeviceRelations(
     PIO_STACK_LOCATION  StackLocation;
     PDEVICE_RELATIONS   Relations;
     PLIST_ENTRY         ListEntry;
-    ULONG               Count;
     NTSTATUS            status;
 
     status = IoAcquireRemoveLock(&Fdo->Dx->RemoveLock, Irp);
