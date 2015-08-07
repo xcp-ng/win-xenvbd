@@ -2197,6 +2197,12 @@ __PdoExecuteScsi(
         break;
 
     case SCSIOP_INQUIRY:
+        if (!StorPortSetDeviceQueueDepth(PdoGetFdo(Pdo),
+                                         0,
+                                         (UCHAR)PdoGetTargetId(Pdo),
+                                         0,
+                                         XENVBD_MAX_QUEUE_DEPTH))
+            Verbose("Target[%d] : Failed to set queue depth\n");
         PdoInquiry(PdoGetTargetId(Pdo), FrontendGetInquiry(Pdo->Frontend), Srb, Pdo->DeviceType);
         break;
     case SCSIOP_MODE_SENSE:
