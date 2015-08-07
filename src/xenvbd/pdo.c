@@ -2202,7 +2202,8 @@ __PdoExecuteScsi(
                                          (UCHAR)PdoGetTargetId(Pdo),
                                          0,
                                          XENVBD_MAX_QUEUE_DEPTH))
-            Verbose("Target[%d] : Failed to set queue depth\n");
+            Verbose("Target[%d] : Failed to set queue depth\n",
+                    PdoGetTargetId(Pdo));
         PdoInquiry(PdoGetTargetId(Pdo), FrontendGetInquiry(Pdo->Frontend), Srb, Pdo->DeviceType);
         break;
     case SCSIOP_MODE_SENSE:
