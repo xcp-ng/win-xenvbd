@@ -77,10 +77,7 @@ struct _XENVBD_FRONTEND {
     // Backend State Watch
     BOOLEAN                     Active;
     PKEVENT                     BackendEvent;
-    PXENBUS_STORE_WATCH         BackendStateWatch;
-    PXENBUS_STORE_WATCH         BackendInfoWatch;
-    PXENBUS_STORE_WATCH         BackendSectorSizeWatch;
-    PXENBUS_STORE_WATCH         BackendSectorCountWatch;
+    PXENBUS_STORE_WATCH         BackendWatch;
 };
 
 #define DOMID_INVALID (0x7FF4U)
@@ -855,29 +852,11 @@ FrontendClose(
     XenbusState     BackendState;
 
     // unwatch backend (null check for initial close operation)
-    if (Frontend->BackendStateWatch)
+    if (Frontend->BackendWatch)
         XENBUS_STORE(WatchRemove,
                      Frontend->Store,
-                     Frontend->BackendStateWatch);
-    Frontend->BackendStateWatch = NULL;
-    
-    if (Frontend->BackendInfoWatch)
-        XENBUS_STORE(WatchRemove,
-                     Frontend->Store,
-                     Frontend->BackendInfoWatch);
-    Frontend->BackendInfoWatch = NULL;
-    
-    if (Frontend->BackendSectorSizeWatch)
-        XENBUS_STORE(WatchRemove,
-                     Frontend->Store,
-                     Frontend->BackendSectorSizeWatch);
-    Frontend->BackendSectorSizeWatch = NULL;
-    
-    if (Frontend->BackendSectorCountWatch)
-        XENBUS_STORE(WatchRemove,
-                     Frontend->Store,
-                     Frontend->BackendSectorCountWatch);
-    Frontend->BackendSectorCountWatch = NULL;
+                     Frontend->BackendWatch);
+    Frontend->BackendWatch = NULL;
     
     Frontend->BackendId = DOMID_INVALID;
 
@@ -944,44 +923,17 @@ FrontendPrepare(
     // watch backend (4 paths needed)
     Status = XENBUS_STORE(WatchAdd,
                           Frontend->Store,
+                          NULL,
                           Frontend->BackendPath,
-                          "state",
                           Frontend->BackendEvent,
-                          &Frontend->BackendStateWatch);
+                          &Frontend->BackendWatch);
     if (!NT_SUCCESS(Status))
         goto fail2;
-
-    Status = XENBUS_STORE(WatchAdd,
-                          Frontend->Store,
-                          Frontend->BackendPath,
-                          "info",
-                          Frontend->BackendEvent,
-                          &Frontend->BackendInfoWatch);
-    if (!NT_SUCCESS(Status))
-        goto fail3;
-
-    Status = XENBUS_STORE(WatchAdd,
-                          Frontend->Store,
-                          Frontend->BackendPath,
-                          "sector-size",
-                          Frontend->BackendEvent,
-                          &Frontend->BackendSectorSizeWatch);
-    if (!NT_SUCCESS(Status))
-        goto fail4;
-
-    Status = XENBUS_STORE(WatchAdd,
-                          Frontend->Store,
-                          Frontend->BackendPath,
-                          "sectors",
-                          Frontend->BackendEvent,
-                          &Frontend->BackendSectorCountWatch);
-    if (!NT_SUCCESS(Status))
-        goto fail5;
 
     // write targetpath
     Status = FrontendWriteUsage(Frontend);
     if (!NT_SUCCESS(Status))
-        goto fail6;
+        goto fail3;
 
     Status = XENBUS_STORE(Printf,
                           Frontend->Store,
@@ -991,7 +943,7 @@ FrontendPrepare(
                           "%s",
                           Frontend->FrontendPath);
     if (!NT_SUCCESS(Status))
-        goto fail7;
+        goto fail4;
 
     Status = XENBUS_STORE(Printf,
                           Frontend->Store,
@@ -1001,24 +953,24 @@ FrontendPrepare(
                           "%u",
                           Frontend->DeviceId);
     if (!NT_SUCCESS(Status))
-        goto fail8;
+        goto fail5;
 
     // Frontend: -> INITIALIZING
     Status = ___SetState(Frontend, XenbusStateInitialising);
     if (!NT_SUCCESS(Status))
-        goto fail9;
+        goto fail6;
 
     // Backend : -> INITWAIT
     BackendState = XenbusStateUnknown;
     do {
         Status = __WaitState(Frontend, &BackendState);
         if (!NT_SUCCESS(Status))
-            goto fail10;
+            goto fail7;
     } while (BackendState == XenbusStateClosed || 
              BackendState == XenbusStateInitialising);
     Status = STATUS_UNSUCCESSFUL;
     if (BackendState != XenbusStateInitWait)
-        goto fail11;
+        goto fail8;
 
     // read inquiry data
     if (Frontend->Inquiry == NULL)
@@ -1035,12 +987,6 @@ FrontendPrepare(
     
     return STATUS_SUCCESS;
 
-fail11:
-    Error("Fail11\n");
-fail10:
-    Error("Fail10\n");
-fail9:
-    Error("Fail9\n");
 fail8:
     Error("Fail8\n");
 fail7:
@@ -1049,28 +995,16 @@ fail6:
     Error("Fail6\n");
 fail5:
     Error("Fail5\n");
-    (VOID) XENBUS_STORE(WatchRemove,
-                        Frontend->Store,
-                        Frontend->BackendSectorCountWatch);
-    Frontend->BackendSectorCountWatch = NULL;
 fail4:
     Error("Fail4\n");
-    (VOID) XENBUS_STORE(WatchRemove,
-                        Frontend->Store,
-                        Frontend->BackendSectorSizeWatch);
-    Frontend->BackendSectorSizeWatch = NULL;
 fail3:
     Error("Fail3\n");
     (VOID) XENBUS_STORE(WatchRemove,
                         Frontend->Store,
-                        Frontend->BackendInfoWatch);
-    Frontend->BackendInfoWatch = NULL;
+                        Frontend->BackendWatch);
+    Frontend->BackendWatch = NULL;
 fail2:
     Error("Fail2\n");
-    (VOID) XENBUS_STORE(WatchRemove,
-                        Frontend->Store,
-                        Frontend->BackendStateWatch);
-    Frontend->BackendStateWatch = NULL;
 fail1:
     Error("Fail1 (%08x)\n", Status);
     return Status;
@@ -1698,10 +1632,7 @@ FrontendDestroy(
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->Inquiry, ==, NULL);
     ASSERT3P(Frontend->SuspendLateCallback, ==, NULL);
-    ASSERT3P(Frontend->BackendStateWatch, ==, NULL);
-    ASSERT3P(Frontend->BackendInfoWatch, ==, NULL);
-    ASSERT3P(Frontend->BackendSectorSizeWatch, ==, NULL);
-    ASSERT3P(Frontend->BackendSectorCountWatch, ==, NULL);
+    ASSERT3P(Frontend->BackendWatch, ==, NULL);
 
     __FrontendFree(Frontend);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
