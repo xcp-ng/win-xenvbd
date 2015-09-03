@@ -760,20 +760,8 @@ FdoScan(
             StorPortNotification(BusChangeDetected, Fdo, 0);
         }
 
-        if (NeedReboot) {
-            PXENBUS_UNPLUG_INTERFACE    Unplug;
-
-            Unplug = FdoAcquireUnplug(Fdo);
-            ASSERT(Unplug != NULL);
-
-            XENBUS_UNPLUG(Request,
-                          Unplug,
-                          XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
-                          TRUE);
-            XENBUS_UNPLUG(Release, Unplug);
-
+        if (NeedReboot)
             __FdoNotifyInstaller(Fdo);
-        }
     }
 
     return STATUS_SUCCESS;
@@ -1000,14 +988,8 @@ __FdoAcquire(
     if (!NT_SUCCESS(status))
         goto fail6;
 
-    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
-    if (!NT_SUCCESS(status))
-        goto fail7;
-
     return STATUS_SUCCESS;
 
-fail7:
-    XENBUS_UNPLUG(Release, &Fdo->Unplug);
 fail6:
     XENBUS_EVTCHN(Release, &Fdo->Evtchn);
 fail5:
@@ -1027,7 +1009,6 @@ __FdoRelease(
     __in PXENVBD_FDO             Fdo
     )
 {
-    XENBUS_UNPLUG(Release, &Fdo->Unplug);
     XENBUS_STORE(Release, &Fdo->Store);
     XENBUS_EVTCHN(Release, &Fdo->Evtchn);
     XENBUS_GNTTAB(Release, &Fdo->Gnttab);
@@ -1518,6 +1499,26 @@ FdoAdapterControl(
     return ScsiAdapterControlSuccess;
 }
 
+static VOID
+FdoUnplugRequest(
+    IN  PXENVBD_FDO Fdo,
+    IN  BOOLEAN     Make
+    )
+{
+    NTSTATUS        status;
+
+    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
+    if (!NT_SUCCESS(status))
+        return;
+
+    XENBUS_UNPLUG(Request,
+                  &Fdo->Unplug,
+                  XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
+                  Make);
+
+    XENBUS_UNPLUG(Release, &Fdo->Unplug);
+}
+
 ULONG
 FdoFindAdapter(
     __in PXENVBD_FDO                 Fdo,
@@ -1555,6 +1556,9 @@ FdoFindAdapter(
 
     if (!NT_SUCCESS(__FdoInitialize(Fdo)))
         return SP_RETURN_ERROR;
+
+    FdoUnplugRequest(Fdo, TRUE);
+
     if (!NT_SUCCESS(__FdoD3ToD0(Fdo)))
         return SP_RETURN_ERROR;
 
@@ -1656,6 +1660,7 @@ FdoDispatchPnp(
     case IRP_MN_REMOVE_DEVICE:
         Verbose("FDO:IRP_MN_REMOVE_DEVICE\n");
         __FdoD0ToD3(Fdo);
+        FdoUnplugRequest(Fdo, FALSE);
         // drop ref-count acquired in DriverGetFdo *before* destroying Fdo
         FdoDereference(Fdo);
         __FdoTerminate(Fdo);
@@ -1681,20 +1686,8 @@ FdoDispatchPnp(
             if (NeedInvalidate)
                 FdoLogTargets("QUERY_RELATIONS", Fdo);
 
-            if (NeedReboot) {
-                PXENBUS_UNPLUG_INTERFACE    Unplug;
-
-                Unplug = FdoAcquireUnplug(Fdo);
-                ASSERT(Unplug != NULL);
-
-                XENBUS_UNPLUG(Request,
-                              Unplug,
-                              XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
-                              TRUE);
-                XENBUS_UNPLUG(Release, Unplug);
-
+            if (NeedReboot)
                 __FdoNotifyInstaller(Fdo);
-            }
         }
         FdoDereference(Fdo);
         break;
@@ -1976,18 +1969,4 @@ FdoAcquireSuspend(
         return NULL;
 
     return &Fdo->Suspend;
-}
-
-PXENBUS_UNPLUG_INTERFACE
-FdoAcquireUnplug(
-    __in PXENVBD_FDO    Fdo
-    )
-{
-    NTSTATUS            status;
-
-    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
-    if (!NT_SUCCESS(status))
-        return NULL;
-
-    return &Fdo->Unplug;
 }

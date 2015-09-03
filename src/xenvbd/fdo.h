@@ -193,9 +193,4 @@ FdoAcquireSuspend(
     __in PXENVBD_FDO                 Fdo
     );
 
-extern PXENBUS_UNPLUG_INTERFACE
-FdoAcquireUnplug(
-    __in PXENVBD_FDO                 Fdo
-    );
-
 #endif // _XENVBD_FDO_H
