@@ -46,6 +46,9 @@ __user_code;
 #define SERVICE_KEY(_Driver)    \
         SERVICES_KEY ## "\\" ## #_Driver
 
+#define UNPLUG_KEY \
+        SERVICE_KEY(XEN) ## "\\Unplug"
+
 #define STATUS_KEY  \
         SERVICE_KEY(XENVBD) ## "\\Status"
 
@@ -180,6 +183,53 @@ __FunctionName(
     return "UNKNOWN";
 
 #undef  _NAME
+}
+
+static BOOLEAN
+ClearUnplugRequest(
+    IN  PTCHAR      ClassName
+    )
+{
+    HKEY            UnplugKey;
+    HRESULT         Error;
+
+    Error = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                         UNPLUG_KEY,
+                         0,
+                         KEY_ALL_ACCESS,
+                         &UnplugKey);
+    if (Error != ERROR_SUCCESS) {
+        SetLastError(Error);
+        goto fail1;
+    }
+
+    Error = RegDeleteValue(UnplugKey, ClassName);
+    if (Error != ERROR_SUCCESS) {
+        SetLastError(Error);
+        goto fail2;
+    }
+
+    RegCloseKey(UnplugKey);
+
+    return TRUE;
+
+fail2:
+    Log("fail2");
+
+    RegCloseKey(UnplugKey);
+
+fail1:
+    Error = GetLastError();
+
+    {
+        PTCHAR  Message;
+
+        Message = __GetErrorMessage(Error);
+        Log("fail1 (%s)", Message);
+        LocalFree(Message);
+    }
+
+    return FALSE;
 }
 
 static BOOLEAN
@@ -566,7 +616,9 @@ __DifRemovePreProcess(
     UNREFERENCED_PARAMETER(DeviceInfoData);
     UNREFERENCED_PARAMETER(Context);
 
-    Log("====>");
+    Log("<===>");
+
+    (VOID) ClearUnplugRequest("DISKS");
 
     return NO_ERROR; 
 }
