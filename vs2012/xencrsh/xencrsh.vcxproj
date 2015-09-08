@@ -25,22 +25,12 @@
 	<PropertyGroup>
 		<IncludePath>..\..\include;$(IncludePath)</IncludePath>
 		<RunCodeAnalysis>true</RunCodeAnalysis>
-        <EnableInf2cat>false</EnableInf2cat>
-        <CustomBuildBeforeTargets>ClCompile;StampInf</CustomBuildBeforeTargets>
+		<EnableInf2cat>false</EnableInf2cat>
 		<IntDir>..\$(ProjectName)\$(ConfigurationName)\$(Platform)\</IntDir>
 		<OutDir>..\$(ConfigurationName)\$(Platform)\</OutDir>
 	</PropertyGroup>
 	
     <ItemDefinitionGroup>
-        <CustomBuildStep>
-            <Command>echo "Build Inf"
-                powershell -Command "(Get-Content ..\..\src\xenvbd.inf) -replace '@MAJOR_VERSION@', '$(MAJOR_VERSION)' -replace '@MINOR_VERSION@', '$(MINOR_VERSION)' -replace '@MICRO_VERSION@','$(MICRO_VERSION)' -replace '@BUILD_NUMBER@','$(BUILD_NUMBER)' -replace '@COMPANY_NAME@','$(COMPANY_NAME)' -replace '@PRODUCT_NAME@','$(PRODUCT_NAME)' | Set-Content ..\..\vs2012\xenvbd.inf"
-                echo "Build version header"
-                powershell -Command "(Get-Content ..\..\include\version.hx) -replace '@MAJOR_VERSION@', '$(MAJOR_VERSION)' -replace '@MINOR_VERSION@', '$(MINOR_VERSION)' -replace '@MICRO_VERSION@','$(MICRO_VERSION)' -replace '@BUILD_NUMBER@','$(BUILD_NUMBER)' -replace '@COMPANY_NAME@','$(COMPANY_NAME)' -replace '@PRODUCT_NAME@','$(PRODUCT_NAME)' -replace '@DAY@',%24(Get-Date -format %25%25d) -replace '@MONTH@',%24(Get-Date -format %25%25M) -replace '@YEAR@',%24(Get-Date -format yyyy) | Set-Content ..\..\include\version.h"
-            </Command>
-            <Outputs>..\..\vs2012\xenvbd.inf;..\..\include\version.h</Outputs>
-            <Inputs>..\..\src\xenvbd.inf;..\..\include\version.hx</Inputs>
-        </CustomBuildStep>
 		<ClCompile>
 			<PreprocessorDefinitions>__MODULE__="XENCRSH";%(PreprocessorDefinitions)</PreprocessorDefinitions>
 			<WarningLevel>EnableAllWarnings</WarningLevel>

@@ -32,7 +32,7 @@
 Signature="$Windows NT$" 
 Class=SCSIAdapter
 ClassGUID={4D36E97B-E325-11CE-BFC1-08002BE10318} 
-Provider=%Company% 
+Provider=%Vendor% 
 CatalogFile=xenvbd.cat
 DriverVer=01/01/1900,0.0.0.0
 
@@ -50,12 +50,12 @@ xendisk.sys=0,,
 xenvbd_coinst.dll=0,,
 
 [Manufacturer] 
-%Company%=Inst,NT$ARCH$
+%Vendor%=Inst,NT$ARCH$
 
 [Inst.NT$ARCH$]
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XSC000&DEV_VBD&REV_08000009
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0001&DEV_VBD&REV_08000009
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_XS0002&DEV_VBD&REV_08000009
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_08000009
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_08000009
+%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_08000009
 
 [XenVbd_Inst] 
 CopyFiles=XenVbd_Copyfiles
@@ -109,7 +109,7 @@ HKR,,CoInstallers32,0x00010000,"xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@M
 
 [Strings] 
 
-Company = "@COMPANY_NAME@"
+Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdDesc= "@PRODUCT_NAME@ PV Storage Host Adapter"
 XenDiskDesc= "@PRODUCT_NAME@ PV Storage Filter"
