@@ -84,6 +84,11 @@ NotifierDebugCallback(
     );
 
 extern VOID
+NotifierKick(
+    IN  PXENVBD_NOTIFIER            Notifier
+    );
+
+extern VOID
 NotifierTrigger(
     IN  PXENVBD_NOTIFIER            Notifier
     );

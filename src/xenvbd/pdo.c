@@ -1860,7 +1860,7 @@ PdoReadWrite(
     }
 
     QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
-    NotifierTrigger(Notifier);
+    NotifierKick(Notifier);
 
     return FALSE;
 }
@@ -1889,7 +1889,7 @@ PdoSyncCache(
     }
 
     QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
-    NotifierTrigger(Notifier);
+    NotifierKick(Notifier);
 
     return FALSE;
 }
@@ -1918,7 +1918,7 @@ PdoUnmap(
     }
 
     QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
-    NotifierTrigger(Notifier);
+    NotifierKick(Notifier);
 
     return FALSE;
 }
@@ -2252,7 +2252,7 @@ __PdoQueueShutdown(
     PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
 
     QueueAppend(&Pdo->ShutdownSrbs, &SrbExt->Entry);
-    NotifierTrigger(Notifier);
+    NotifierKick(Notifier);
 }
 
 static FORCEINLINE VOID
