@@ -312,6 +312,18 @@ NotifierDebugCallback(
 }
 
 VOID
+NotifierKick(
+    IN  PXENVBD_NOTIFIER            Notifier
+    )
+{
+    if (Notifier->Enabled) {
+		if (KeInsertQueueDpc(&Notifier->Dpc, NULL, NULL)) {
+			++Notifier->NumDpcs;
+        }
+    }
+}
+
+VOID
 NotifierTrigger(
     IN  PXENVBD_NOTIFIER            Notifier
     )
