@@ -98,8 +98,6 @@ struct _XENVBD_FDO {
     LONG                        TotalSrbs;
 };
 
-extern PDRIVER_DISPATCH StorPortDispatchPower;
-
 //=============================================================================
 static FORCEINLINE BOOLEAN
 __FdoSetDevicePowerState(
@@ -1215,7 +1213,7 @@ FdoDevicePower(
             break;
         }
         FdoDereference(Fdo);
-        Status = StorPortDispatchPower(Fdo->DeviceObject, Irp);
+        Status = DriverDispatchPower(Fdo->DeviceObject, Irp);
         if (!NT_SUCCESS(Status)) {
             Warning("StorPort failed PowerIRP with %08x\n", Status);
         }
@@ -1644,8 +1642,6 @@ FdoStartIo(
 
 //=============================================================================
 // PnP Handler
-extern PDRIVER_DISPATCH StorPortDispatchPnp;
-
 __checkReturn
 NTSTATUS
 FdoDispatchPnp(
@@ -1699,7 +1695,7 @@ FdoDispatchPnp(
         break;
     }
 
-    Status = StorPortDispatchPnp(DeviceObject, Irp);
+    Status = DriverDispatchPnp(DeviceObject, Irp);
     if (!NT_SUCCESS(Status)) {
         Verbose("%02x:%s -> %08x\n", Minor, PnpMinorFunctionName(Minor), Status);
     }
@@ -1847,7 +1843,7 @@ FdoMapDeviceObjectToPdo(
     ExFreePool(String);
 
 done:
-    Status = StorPortDispatchPnp(DeviceObject, Irp);;
+    Status = DriverDispatchPnp(DeviceObject, Irp);;
     if (!NT_SUCCESS(Status)) {
         Verbose("%02x:%s -> %08x\n", Minor, PnpMinorFunctionName(Minor), Status);
     }
@@ -1876,7 +1872,7 @@ FdoDispatchPower(
         if (Fdo->DevicePowerThread == NULL) {
             Verbose("DevicePower IRP before DevicePowerThread ready\n");
             FdoDereference(Fdo);
-            status = StorPortDispatchPower(DeviceObject, Irp);
+            status = DriverDispatchPower(DeviceObject, Irp);
             break;
         }
 
@@ -1894,7 +1890,7 @@ FdoDispatchPower(
     case SystemPowerState:
     default:
         FdoDereference(Fdo);
-        status = StorPortDispatchPower(DeviceObject, Irp);
+        status = DriverDispatchPower(DeviceObject, Irp);
         break;
     }
 

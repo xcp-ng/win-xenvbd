@@ -59,6 +59,18 @@ extern XENVBD_PARAMETERS    DriverParameters;
 
 extern HANDLE               DriverStatusKey;
 
+extern NTSTATUS
+DriverDispatchPnp(
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
+    );
+
+extern NTSTATUS
+DriverDispatchPower(
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
+    );
+
 // Fdo Device Extension management
 extern VOID
 DriverLinkFdo(

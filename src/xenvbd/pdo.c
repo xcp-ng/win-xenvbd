@@ -2239,8 +2239,6 @@ PdoSrbPnp(
 
 //=============================================================================
 // PnP Handler
-extern PDRIVER_DISPATCH StorPortDispatchPnp;
-
 static FORCEINLINE VOID
 __PdoDeviceUsageNotification(
     __in PXENVBD_PDO             Pdo,
@@ -2419,7 +2417,7 @@ PdoDispatchPnp(
         break;
     }
     PdoDereference(Pdo);
-    Status = StorPortDispatchPnp(DeviceObject, Irp);
+    Status = DriverDispatchPnp(DeviceObject, Irp);
     if (!NT_SUCCESS(Status)) {
         Verbose("Target[%d] : %02x:%s -> %08x\n", TargetId, Minor, PnpMinorFunctionName(Minor), Status);
     }

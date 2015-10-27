@@ -208,10 +208,28 @@ __DriverParseParameterKey(
 }
 
 //=============================================================================
+static PDRIVER_DISPATCH     StorPortDispatchPnp;
+static PDRIVER_DISPATCH     StorPortDispatchPower;
+static PDRIVER_UNLOAD       StorPortDriverUnload;
 
-PDRIVER_DISPATCH     StorPortDispatchPnp;
-PDRIVER_DISPATCH     StorPortDispatchPower;
-PDRIVER_UNLOAD       StorPortDriverUnload;
+NTSTATUS
+DriverDispatchPnp(
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
+    )
+{
+    return StorPortDispatchPnp(DeviceObject, Irp);
+}
+
+NTSTATUS
+DriverDispatchPower(
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
+    )
+{
+    return StorPortDispatchPower(DeviceObject, Irp);
+}
+
 //=============================================================================
 // Fdo Device Extension management
 static PXENVBD_FDO              __XenvbdFdo;
@@ -298,7 +316,7 @@ DriverMapPdo(
         }
     }
     KeReleaseSpinLock(&__XenvbdLock, Irql);
-    Status = StorPortDispatchPnp(DeviceObject, Irp);
+    Status = DriverDispatchPnp(DeviceObject, Irp);
 
 done:
     return Status;
@@ -555,7 +573,7 @@ DispatchPnp(
     case IS_NULL:
     default:
         Warning("DeviceObject 0x%p is not FDO (0x%p) or a PDO\n", DeviceObject, __XenvbdFdo);
-        Status = StorPortDispatchPnp(DeviceObject, Irp);
+        Status = DriverDispatchPnp(DeviceObject, Irp);
         break;
     }
 
@@ -589,13 +607,13 @@ DispatchPower(
         if (Pdo) {
             PdoDereference(Pdo); // drops Pdo reference
         }
-        Status = StorPortDispatchPower(DeviceObject, Irp);
+        Status = DriverDispatchPower(DeviceObject, Irp);
         break;
 
     case IS_NULL:
     default:
         Warning("DeviceObject 0x%p is not FDO (0x%p) or a PDO\n", DeviceObject, __XenvbdFdo);
-        Status = StorPortDispatchPower(DeviceObject, Irp);
+        Status = DriverDispatchPower(DeviceObject, Irp);
         break;
     }
 
