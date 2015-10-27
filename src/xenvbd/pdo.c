@@ -567,17 +567,127 @@ PdoSectorSize(
 }
 
 //=============================================================================
-
-static FORCEINLINE ULONG
-PdoGetTag(
+static PVOID
+PdoGetIndirect(
     IN  PXENVBD_PDO             Pdo
     )
 {
-    return (ULONG)InterlockedIncrement((PLONG)&Pdo->NextTag);
+    PVOID                       Indirect;
+
+    Indirect = __LookasideAlloc(&Pdo->IndirectList);
+    if (Indirect == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Indirect, PAGE_SIZE);
+    return Indirect;
+
+fail1:
+    return NULL;
+}
+
+static VOID
+PdoPutIndirect(
+    IN  PXENVBD_PDO             Pdo,
+    IN  PVOID                   Indirect
+    )
+{
+    RtlZeroMemory(Indirect, PAGE_SIZE);
+    __LookasideFree(&Pdo->IndirectList, Indirect);
+}
+
+static PXENVBD_SEGMENT
+PdoGetSegment(
+    IN  PXENVBD_PDO             Pdo
+    )
+{
+    PXENVBD_SEGMENT             Segment;
+
+    Segment = __LookasideAlloc(&Pdo->SegmentList);
+    if (Segment == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
+    return Segment;
+
+fail1:
+    return NULL;
+}
+
+static VOID
+PdoPutSegment(
+    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_SEGMENT         Segment
+    )
+{
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+
+    if (Segment->Grant)
+        GranterPut(Granter, Segment->Grant);
+
+    if (Segment->BufferId)
+        BufferPut(Segment->BufferId);
+
+    if (Segment->Buffer)
+        MmUnmapLockedPages(Segment->Buffer, &Segment->Mdl);
+
+    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
+    __LookasideFree(&Pdo->SegmentList, Segment);
+}
+
+static PXENVBD_REQUEST
+PdoGetRequest(
+    IN  PXENVBD_PDO             Pdo
+    )
+{
+    PXENVBD_REQUEST             Request;
+
+    Request = __LookasideAlloc(&Pdo->RequestList);
+    if (Request == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
+    Request->Id = (ULONG)InterlockedIncrement((PLONG)&Pdo->NextTag);
+    InitializeListHead(&Request->Segments);
+
+    return Request;
+
+fail1:
+    return NULL;
+}
+
+static VOID
+PdoPutRequest(
+    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_REQUEST         Request
+    )
+{
+    ULONG           Index;
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+
+    for (;;) {
+        PLIST_ENTRY     Entry;
+        PXENVBD_SEGMENT Segment;
+
+        Entry = RemoveHeadList(&Request->Segments);
+        if (Entry == &Request->Segments)
+            break;
+        Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+        PdoPutSegment(Pdo, Segment);
+    }
+
+    for (Index = 0; Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST; ++Index) {
+        if (Request->Grants[Index])
+            GranterPut(Granter, Request->Grants[Index]);
+        if (Request->Pages[Index])
+            PdoPutIndirect(Pdo, Request->Pages[Index]);
+    }
+
+    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
+    __LookasideFree(&Pdo->RequestList, Request);
 }
 
 static FORCEINLINE PXENVBD_REQUEST
-PdoPutTag(
+PdoRequestFromTag(
     IN  PXENVBD_PDO             Pdo,
     IN  ULONG                   Tag
     )
@@ -793,63 +903,6 @@ fail:
 }
 
 static FORCEINLINE VOID
-UnmapSegmentBuffer(
-    IN  PXENVBD_SEGMENT         Segment
-    )
-{
-    MmUnmapLockedPages(Segment->Buffer, &Segment->Mdl);
-    RtlZeroMemory(&Segment->Mdl, sizeof(Segment->Mdl));
-    RtlZeroMemory(Segment->Pfn, sizeof(Segment->Pfn));
-    Segment->Buffer = NULL;
-    Segment->Length = 0;
-}
-
-static FORCEINLINE VOID
-RequestCleanup(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PXENVBD_REQUEST         Request
-    )
-{
-    ULONG           Index;
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
-
-    for (;;) {
-        PLIST_ENTRY     Entry;
-        PXENVBD_SEGMENT Segment;
-
-        Entry = RemoveHeadList(&Request->Segments);
-        if (Entry == &Request->Segments)
-            break;
-
-        Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
-        --Request->NrSegments;
-
-        if (Segment->Grant)
-            GranterPut(Granter, Segment->Grant);
-        Segment->Grant = NULL;
-
-        if (Segment->BufferId)
-            BufferPut(Segment->BufferId);
-        Segment->BufferId = NULL;
-
-        if (Segment->Buffer)
-            UnmapSegmentBuffer(Segment);
-
-        __LookasideFree(&Pdo->SegmentList, Segment);
-    }
-
-    for (Index = 0; Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST; ++Index) {
-        if (Request->Grants[Index])
-            GranterPut(Granter, Request->Grants[Index]);
-        Request->Grants[Index] = NULL;
-
-        if (Request->Pages[Index])
-            __LookasideFree(&Pdo->IndirectList, Request->Pages[Index]);
-        Request->Pages[Index] = NULL;
-    }
-}
-
-static FORCEINLINE VOID
 RequestCopyOutput(
     __in PXENVBD_REQUEST         Request
     )
@@ -965,7 +1018,7 @@ PrepareBlkifReadWrite(
         PXENVBD_SEGMENT Segment;
         ULONG           SectorsNow;
 
-        Segment = __LookasideAlloc(&Pdo->SegmentList);
+        Segment = PdoGetSegment(Pdo);
         if (Segment == NULL)
             goto fail1;
 
@@ -1008,7 +1061,7 @@ PrepareBlkifIndirect(
             Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
             NrSegments < Request->NrSegments;
                 ++Index) {
-        Request->Pages[Index] = __LookasideAlloc(&Pdo->IndirectList);
+        Request->Pages[Index] = PdoGetIndirect(Pdo);
         if (Request->Pages[Index] == NULL)
             goto fail1;
 
@@ -1085,7 +1138,7 @@ PdoCancelRequestList(
             break;
 
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        __LookasideFree(&Pdo->RequestList, Request);
+        PdoPutRequest(Pdo, Request);
     }
 }
 
@@ -1114,15 +1167,12 @@ PrepareReadWrite(
         ULONG           SectorsDone = 0;
         PXENVBD_REQUEST Request;
 
-        Request = __LookasideAlloc(&Pdo->RequestList);
+        Request = PdoGetRequest(Pdo);
         if (Request == NULL) 
             goto fail1;
         InsertTailList(&List, &Request->Entry);
         
         Request->Srb    = Srb;
-        Request->Id     = PdoGetTag(Pdo);
-        InitializeListHead(&Request->Segments);
-
         MaxSegments = UseIndirect(Pdo, SectorsLeft);
 
         if (!PrepareBlkifReadWrite(Pdo,
@@ -1168,16 +1218,14 @@ PrepareSyncCache(
     SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
-    Request = __LookasideAlloc(&Pdo->RequestList);
+    Request = PdoGetRequest(Pdo);
     if (Request == NULL)
         goto fail1;
     InsertTailList(&List, &Request->Entry);
 
     Request->Srb        = Srb;
-    Request->Id         = PdoGetTag(Pdo);
     Request->Operation  = BLKIF_OP_WRITE_BARRIER;
     Request->FirstSector = Cdb_LogicalBlock(Srb);
-    InitializeListHead(&Request->Segments);
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
     return TRUE;
@@ -1209,18 +1257,16 @@ PrepareUnmap(
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
         PXENVBD_REQUEST         Request;
 
-        Request = __LookasideAlloc(&Pdo->RequestList);
+        Request = PdoGetRequest(Pdo);
         if (Request == NULL)
             goto fail1;
         InsertTailList(&List, &Request->Entry);
 
         Request->Srb            = Srb;
-        Request->Id             = PdoGetTag(Pdo);
         Request->Operation      = BLKIF_OP_DISCARD;
         Request->FirstSector    = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
         Request->NrSectors      = _byteswap_ulong(*(PULONG)Descr->LbaCount);
         Request->Flags          = 0;
-        InitializeListHead(&Request->Segments);
     }
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
@@ -1296,8 +1342,7 @@ __PdoPauseDataPath(
         Verbose("Target[%d] : PreparedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
 
         SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
+        PdoPutRequest(Pdo, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
@@ -1460,7 +1505,7 @@ PdoCompleteResponse(
     PSCSI_REQUEST_BLOCK Srb;
     PXENVBD_SRBEXT      SrbExt;
 
-    Request = PdoPutTag(Pdo, Tag);
+    Request = PdoRequestFromTag(Pdo, Tag);
     if (Request == NULL)
         return;
 
@@ -1489,8 +1534,7 @@ PdoCompleteResponse(
         break;
     }
 
-    RequestCleanup(Pdo, Request);
-    __LookasideFree(&Pdo->RequestList, Request);
+    PdoPutRequest(Pdo, Request);
 
     // complete srb
     if (InterlockedDecrement(&SrbExt->Count) == 0) {
@@ -1529,8 +1573,7 @@ PdoPreResume(
         SrbExt = GetSrbExt(Request->Srb);
 
         BlockRingAbort(BlockRing, Request);
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
+        PdoPutRequest(Pdo, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             InsertTailList(&List, &SrbExt->Entry);
@@ -1547,8 +1590,7 @@ PdoPreResume(
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
+        PdoPutRequest(Pdo, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             InsertTailList(&List, &SrbExt->Entry);
@@ -2155,8 +2197,7 @@ __PdoCleanupSubmittedReqs(
 
         Verbose("Target[%d] : SubmittedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
 
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
+        PdoPutRequest(Pdo, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
