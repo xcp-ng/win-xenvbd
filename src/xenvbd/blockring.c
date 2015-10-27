@@ -152,9 +152,10 @@ __BlockRingInsert(
     case BLKIF_OP_WRITE:
         if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
             // Indirect
-            ULONG                       PageIndex;
-            ULONG                       SegmentIndex;
-            PLIST_ENTRY                 Entry;
+            ULONG                       PageIdx;
+            ULONG                       SegIdx;
+            PLIST_ENTRY                 PageEntry;
+            PLIST_ENTRY                 SegEntry;
             blkif_request_indirect_t*   req_indirect;
 
             req_indirect = (blkif_request_indirect_t*)req;
@@ -165,28 +166,27 @@ __BlockRingInsert(
             req_indirect->sector_number     = Request->FirstSector;
             req_indirect->handle            = (USHORT)BlockRing->DeviceId;
 
-            for (PageIndex = 0, SegmentIndex = 0, Entry = Request->Segments.Flink;
-                    PageIndex < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
-                    Entry != &Request->Segments;
-                        Entry = Entry->Flink) {
-                PBLKIF_SEGMENT  Indirect = Request->Pages[PageIndex];
-                PXENVBD_SEGMENT Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+            for (PageIdx = 0,
+                 PageEntry = Request->Indirects.Flink,
+                 SegEntry = Request->Segments.Flink;
+                    PageIdx < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
+                    PageEntry != &Request->Indirects &&
+                    SegEntry != &Request->Segments;
+                        ++PageIdx, PageEntry = PageEntry->Flink) {
+                PXENVBD_INDIRECT Page = CONTAINING_RECORD(PageEntry, XENVBD_INDIRECT, Entry);
 
-                Indirect[SegmentIndex].GrantRef = GranterReference(Granter, Segment->Grant);
-                Indirect[SegmentIndex].First    = Segment->FirstSector;
-                Indirect[SegmentIndex].Last     = Segment->LastSector;
+                req_indirect->indirect_grefs[PageIdx] = GranterReference(Granter, Page->Grant);
 
-                ++SegmentIndex;
-                if (SegmentIndex >= XENVBD_MAX_SEGMENTS_PER_PAGE) {
-                    ++PageIndex;
-                    SegmentIndex = 0;
+                for (SegIdx = 0;
+                        SegIdx < XENVBD_MAX_SEGMENTS_PER_PAGE &&
+                        SegEntry != &Request->Segments;
+                            ++SegIdx, SegEntry = SegEntry->Flink) {
+                    PXENVBD_SEGMENT Segment = CONTAINING_RECORD(SegEntry, XENVBD_SEGMENT, Entry);
+
+                    Page->Page[SegIdx].GrantRef = GranterReference(Granter, Segment->Grant);
+                    Page->Page[SegIdx].First    = Segment->FirstSector;
+                    Page->Page[SegIdx].Last     = Segment->LastSector;
                 }
-            }
-            for (PageIndex = 0;
-                    PageIndex < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
-                    Request->Grants[PageIndex] != NULL;
-                        ++PageIndex) {
-                req_indirect->indirect_grefs[PageIndex] = GranterReference(Granter, Request->Grants[PageIndex]);
             }
         } else {
             // Direct

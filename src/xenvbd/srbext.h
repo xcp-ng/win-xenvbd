@@ -48,6 +48,14 @@ typedef struct _BLKIF_SEGMENT {
 
 #define XENVBD_MAX_SEGMENTS_PER_PAGE    (PAGE_SIZE / sizeof(BLKIF_SEGMENT))
 
+// Internal indirect context
+typedef struct _XENVBD_INDIRECT {
+    LIST_ENTRY              Entry;
+    PBLKIF_SEGMENT          Page;
+    PVOID                   Grant;
+    PMDL                    Mdl;
+} XENVBD_INDIRECT, *PXENVBD_INDIRECT;
+
 // Internal segment context
 typedef struct _XENVBD_SEGMENT {
     LIST_ENTRY              Entry;
@@ -74,10 +82,7 @@ typedef struct _XENVBD_REQUEST {
 
     ULONG64                 FirstSector;
     ULONG64                 NrSectors;  // BLKIF_OP_DISCARD only
-
-    // BLKIF_OP_{READ/WRITE} with NrSegments > 11 only
-    PVOID                   Pages[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
-    PVOID                   Grants[BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST];
+    LIST_ENTRY              Indirects;  // BLKIF_OP_{READ/WRITE} with NrSegments > 11 only
 } XENVBD_REQUEST, *PXENVBD_REQUEST;
 
 // SRBExtension - context for SRBs

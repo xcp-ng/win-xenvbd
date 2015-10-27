@@ -567,20 +567,38 @@ PdoSectorSize(
 }
 
 //=============================================================================
-static PVOID
+static PXENVBD_INDIRECT
 PdoGetIndirect(
     IN  PXENVBD_PDO             Pdo
     )
 {
-    PVOID                       Indirect;
+    PXENVBD_INDIRECT    Indirect;
+    NTSTATUS            status;
+    PXENVBD_GRANTER     Granter = FrontendGetGranter(Pdo->Frontend);
 
     Indirect = __LookasideAlloc(&Pdo->IndirectList);
     if (Indirect == NULL)
         goto fail1;
 
-    RtlZeroMemory(Indirect, PAGE_SIZE);
+    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
+
+    Indirect->Page = __AllocPages(PAGE_SIZE, &Indirect->Mdl);
+    if (Indirect->Page == NULL)
+        goto fail2;
+
+    status = GranterGet(Granter,
+                        MmGetMdlPfnArray(Indirect->Mdl)[0],
+                        TRUE,
+                        &Indirect->Grant);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
     return Indirect;
 
+fail3:
+    __FreePages(Indirect->Page, Indirect->Mdl);
+fail2:
+    __LookasideFree(&Pdo->IndirectList, Indirect);
 fail1:
     return NULL;
 }
@@ -588,10 +606,17 @@ fail1:
 static VOID
 PdoPutIndirect(
     IN  PXENVBD_PDO             Pdo,
-    IN  PVOID                   Indirect
+    IN  PXENVBD_INDIRECT        Indirect
     )
 {
-    RtlZeroMemory(Indirect, PAGE_SIZE);
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+
+    if (Indirect->Grant)
+        GranterPut(Granter, Indirect->Grant);
+    if (Indirect->Page)
+        __FreePages(Indirect->Page, Indirect->Mdl);
+
+    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
     __LookasideFree(&Pdo->IndirectList, Indirect);
 }
 
@@ -648,6 +673,7 @@ PdoGetRequest(
     RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
     Request->Id = (ULONG)InterlockedIncrement((PLONG)&Pdo->NextTag);
     InitializeListHead(&Request->Segments);
+    InitializeListHead(&Request->Indirects);
 
     return Request;
 
@@ -661,11 +687,9 @@ PdoPutRequest(
     IN  PXENVBD_REQUEST         Request
     )
 {
-    ULONG           Index;
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+    PLIST_ENTRY     Entry;
 
     for (;;) {
-        PLIST_ENTRY     Entry;
         PXENVBD_SEGMENT Segment;
 
         Entry = RemoveHeadList(&Request->Segments);
@@ -675,11 +699,14 @@ PdoPutRequest(
         PdoPutSegment(Pdo, Segment);
     }
 
-    for (Index = 0; Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST; ++Index) {
-        if (Request->Grants[Index])
-            GranterPut(Granter, Request->Grants[Index]);
-        if (Request->Pages[Index])
-            PdoPutIndirect(Pdo, Request->Pages[Index]);
+    for (;;) {
+        PXENVBD_INDIRECT    Indirect;
+
+        Entry = RemoveHeadList(&Request->Indirects);
+        if (Entry == &Request->Indirects)
+            break;
+        Indirect = CONTAINING_RECORD(Entry, XENVBD_INDIRECT, Entry);
+        PdoPutIndirect(Pdo, Indirect);
     }
 
     RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
@@ -1052,32 +1079,25 @@ PrepareBlkifIndirect(
     IN  PXENVBD_REQUEST         Request
     )
 {
-    NTSTATUS        status;
     ULONG           Index;
     ULONG           NrSegments = 0;
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
 
     for (Index = 0;
             Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
             NrSegments < Request->NrSegments;
                 ++Index) {
-        Request->Pages[Index] = PdoGetIndirect(Pdo);
-        if (Request->Pages[Index] == NULL)
-            goto fail1;
+        PXENVBD_INDIRECT    Indirect;
 
-        status = GranterGet(Granter,
-                            __Virt2Pfn(Request->Pages[Index]),
-                            TRUE,
-                            &Request->Grants[Index]);
-        if (!NT_SUCCESS(status))
-            goto fail2;
+        Indirect = PdoGetIndirect(Pdo);
+        if (Indirect == NULL)
+            goto fail1;
+        InsertTailList(&Request->Indirects, &Indirect->Entry);
 
         NrSegments += XENVBD_MAX_SEGMENTS_PER_PAGE;
     }
 
     return TRUE;
 
-fail2:
 fail1:
     return FALSE;
 }
@@ -2583,7 +2603,7 @@ PdoCreate(
 
     __LookasideInit(&Pdo->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
     __LookasideInit(&Pdo->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
-    __LookasideInit(&Pdo->IndirectList, PAGE_SIZE, INDIRECT_POOL_TAG);
+    __LookasideInit(&Pdo->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
 
     Status = PdoD3ToD0(Pdo);
     if (!NT_SUCCESS(Status))
