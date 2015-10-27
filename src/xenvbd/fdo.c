@@ -1449,6 +1449,7 @@ FdoResetBus(
 {
     ULONG           TargetId;
 
+    Verbose("====>\n");
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
         PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
         if (Pdo) {
@@ -1456,6 +1457,7 @@ FdoResetBus(
             PdoDereference(Pdo);
         }
     }
+    Verbose("<====\n");
 
     return TRUE;
 }

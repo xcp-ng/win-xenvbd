@@ -2242,7 +2242,7 @@ __PdoExecuteScsi(
     return TRUE;
 }
 
-static FORCEINLINE VOID
+static FORCEINLINE BOOLEAN
 __PdoQueueShutdown(
     __in PXENVBD_PDO             Pdo,
     __in PSCSI_REQUEST_BLOCK     Srb
@@ -2253,6 +2253,23 @@ __PdoQueueShutdown(
 
     QueueAppend(&Pdo->ShutdownSrbs, &SrbExt->Entry);
     NotifierKick(Notifier);
+
+    return FALSE;
+}
+
+static FORCEINLINE BOOLEAN
+__PdoReset(
+    __in PXENVBD_PDO             Pdo,
+    __in PSCSI_REQUEST_BLOCK     Srb
+    )
+{
+    Verbose("Target[%u] ====>\n", PdoGetTargetId(Pdo));
+
+    PdoReset(Pdo);
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+
+    Verbose("Target[%u] <====\n", PdoGetTargetId(Pdo));
+    return TRUE;
 }
 
 static FORCEINLINE VOID
@@ -2378,13 +2395,11 @@ PdoStartIo(
         return __PdoExecuteScsi(Pdo, Srb);
 
     case SRB_FUNCTION_RESET_DEVICE:
-        PdoReset(Pdo);
-        return TRUE;
+        return __PdoReset(Pdo, Srb);
 
     case SRB_FUNCTION_FLUSH:
     case SRB_FUNCTION_SHUTDOWN:
-        __PdoQueueShutdown(Pdo, Srb);
-        return FALSE;
+        return __PdoQueueShutdown(Pdo, Srb);
 
     default:
         return TRUE;
