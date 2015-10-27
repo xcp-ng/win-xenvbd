@@ -869,7 +869,7 @@ RequestCopyOutput(
     }
 }
 
-static NTSTATUS
+static BOOLEAN
 PrepareSegment(
     IN  PXENVBD_PDO             Pdo,
     IN  PXENVBD_SEGMENT         Segment,
@@ -880,7 +880,7 @@ PrepareSegment(
     )
 {
     PFN_NUMBER      Pfn;
-    NTSTATUS        Status = STATUS_UNSUCCESSFUL;
+    NTSTATUS        Status;
     PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
     const ULONG     SectorSize = PdoSectorSize(Pdo);
     const ULONG     SectorsPerPage = __SectorsPerPage(SectorSize);
@@ -908,13 +908,13 @@ PrepareSegment(
         // map SGList to Virtual Address. Populates Segment->Buffer and Segment->Length
         if (!MapSegmentBuffer(Pdo, Segment, SGList, SectorSize, *SectorsNow)) {
             ++Pdo->FailedMaps;
-            goto fail;
+            goto fail1;
         }
 
         // get a buffer
         if (!BufferGet(Segment, &Segment->BufferId, &Pfn)) {
             ++Pdo->FailedBounces;
-            goto fail;
+            goto fail2;
         }
 
         // copy contents in
@@ -927,16 +927,18 @@ PrepareSegment(
     Status = GranterGet(Granter, Pfn, ReadOnly, &Segment->Grant);
     if (!NT_SUCCESS(Status)) {
         ++Pdo->FailedGrants;
-        goto fail;
+        goto fail3;
     }
 
-    return STATUS_SUCCESS;
+    return TRUE;
 
-fail:
-    return Status;
+fail3:
+fail2:
+fail1:
+    return FALSE;
 }
 
-static NTSTATUS
+static BOOLEAN
 PrepareBlkifReadWrite(
     IN  PXENVBD_PDO             Pdo,
     IN  PXENVBD_REQUEST         Request,
@@ -947,7 +949,6 @@ PrepareBlkifReadWrite(
     OUT PULONG                  SectorsDone
     )
 {
-    NTSTATUS        Status;
     UCHAR           Operation;
     BOOLEAN         ReadOnly;
     ULONG           Index;
@@ -965,20 +966,18 @@ PrepareBlkifReadWrite(
         ULONG           SectorsNow;
 
         Segment = __LookasideAlloc(&Pdo->SegmentList);
-        Status = STATUS_NO_MEMORY;
         if (Segment == NULL)
             goto fail1;
 
         InsertTailList(&Request->Segments, &Segment->Entry);
         ++Request->NrSegments;
 
-        Status = PrepareSegment(Pdo,
-                                Segment,
-                                SGList,
-                                ReadOnly,
-                                SectorsLeft,
-                                &SectorsNow);
-        if (!NT_SUCCESS(Status))
+        if (!PrepareSegment(Pdo,
+                            Segment,
+                            SGList,
+                            ReadOnly,
+                            SectorsLeft,
+                            &SectorsNow))
             goto fail2;
 
         *SectorsDone += SectorsNow;
@@ -987,14 +986,14 @@ PrepareBlkifReadWrite(
     ASSERT3U(Request->NrSegments, >, 0);
     ASSERT3U(Request->NrSegments, <=, MaxSegments);
 
-    return STATUS_SUCCESS;
+    return TRUE;
 
 fail2:
 fail1:
-    return Status;
+    return FALSE;
 }
 
-static NTSTATUS
+static BOOLEAN
 PrepareBlkifIndirect(
     IN  PXENVBD_PDO             Pdo,
     IN  PXENVBD_REQUEST         Request
@@ -1010,8 +1009,6 @@ PrepareBlkifIndirect(
             NrSegments < Request->NrSegments;
                 ++Index) {
         Request->Pages[Index] = __LookasideAlloc(&Pdo->IndirectList);
-
-        status = STATUS_NO_MEMORY;
         if (Request->Pages[Index] == NULL)
             goto fail1;
 
@@ -1025,11 +1022,11 @@ PrepareBlkifIndirect(
         NrSegments += XENVBD_MAX_SEGMENTS_PER_PAGE;
     }
 
-    return STATUS_SUCCESS;
+    return TRUE;
 
 fail2:
 fail1:
-    return status;
+    return FALSE;
 }
 
 static FORCEINLINE ULONG
@@ -1050,116 +1047,131 @@ UseIndirect(
     return MaxIndirectSegs;
 }
 
+static FORCEINLINE ULONG
+PdoQueueRequestList(
+    IN  PXENVBD_PDO     Pdo,
+    IN  PLIST_ENTRY     List
+    )
+{
+    ULONG               Count = 0;
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(List);
+        if (Entry == List)
+            break;
+
+        ++Count;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        __PdoIncBlkifOpCount(Pdo, Request);
+        QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
+    }
+    return Count;
+}
+
+static FORCEINLINE VOID
+PdoCancelRequestList(
+    IN  PXENVBD_PDO     Pdo,
+    IN  PLIST_ENTRY     List
+    )
+{
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(List);
+        if (Entry == List)
+            break;
+
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        __LookasideFree(&Pdo->RequestList, Request);
+    }
+}
+
 __checkReturn
-static NTSTATUS
+static BOOLEAN
 PrepareReadWrite(
     __in PXENVBD_PDO             Pdo,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    NTSTATUS        Status;
-    LIST_ENTRY      ReqList;
-    XENVBD_SG_LIST  SGList;
     PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
     ULONG64         SectorStart = Cdb_LogicalBlock(Srb);
     ULONG           SectorsLeft = Cdb_TransferBlock(Srb);
+    LIST_ENTRY      List;
+    XENVBD_SG_LIST  SGList;
 
-    InitializeListHead(&ReqList);
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+
     RtlZeroMemory(&SGList, sizeof(SGList));
     SGList.SGList = StorPortGetScatterGatherList(PdoGetFdo(Pdo), Srb);
-
-    SrbExt->Count = 0;
-    // mark the SRB as pending, completion will check for pending to detect failures
-    Srb->SrbStatus = SRB_STATUS_PENDING;
 
     while (SectorsLeft > 0) {
         ULONG           MaxSegments;
         ULONG           SectorsDone = 0;
-        PXENVBD_REQUEST Request = __LookasideAlloc(&Pdo->RequestList);
+        PXENVBD_REQUEST Request;
 
-        Status = STATUS_NO_MEMORY;
+        Request = __LookasideAlloc(&Pdo->RequestList);
         if (Request == NULL) 
-            goto fail;
+            goto fail1;
+        InsertTailList(&List, &Request->Entry);
         
         Request->Srb    = Srb;
         Request->Id     = PdoGetTag(Pdo);
         InitializeListHead(&Request->Segments);
-        InsertTailList(&ReqList, &Request->Entry);
 
         MaxSegments = UseIndirect(Pdo, SectorsLeft);
 
-        Status = PrepareBlkifReadWrite(Pdo,
-                                       Request,
-                                       &SGList,
-                                       MaxSegments,
-                                       SectorStart,
-                                       SectorsLeft,
-                                       &SectorsDone);
-        if (!NT_SUCCESS(Status))
-            goto fail;
+        if (!PrepareBlkifReadWrite(Pdo,
+                                   Request,
+                                   &SGList,
+                                   MaxSegments,
+                                   SectorStart,
+                                   SectorsLeft,
+                                   &SectorsDone))
+            goto fail2;
 
         if (MaxSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
-            Status = PrepareBlkifIndirect(Pdo,
-                                          Request);
-            if (!NT_SUCCESS(Status))
-                goto fail;
+            if (!PrepareBlkifIndirect(Pdo, Request))
+                goto fail3;
         }
 
         SectorsLeft -= SectorsDone;
         SectorStart += SectorsDone;
     }
 
-    // completed preparing SRB, move requests to pending queue
-    for (;;) {
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry;
+    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    return TRUE;
 
-        Entry = RemoveHeadList(&ReqList);
-        if (Entry == &ReqList)
-            break;
-
-        ++SrbExt->Count;
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-
-        __PdoIncBlkifOpCount(Pdo, Request);
-        QueueAppend(&Pdo->PreparedReqs, Entry);
-    }
-    return STATUS_SUCCESS;
-
-fail:
-    for (;;) {
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry;
-
-        Entry = RemoveHeadList(&ReqList);
-        if (Entry == &ReqList)
-            break;
-
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
-    }
-    ASSERT3S(SrbExt->Count, ==, 0);
-    ASSERT(!NT_SUCCESS(Status));
-    return Status;
+fail3:
+fail2:
+fail1:
+    PdoCancelRequestList(Pdo, &List);
+    return FALSE;
 }
 
 __checkReturn
-static NTSTATUS
+static BOOLEAN
 PrepareSyncCache(
     __in PXENVBD_PDO             Pdo,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
-    PXENVBD_REQUEST Request = __LookasideAlloc(&Pdo->RequestList);
-    if (Request == NULL)
-        return STATUS_UNSUCCESSFUL;
+    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PXENVBD_REQUEST     Request;
+    LIST_ENTRY          List;
     
-    SrbExt->Count = 1;
-    // mark the SRB as pending, completion will check for pending to detect failures
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_PENDING;
+
+    Request = __LookasideAlloc(&Pdo->RequestList);
+    if (Request == NULL)
+        goto fail1;
+    InsertTailList(&List, &Request->Entry);
 
     Request->Srb        = Srb;
     Request->Id         = PdoGetTag(Pdo);
@@ -1167,13 +1179,16 @@ PrepareSyncCache(
     Request->FirstSector = Cdb_LogicalBlock(Srb);
     InitializeListHead(&Request->Segments);
 
-    __PdoIncBlkifOpCount(Pdo, Request);
-    QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
-    return STATUS_SUCCESS;
+    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    return TRUE;
+
+fail1:
+    PdoCancelRequestList(Pdo, &List);
+    return FALSE;
 }
 
 __checkReturn
-static NTSTATUS
+static BOOLEAN
 PrepareUnmap(
     __in PXENVBD_PDO             Pdo,
     __in PSCSI_REQUEST_BLOCK     Srb
@@ -1192,11 +1207,11 @@ PrepareUnmap(
 
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
-        PXENVBD_REQUEST         Request = __LookasideAlloc(&Pdo->RequestList);
+        PXENVBD_REQUEST         Request;
+
+        Request = __LookasideAlloc(&Pdo->RequestList);
         if (Request == NULL)
             goto fail1;
-
-        ++SrbExt->Count;
         InsertTailList(&List, &Request->Entry);
 
         Request->Srb            = Srb;
@@ -1208,36 +1223,12 @@ PrepareUnmap(
         InitializeListHead(&Request->Segments);
     }
 
-    for (;;) {
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry;
-
-        Entry = RemoveHeadList(&List);
-        if (Entry == &List)
-            break;
-
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        __PdoIncBlkifOpCount(Pdo, Request);
-        QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
-    }
-
-    return STATUS_SUCCESS;
-
+    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    return TRUE;
 
 fail1:
-    for (;;) {
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry;
-
-        Entry = RemoveHeadList(&List);
-        if (Entry == &List)
-            break;
-
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        __LookasideFree(&Pdo->RequestList, Request);
-        --SrbExt->Count;
-    }
-    return STATUS_NO_MEMORY;
+    PdoCancelRequestList(Pdo, &List);
+    return FALSE;
 }
 
 //=============================================================================
@@ -1329,10 +1320,9 @@ __PdoUnpauseDataPath(
 
 static FORCEINLINE BOOLEAN
 PdoPrepareFresh(
-    __in PXENVBD_PDO             Pdo
+    IN  PXENVBD_PDO         Pdo
     )
 {
-    NTSTATUS        Status;
     PXENVBD_SRBEXT  SrbExt;
     PLIST_ENTRY     Entry;
 
@@ -1345,23 +1335,21 @@ PdoPrepareFresh(
     switch (Cdb_OperationEx(SrbExt->Srb)) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        Status = PrepareReadWrite(Pdo, SrbExt->Srb);
+        if (PrepareReadWrite(Pdo, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
         break;
     case SCSIOP_SYNCHRONIZE_CACHE:
-        Status = PrepareSyncCache(Pdo, SrbExt->Srb);
+        if (PrepareSyncCache(Pdo, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
         break;
     case SCSIOP_UNMAP:
-        Status = PrepareUnmap(Pdo, SrbExt->Srb);
+        if (PrepareUnmap(Pdo, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
         break;
     default:
         ASSERT(FALSE);
-        Status = STATUS_NOT_SUPPORTED;
         break;
     }
-
-    if (NT_SUCCESS(Status))
-        return TRUE;    // prepared this SRB
-
     QueueUnPop(&Pdo->FreshSrbs, &SrbExt->Entry);
     return FALSE;       // prepare failed
 }
