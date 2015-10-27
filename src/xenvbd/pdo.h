@@ -213,11 +213,6 @@ PdoStartIo(
     );
 
 extern VOID
-PdoAbortAllSrbs(
-    __in PXENVBD_PDO             Pdo
-    );
-
-extern VOID
 PdoSrbPnp(
     __in PXENVBD_PDO             Pdo,
     __in PSCSI_PNP_REQUEST_BLOCK Srb

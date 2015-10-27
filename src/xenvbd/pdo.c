@@ -448,286 +448,6 @@ __PdoRestoreDevicePnpState(
     }
 }
 
-static FORCEINLINE VOID
-__PdoPauseDataPath(
-    __in PXENVBD_PDO             Pdo,
-    __in BOOLEAN                 Timeout
-    )
-{
-    KIRQL               Irql;
-    ULONG               Requests;
-    ULONG               Count = 0;
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
-
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    ++Pdo->Paused;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
-
-    Requests = QueueCount(&Pdo->SubmittedReqs);
-    KeMemoryBarrier();
-
-    Verbose("Target[%d] : Waiting for %d Submitted requests\n", PdoGetTargetId(Pdo), Requests);
-
-    // poll ring and send event channel notification every 1ms (for up to 3 minutes)
-    while (QueueCount(&Pdo->SubmittedReqs)) {
-        if (Timeout && Count > 180000)
-            break;
-        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
-        BlockRingPoll(BlockRing);
-        KeLowerIrql(Irql);
-        NotifierSend(Notifier);         // let backend know it needs to do some work
-        StorPortStallExecution(1000);   // 1000 micro-seconds
-        ++Count;
-    }
-
-    Verbose("Target[%d] : %u/%u Submitted requests left (%u iterrations)\n",
-            PdoGetTargetId(Pdo), QueueCount(&Pdo->SubmittedReqs), Requests, Count);
-}
-
-static FORCEINLINE VOID
-__PdoUnpauseDataPath(
-    __in PXENVBD_PDO             Pdo
-    )
-{
-    KIRQL   Irql;
-
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    --Pdo->Paused;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
-}
-
-//=============================================================================
-// Creation/Deletion
-__checkReturn
-NTSTATUS
-PdoCreate(
-    __in PXENVBD_FDO             Fdo,
-    __in __nullterminated PCHAR  DeviceId,
-    __in ULONG                   TargetId,
-    __in BOOLEAN                 EmulatedUnplugged,
-    __in PKEVENT                 FrontendEvent,
-    __in XENVBD_DEVICE_TYPE      DeviceType
-    )
-{
-    NTSTATUS    Status;
-    PXENVBD_PDO Pdo;
-
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-#pragma warning(suppress: 6014)
-    Pdo = __PdoAlloc(sizeof(XENVBD_PDO));
-    if (!Pdo)
-        goto fail1;
-
-    Verbose("Target[%d] : Creating (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
-    Pdo->Signature      = PDO_SIGNATURE;
-    Pdo->Fdo            = Fdo;
-    Pdo->DeviceObject   = NULL; // filled in later
-    KeInitializeEvent(&Pdo->RemoveEvent, SynchronizationEvent, FALSE);
-    Pdo->ReferenceCount = 1;
-    Pdo->Paused         = 1; // Paused until D3->D0 transition
-    Pdo->DevicePnpState = Present;
-    Pdo->DevicePowerState = PowerDeviceD3;
-    Pdo->EmulatedUnplugged = EmulatedUnplugged;
-    Pdo->DeviceType     = DeviceType;
-
-    KeInitializeSpinLock(&Pdo->Lock);
-    QueueInit(&Pdo->FreshSrbs);
-    QueueInit(&Pdo->PreparedReqs);
-    QueueInit(&Pdo->SubmittedReqs);
-    QueueInit(&Pdo->ShutdownSrbs);
-
-    Status = FrontendCreate(Pdo, DeviceId, TargetId, FrontendEvent, &Pdo->Frontend);
-    if (!NT_SUCCESS(Status))
-        goto fail2;
-
-    __LookasideInit(&Pdo->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
-    __LookasideInit(&Pdo->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
-    __LookasideInit(&Pdo->IndirectList, PAGE_SIZE, INDIRECT_POOL_TAG);
-
-    Status = PdoD3ToD0(Pdo);
-    if (!NT_SUCCESS(Status))
-        goto fail3;
-
-    if (!FdoLinkPdo(Fdo, Pdo))
-        goto fail4;
-
-    Verbose("Target[%d] : Created (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-    return STATUS_SUCCESS;
-
-fail4:
-    Error("Fail4\n");
-    PdoD0ToD3(Pdo);
-
-fail3:
-    Error("Fail3\n");
-    __LookasideTerm(&Pdo->IndirectList);
-    __LookasideTerm(&Pdo->SegmentList);
-    __LookasideTerm(&Pdo->RequestList);
-    FrontendDestroy(Pdo->Frontend);
-    Pdo->Frontend = NULL;
-
-fail2:
-    Error("Fail2\n");
-    __PdoFree(Pdo);
-
-fail1:
-    Error("Fail1 (%08x)\n", Status);
-    return Status;
-}
-
-VOID
-PdoDestroy(
-    __in PXENVBD_PDO    Pdo
-    )
-{
-    const ULONG         TargetId = PdoGetTargetId(Pdo);
-    PVOID               Objects[4];
-    PKWAIT_BLOCK        WaitBlock;
-
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-    Verbose("Target[%d] : Destroying\n", TargetId);
-
-    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
-    if (!FdoUnlinkPdo(PdoGetFdo(Pdo), Pdo)) {
-        Error("Target[%d] : PDO 0x%p not linked to FDO 0x%p\n", TargetId, Pdo, PdoGetFdo(Pdo));
-    }
-
-    PdoD0ToD3(Pdo);
-    PdoDereference(Pdo); // drop initial ref count
-
-    // Wait for ReferenceCount == 0 and RequestListUsed == 0
-    Verbose("Target[%d] : ReferenceCount %d, RequestListUsed %d\n", TargetId, Pdo->ReferenceCount, Pdo->RequestList.Used);
-    Objects[0] = &Pdo->RemoveEvent;
-    Objects[1] = &Pdo->RequestList.Empty;
-    Objects[2] = &Pdo->SegmentList.Empty;
-    Objects[3] = &Pdo->IndirectList.Empty;
-
-    WaitBlock = (PKWAIT_BLOCK)__PdoAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
-    if (WaitBlock == NULL) {
-        ULONG   Index;
-
-        Error("Unable to allocate resources for KWAIT_BLOCK\n");
-
-        for (Index = 0; Index < ARRAYSIZE(Objects); Index++)
-            KeWaitForSingleObject(Objects[Index],
-                                  Executive,
-                                  KernelMode,
-                                  FALSE,
-                                  NULL);
-    } else {
-        KeWaitForMultipleObjects(ARRAYSIZE(Objects),
-                                 Objects,
-                                 WaitAll,
-                                 Executive,
-                                 KernelMode,
-                                 FALSE,
-                                 NULL,
-                                 WaitBlock);
-#pragma prefast(suppress:6102)
-        __PdoFree(WaitBlock);
-    }
-
-    ASSERT3S(Pdo->ReferenceCount, ==, 0);
-    ASSERT3U(PdoGetDevicePnpState(Pdo), ==, Deleted);
-
-    __LookasideTerm(&Pdo->IndirectList);
-    __LookasideTerm(&Pdo->SegmentList);
-    __LookasideTerm(&Pdo->RequestList);
-
-    FrontendDestroy(Pdo->Frontend);
-    Pdo->Frontend = NULL;
-
-    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
-    RtlZeroMemory(Pdo, sizeof(XENVBD_PDO));
-    __PdoFree(Pdo);
-
-    Verbose("Target[%d] : Destroyed\n", TargetId);
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-}
-
-__checkReturn
-NTSTATUS
-PdoD3ToD0(
-    __in PXENVBD_PDO            Pdo
-    )
-{
-    NTSTATUS                    Status;
-    const ULONG                 TargetId = PdoGetTargetId(Pdo);
-
-    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD0))
-        return STATUS_SUCCESS;
-
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-    Verbose("Target[%d] : D3->D0 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
-
-    // power up frontend
-    Status = FrontendD3ToD0(Pdo->Frontend);
-    if (!NT_SUCCESS(Status))
-        goto fail1;
-    
-    // connect frontend
-    if (Pdo->EmulatedUnplugged) {
-        Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
-        if (!NT_SUCCESS(Status))
-            goto fail2;
-        __PdoUnpauseDataPath(Pdo);
-    }
-
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-    return STATUS_SUCCESS;
-
-fail2:
-    Error("Fail2\n");
-    FrontendD0ToD3(Pdo->Frontend);
-
-fail1:
-    Error("Fail1 (%08x)\n", Status);
-
-    Pdo->DevicePowerState = PowerDeviceD3;
-
-    return Status;
-}
-
-VOID
-PdoD0ToD3(
-    __in PXENVBD_PDO            Pdo
-    )
-{
-    const ULONG                 TargetId = PdoGetTargetId(Pdo);
-
-    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD3))
-        return;
-
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-    Verbose("Target[%d] : D0->D3 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
-
-    // close frontend
-    if (Pdo->EmulatedUnplugged) {
-        __PdoPauseDataPath(Pdo, FALSE);
-        PdoAbortAllSrbs(Pdo);
-        (VOID) FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
-        ASSERT3U(QueueCount(&Pdo->SubmittedReqs), ==, 0);
-    }
-
-    // power down frontend
-    FrontendD0ToD3(Pdo->Frontend);
-
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-}
-
-__drv_requiresIRQL(DISPATCH_LEVEL)
-VOID
-PdoBackendPathChanged(
-    __in PXENVBD_PDO             Pdo
-    )
-{
-    FrontendBackendPathChanged(Pdo->Frontend);
-}
-
 //=============================================================================
 // Reference Counting
 FORCEINLINE LONG
@@ -1522,6 +1242,91 @@ fail1:
 
 //=============================================================================
 // Queue-Related
+static FORCEINLINE VOID
+__PdoPauseDataPath(
+    __in PXENVBD_PDO             Pdo,
+    __in BOOLEAN                 Timeout
+    )
+{
+    KIRQL               Irql;
+    ULONG               Requests;
+    ULONG               Count = 0;
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
+    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
+
+    KeAcquireSpinLock(&Pdo->Lock, &Irql);
+    ++Pdo->Paused;
+    KeReleaseSpinLock(&Pdo->Lock, Irql);
+
+    Requests = QueueCount(&Pdo->SubmittedReqs);
+    KeMemoryBarrier();
+
+    Verbose("Target[%d] : Waiting for %d Submitted requests\n", PdoGetTargetId(Pdo), Requests);
+
+    // poll ring and send event channel notification every 1ms (for up to 3 minutes)
+    while (QueueCount(&Pdo->SubmittedReqs)) {
+        if (Timeout && Count > 180000)
+            break;
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        BlockRingPoll(BlockRing);
+        KeLowerIrql(Irql);
+        NotifierSend(Notifier);         // let backend know it needs to do some work
+        StorPortStallExecution(1000);   // 1000 micro-seconds
+        ++Count;
+    }
+
+    Verbose("Target[%d] : %u/%u Submitted requests left (%u iterrations)\n",
+            PdoGetTargetId(Pdo), QueueCount(&Pdo->SubmittedReqs), Requests, Count);
+
+    // Abort Fresh SRBs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PLIST_ENTRY     Entry = QueuePop(&Pdo->FreshSrbs);
+        if (Entry == NULL)
+            break;
+        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+
+        Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", PdoGetTargetId(Pdo), SrbExt->Srb);
+        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
+        SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
+        FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+    }
+
+    // Fail PreparedReqs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Pdo->PreparedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        Verbose("Target[%d] : PreparedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
+
+        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
+        RequestCleanup(Pdo, Request);
+        __LookasideFree(&Pdo->RequestList, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
+            FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+        }
+    }
+}
+
+static FORCEINLINE VOID
+__PdoUnpauseDataPath(
+    __in PXENVBD_PDO             Pdo
+    )
+{
+    KIRQL   Irql;
+
+    KeAcquireSpinLock(&Pdo->Lock, &Irql);
+    --Pdo->Paused;
+    KeReleaseSpinLock(&Pdo->Lock, Irql);
+}
+
 static FORCEINLINE BOOLEAN
 PdoPrepareFresh(
     __in PXENVBD_PDO             Pdo
@@ -2310,7 +2115,6 @@ PdoReset(
     Trace("Target[%d] ====> (Irql=%d)\n", PdoGetTargetId(Pdo), KeGetCurrentIrql());
 
     __PdoPauseDataPath(Pdo, TRUE);
-    PdoAbortAllSrbs(Pdo);
 
     if (QueueCount(&Pdo->SubmittedReqs)) {
         Error("Target[%d] : backend has %u outstanding requests after a PdoReset\n",
@@ -2403,48 +2207,6 @@ PdoStartIo(
 
     default:
         return TRUE;
-    }
-}
-
-VOID
-PdoAbortAllSrbs(
-    __in PXENVBD_PDO             Pdo
-    )
-{
-    // Abort Fresh SRBs
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->FreshSrbs);
-        if (Entry == NULL)
-            break;
-        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
-
-        Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", PdoGetTargetId(Pdo), SrbExt->Srb);
-        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
-        SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
-        FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
-    }
-
-    // Fail PreparedReqs
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->PreparedReqs);
-        if (Entry == NULL)
-            break;
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        SrbExt = GetSrbExt(Request->Srb);
-
-        Verbose("Target[%d] : PreparedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
-        
-        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
-        RequestCleanup(Pdo, Request);
-        __LookasideFree(&Pdo->RequestList, Request);
-
-        if (InterlockedDecrement(&SrbExt->Count) == 0) {
-            SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
-        }
     }
 }
 
@@ -2697,3 +2459,230 @@ PdoIssueDeviceEject(
     }
 }
 
+__drv_requiresIRQL(DISPATCH_LEVEL)
+VOID
+PdoBackendPathChanged(
+    __in PXENVBD_PDO             Pdo
+    )
+{
+    FrontendBackendPathChanged(Pdo->Frontend);
+}
+
+__checkReturn
+NTSTATUS
+PdoD3ToD0(
+    __in PXENVBD_PDO            Pdo
+    )
+{
+    NTSTATUS                    Status;
+    const ULONG                 TargetId = PdoGetTargetId(Pdo);
+
+    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD0))
+        return STATUS_SUCCESS;
+
+    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
+    Verbose("Target[%d] : D3->D0 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
+
+    // power up frontend
+    Status = FrontendD3ToD0(Pdo->Frontend);
+    if (!NT_SUCCESS(Status))
+        goto fail1;
+
+    // connect frontend
+    if (Pdo->EmulatedUnplugged) {
+        Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
+        if (!NT_SUCCESS(Status))
+            goto fail2;
+        __PdoUnpauseDataPath(Pdo);
+    }
+
+    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
+    return STATUS_SUCCESS;
+
+fail2:
+    Error("Fail2\n");
+    FrontendD0ToD3(Pdo->Frontend);
+
+fail1:
+    Error("Fail1 (%08x)\n", Status);
+
+    Pdo->DevicePowerState = PowerDeviceD3;
+
+    return Status;
+}
+
+VOID
+PdoD0ToD3(
+    __in PXENVBD_PDO            Pdo
+    )
+{
+    const ULONG                 TargetId = PdoGetTargetId(Pdo);
+
+    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD3))
+        return;
+
+    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
+    Verbose("Target[%d] : D0->D3 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
+
+    // close frontend
+    if (Pdo->EmulatedUnplugged) {
+        __PdoPauseDataPath(Pdo, FALSE);
+        (VOID) FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
+        ASSERT3U(QueueCount(&Pdo->SubmittedReqs), ==, 0);
+    }
+
+    // power down frontend
+    FrontendD0ToD3(Pdo->Frontend);
+
+    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
+}
+
+__checkReturn
+NTSTATUS
+PdoCreate(
+    __in PXENVBD_FDO             Fdo,
+    __in __nullterminated PCHAR  DeviceId,
+    __in ULONG                   TargetId,
+    __in BOOLEAN                 EmulatedUnplugged,
+    __in PKEVENT                 FrontendEvent,
+    __in XENVBD_DEVICE_TYPE      DeviceType
+    )
+{
+    NTSTATUS    Status;
+    PXENVBD_PDO Pdo;
+
+    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
+
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+#pragma warning(suppress: 6014)
+    Pdo = __PdoAlloc(sizeof(XENVBD_PDO));
+    if (!Pdo)
+        goto fail1;
+
+    Verbose("Target[%d] : Creating (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
+    Pdo->Signature      = PDO_SIGNATURE;
+    Pdo->Fdo            = Fdo;
+    Pdo->DeviceObject   = NULL; // filled in later
+    KeInitializeEvent(&Pdo->RemoveEvent, SynchronizationEvent, FALSE);
+    Pdo->ReferenceCount = 1;
+    Pdo->Paused         = 1; // Paused until D3->D0 transition
+    Pdo->DevicePnpState = Present;
+    Pdo->DevicePowerState = PowerDeviceD3;
+    Pdo->EmulatedUnplugged = EmulatedUnplugged;
+    Pdo->DeviceType     = DeviceType;
+
+    KeInitializeSpinLock(&Pdo->Lock);
+    QueueInit(&Pdo->FreshSrbs);
+    QueueInit(&Pdo->PreparedReqs);
+    QueueInit(&Pdo->SubmittedReqs);
+    QueueInit(&Pdo->ShutdownSrbs);
+
+    Status = FrontendCreate(Pdo, DeviceId, TargetId, FrontendEvent, &Pdo->Frontend);
+    if (!NT_SUCCESS(Status))
+        goto fail2;
+
+    __LookasideInit(&Pdo->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
+    __LookasideInit(&Pdo->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
+    __LookasideInit(&Pdo->IndirectList, PAGE_SIZE, INDIRECT_POOL_TAG);
+
+    Status = PdoD3ToD0(Pdo);
+    if (!NT_SUCCESS(Status))
+        goto fail3;
+
+    if (!FdoLinkPdo(Fdo, Pdo))
+        goto fail4;
+
+    Verbose("Target[%d] : Created (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
+    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
+    return STATUS_SUCCESS;
+
+fail4:
+    Error("Fail4\n");
+    PdoD0ToD3(Pdo);
+
+fail3:
+    Error("Fail3\n");
+    __LookasideTerm(&Pdo->IndirectList);
+    __LookasideTerm(&Pdo->SegmentList);
+    __LookasideTerm(&Pdo->RequestList);
+    FrontendDestroy(Pdo->Frontend);
+    Pdo->Frontend = NULL;
+
+fail2:
+    Error("Fail2\n");
+    __PdoFree(Pdo);
+
+fail1:
+    Error("Fail1 (%08x)\n", Status);
+    return Status;
+}
+
+VOID
+PdoDestroy(
+    __in PXENVBD_PDO    Pdo
+    )
+{
+    const ULONG         TargetId = PdoGetTargetId(Pdo);
+    PVOID               Objects[4];
+    PKWAIT_BLOCK        WaitBlock;
+
+    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
+    Verbose("Target[%d] : Destroying\n", TargetId);
+
+    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
+    if (!FdoUnlinkPdo(PdoGetFdo(Pdo), Pdo)) {
+        Error("Target[%d] : PDO 0x%p not linked to FDO 0x%p\n", TargetId, Pdo, PdoGetFdo(Pdo));
+    }
+
+    PdoD0ToD3(Pdo);
+    PdoDereference(Pdo); // drop initial ref count
+
+    // Wait for ReferenceCount == 0 and RequestListUsed == 0
+    Verbose("Target[%d] : ReferenceCount %d, RequestListUsed %d\n", TargetId, Pdo->ReferenceCount, Pdo->RequestList.Used);
+    Objects[0] = &Pdo->RemoveEvent;
+    Objects[1] = &Pdo->RequestList.Empty;
+    Objects[2] = &Pdo->SegmentList.Empty;
+    Objects[3] = &Pdo->IndirectList.Empty;
+
+    WaitBlock = (PKWAIT_BLOCK)__PdoAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
+    if (WaitBlock == NULL) {
+        ULONG   Index;
+
+        Error("Unable to allocate resources for KWAIT_BLOCK\n");
+
+        for (Index = 0; Index < ARRAYSIZE(Objects); Index++)
+            KeWaitForSingleObject(Objects[Index],
+                                  Executive,
+                                  KernelMode,
+                                  FALSE,
+                                  NULL);
+    } else {
+        KeWaitForMultipleObjects(ARRAYSIZE(Objects),
+                                 Objects,
+                                 WaitAll,
+                                 Executive,
+                                 KernelMode,
+                                 FALSE,
+                                 NULL,
+                                 WaitBlock);
+#pragma prefast(suppress:6102)
+        __PdoFree(WaitBlock);
+    }
+
+    ASSERT3S(Pdo->ReferenceCount, ==, 0);
+    ASSERT3U(PdoGetDevicePnpState(Pdo), ==, Deleted);
+
+    __LookasideTerm(&Pdo->IndirectList);
+    __LookasideTerm(&Pdo->SegmentList);
+    __LookasideTerm(&Pdo->RequestList);
+
+    FrontendDestroy(Pdo->Frontend);
+    Pdo->Frontend = NULL;
+
+    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
+    RtlZeroMemory(Pdo, sizeof(XENVBD_PDO));
+    __PdoFree(Pdo);
+
+    Verbose("Target[%d] : Destroyed\n", TargetId);
+    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
+}
