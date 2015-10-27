@@ -1565,23 +1565,6 @@ FdoFindAdapter(
     return SP_RETURN_FOUND;
 }
 
-static FORCEINLINE VOID
-__FdoSrbPnp(
-    __in PXENVBD_FDO                 Fdo,
-    __in PSCSI_PNP_REQUEST_BLOCK     Srb
-    )
-{
-    if (!(Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)) {
-        PXENVBD_PDO     Pdo;
-
-        Pdo = __FdoGetPdo(Fdo, Srb->TargetId);
-        if (Pdo) {
-            PdoSrbPnp(Pdo, Srb);
-            PdoDereference(Pdo);
-        }
-    }
-}
-
 BOOLEAN 
 FdoBuildIo(
     __in PXENVBD_FDO                 Fdo,
@@ -1599,10 +1582,6 @@ FdoBuildIo(
         return TRUE;
 
         // dont pass to StartIo
-    case SRB_FUNCTION_PNP:
-        __FdoSrbPnp(Fdo, (PSCSI_PNP_REQUEST_BLOCK)Srb);
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        break;
     case SRB_FUNCTION_ABORT_COMMAND:
         Srb->SrbStatus = SRB_STATUS_ABORT_FAILED;
         break;
