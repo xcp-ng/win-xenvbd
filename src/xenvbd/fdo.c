@@ -53,6 +53,8 @@
 
 #include <stdlib.h>
 
+#define MAXNAMELEN  128
+
 #define FDO_SIGNATURE   'odfX'
 
 struct _XENVBD_FDO {
@@ -804,30 +806,6 @@ FdoFrontend(
 
 //=============================================================================
 // Initialize, Start, Stop
-__drv_requiresIRQL(DISPATCH_LEVEL)
-static VOID
-FdoSuspendLateCallback(
-    __in PVOID                   Argument
-    )
-{
-    PXENVBD_FDO     Fdo = Argument;
-    NTSTATUS        Status;
-
-    Verbose("%s (%s)\n",
-         MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
-         DAY_STR "/" MONTH_STR "/" YEAR_STR);
-
-    // remove watch
-    if (Fdo->RescanWatch != NULL) {
-        XENBUS_STORE(WatchRemove, &Fdo->Store, Fdo->RescanWatch);
-        Fdo->RescanWatch = NULL;
-    }
-
-    // re-create watch
-    Status = XENBUS_STORE(WatchAdd, &Fdo->Store, "device", FdoEnum(Fdo), 
-                          ThreadGetEvent(Fdo->RescanThread), &Fdo->RescanWatch);
-    ASSERT(NT_SUCCESS(Status));
-}
 
 __checkReturn
 __drv_maxIRQL(APC_LEVEL)
@@ -1016,8 +994,388 @@ __FdoRelease(
         XENFILT_EMULATED(Release, &Fdo->Emulated);
 }
 
+static FORCEINLINE PANSI_STRING
+__FdoMultiSzToUpcaseAnsi(
+    IN  PCHAR       Buffer
+    )
+{
+    PANSI_STRING    Ansi;
+    LONG            Index;
+    LONG            Count;
+    NTSTATUS        status;
+
+    Index = 0;
+    Count = 0;
+    for (;;) {
+        if (Buffer[Index] == '\0') {
+            Count++;
+            Index++;
+
+            // Check for double NUL
+            if (Buffer[Index] == '\0')
+                break;
+        } else {
+            Buffer[Index] = (CHAR)toupper(Buffer[Index]);
+            Index++;
+        }
+    }
+
+    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                         __LINE__,
+                                         sizeof (ANSI_STRING) * (Count + 1),
+                                         FDO_SIGNATURE);
+
+    status = STATUS_NO_MEMORY;
+    if (Ansi == NULL)
+        goto fail1;
+
+    for (Index = 0; Index < Count; Index++) {
+        ULONG   Length;
+
+        Length = (ULONG)strlen(Buffer);
+        Ansi[Index].MaximumLength = (USHORT)(Length + 1);
+        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                                           __LINE__,
+                                                           Ansi[Index].MaximumLength,
+                                                           FDO_SIGNATURE);
+
+        status = STATUS_NO_MEMORY;
+        if (Ansi[Index].Buffer == NULL)
+            goto fail2;
+
+        RtlCopyMemory(Ansi[Index].Buffer, Buffer, Length);
+        Ansi[Index].Length = (USHORT)Length;
+
+        Buffer += Length + 1;
+    }
+
+    return Ansi;
+
+fail2:
+    Error("fail2\n");
+
+    while (--Index >= 0)
+            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+
+    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return NULL;
+}
+
+static FORCEINLINE VOID
+__FdoFreeAnsi(
+    IN  PANSI_STRING    Ansi
+    )
+{
+    ULONG               Index;
+
+    for (Index = 0; Ansi[Index].Buffer != NULL; Index++)
+            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+
+    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+}
+
+static FORCEINLINE BOOLEAN
+__FdoMatchDistribution(
+    IN  PXENVBD_FDO Fdo,
+    IN  PCHAR       Buffer
+    )
+{
+    PCHAR           Vendor;
+    PCHAR           Product;
+    PCHAR           Context;
+    const CHAR      *Text;
+    BOOLEAN         Match;
+    ULONG           Index;
+    NTSTATUS        status;
+
+    UNREFERENCED_PARAMETER(Fdo);
+
+    status = STATUS_INVALID_PARAMETER;
+
+    Vendor = __strtok_r(Buffer, " ", &Context);
+    if (Vendor == NULL)
+        goto fail1;
+
+    Product = __strtok_r(NULL, " ", &Context);
+    if (Product == NULL)
+        goto fail2;
+
+    Match = TRUE;
+
+    Text = VENDOR_NAME_STR;
+
+    for (Index = 0; Text[Index] != 0; Index++) {
+        if (!isalnum(Text[Index])) {
+            if (Vendor[Index] != '_') {
+                Match = FALSE;
+                break;
+            }
+        } else {
+            if (Vendor[Index] != Text[Index]) {
+                Match = FALSE;
+                break;
+            }
+        }
+    }
+
+    Text = "XENVBD";
+
+    if (_stricmp(Product, Text) != 0)
+        Match = FALSE;
+
+    return Match;
+
+fail2:
+    Error("fail2\n");
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return FALSE;
+}
+
+static VOID
+FdoClearDistribution(
+    IN  PXENVBD_FDO Fdo
+    )
+{
+    PCHAR           Buffer;
+    PANSI_STRING    Distributions;
+    ULONG           Index;
+    NTSTATUS        status;
+
+    Trace("====>\n");
+
+    status = XENBUS_STORE(Directory,
+                          &Fdo->Store,
+                          NULL,
+                          NULL,
+                          "drivers",
+                          &Buffer);
+    if (NT_SUCCESS(status)) {
+        Distributions = __FdoMultiSzToUpcaseAnsi(Buffer);
+
+        XENBUS_STORE(Free,
+                     &Fdo->Store,
+                     Buffer);
+    } else {
+        Distributions = NULL;
+    }
+
+    if (Distributions == NULL)
+        goto done;
+
+    for (Index = 0; Distributions[Index].Buffer != NULL; Index++) {
+        PANSI_STRING    Distribution = &Distributions[Index];
+
+        status = XENBUS_STORE(Read,
+                              &Fdo->Store,
+                              NULL,
+                              "drivers",
+                              Distribution->Buffer,
+                              &Buffer);
+        if (!NT_SUCCESS(status))
+            continue;
+
+        if (__FdoMatchDistribution(Fdo, Buffer))
+            (VOID) XENBUS_STORE(Remove,
+                                &Fdo->Store,
+                                NULL,
+                                "drivers",
+                                Distribution->Buffer);
+
+        XENBUS_STORE(Free,
+                     &Fdo->Store,
+                     Buffer);
+    }
+
+    __FdoFreeAnsi(Distributions);
+
+done:
+    Trace("<====\n");
+}
+
+#define MAXIMUM_INDEX   255
+
 static NTSTATUS
+FdoSetDistribution(
+    IN  PXENVBD_FDO Fdo
+    )
+{
+    ULONG           Index;
+    CHAR            Distribution[MAXNAMELEN];
+    CHAR            Vendor[MAXNAMELEN];
+    const CHAR      *Product;
+    NTSTATUS        status;
+
+    Trace("====>\n");
+
+    Index = 0;
+    while (Index <= MAXIMUM_INDEX) {
+        PCHAR   Buffer;
+
+        status = RtlStringCbPrintfA(Distribution,
+                                    MAXNAMELEN,
+                                    "%u",
+                                    Index);
+        ASSERT(NT_SUCCESS(status));
+
+        status = XENBUS_STORE(Read,
+                              &Fdo->Store,
+                              NULL,
+                              "drivers",
+                              Distribution,
+                              &Buffer);
+        if (!NT_SUCCESS(status)) {
+            if (status == STATUS_OBJECT_NAME_NOT_FOUND)
+                goto update;
+
+            goto fail1;
+        }
+
+        XENBUS_STORE(Free,
+                     &Fdo->Store,
+                     Buffer);
+
+        Index++;
+    }
+
+    status = STATUS_UNSUCCESSFUL;
+    goto fail2;
+
+update:
+    status = RtlStringCbPrintfA(Vendor,
+                                MAXNAMELEN,
+                                "%s",
+                                VENDOR_NAME_STR);
+    ASSERT(NT_SUCCESS(status));
+
+    for (Index  = 0; Vendor[Index] != '\0'; Index++)
+        if (!isalnum(Vendor[Index]))
+            Vendor[Index] = '_';
+
+    Product = "XENVBD";
+
+#if DBG
+#define ATTRIBUTES   "(DEBUG)"
+#else
+#define ATTRIBUTES   ""
+#endif
+
+    (VOID) XENBUS_STORE(Printf,
+                        &Fdo->Store,
+                        NULL,
+                        "drivers",
+                        Distribution,
+                        "%s %s %u.%u.%u %s",
+                        Vendor,
+                        Product,
+                        MAJOR_VERSION,
+                        MINOR_VERSION,
+                        MICRO_VERSION,
+                        ATTRIBUTES
+                        );
+
+#undef  ATTRIBUTES
+
+    Trace("<====\n");
+    return STATUS_SUCCESS;
+
+fail2:
+    Error("fail2\n");
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+static FORCEINLINE NTSTATUS
 __FdoD3ToD0(
+    __in PXENVBD_FDO    Fdo
+    )
+{
+    NTSTATUS            Status;
+
+    Trace("=====>\n");
+
+    (VOID) FdoSetDistribution(Fdo);
+
+    ASSERT3P(Fdo->RescanWatch, ==, NULL);
+    Status = XENBUS_STORE(WatchAdd,
+                          &Fdo->Store,
+                          "device",
+                          FdoEnum(Fdo),
+                          ThreadGetEvent(Fdo->RescanThread),
+                          &Fdo->RescanWatch);
+    if (!NT_SUCCESS(Status))
+        goto fail1;
+
+    (VOID) XENBUS_STORE(Printf,
+                        &Fdo->Store,
+                        NULL,
+                        "feature/hotplug",
+                        "vbd",
+                        "%u",
+                        TRUE);
+
+    Trace("<=====\n");
+    return STATUS_SUCCESS;
+
+fail1:
+    Error("fail1 (%08x)\n", Status);
+
+    return Status;
+}
+
+static FORCEINLINE VOID
+__FdoD0ToD3(
+    __in PXENVBD_FDO    Fdo
+    )
+{
+    Trace("=====>\n");
+
+    (VOID) XENBUS_STORE(Remove,
+                        &Fdo->Store,
+                        NULL,
+                        "feature/hotplug",
+                        "vbd");
+
+    (VOID) XENBUS_STORE(WatchRemove,
+                        &Fdo->Store,
+                        Fdo->RescanWatch);
+    Fdo->RescanWatch = NULL;
+
+    FdoClearDistribution(Fdo);
+
+    Trace("<=====\n");
+}
+
+__drv_requiresIRQL(DISPATCH_LEVEL)
+static VOID
+FdoSuspendLateCallback(
+    __in PVOID                   Argument
+    )
+{
+    PXENVBD_FDO     Fdo = Argument;
+    NTSTATUS        Status;
+
+    Verbose("%s (%s)\n",
+         MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
+         DAY_STR "/" MONTH_STR "/" YEAR_STR);
+
+    __FdoD0ToD3(Fdo);
+
+    Status = __FdoD3ToD0(Fdo);
+    ASSERT(NT_SUCCESS(Status));
+}
+
+static NTSTATUS
+FdoD3ToD0(
     __in PXENVBD_FDO             Fdo
     )
 {
@@ -1058,6 +1416,10 @@ __FdoD3ToD0(
         }
     }
 
+    Status = __FdoD3ToD0(Fdo);
+    if (!NT_SUCCESS(Status))
+        goto fail4;
+
     // register suspend callback to re-register the watch
     ASSERT3P(Fdo->SuspendCallback, ==, NULL);
     Status = XENBUS_SUSPEND(Register,
@@ -1067,17 +1429,6 @@ __FdoD3ToD0(
                             Fdo,
                             &Fdo->SuspendCallback);
     if (!NT_SUCCESS(Status))
-        goto fail4;
-
-    // register watch on device/vbd
-    ASSERT3P(Fdo->RescanWatch, ==, NULL);
-    Status = XENBUS_STORE(WatchAdd,
-                          &Fdo->Store,
-                          "device",
-                          FdoEnum(Fdo), 
-                          ThreadGetEvent(Fdo->RescanThread),
-                          &Fdo->RescanWatch);
-    if (!NT_SUCCESS(Status))
         goto fail5;
 
     Trace("<===== (%d)\n", KeGetCurrentIrql());
@@ -1085,8 +1436,8 @@ __FdoD3ToD0(
 
 fail5:
     Error("Fail5\n");
-    XENBUS_SUSPEND(Deregister, &Fdo->Suspend, Fdo->SuspendCallback);
-    Fdo->SuspendCallback = NULL;
+
+    __FdoD0ToD3(Fdo);
 
 fail4:
     Error("Fail4\n");
@@ -1116,8 +1467,9 @@ fail1:
     __FdoSetDevicePowerState(Fdo, PowerDeviceD3);
     return Status;
 }
+
 static VOID
-__FdoD0ToD3(
+FdoD0ToD3(
     __in PXENVBD_FDO             Fdo
     )
 {
@@ -1130,16 +1482,9 @@ __FdoD0ToD3(
     Verbose("D0->D3\n");
 
     // remove suspend callback
-    if (Fdo->SuspendCallback != NULL) {
-        XENBUS_SUSPEND(Deregister, &Fdo->Suspend, Fdo->SuspendCallback);
-        Fdo->SuspendCallback = NULL;
-    }
+    XENBUS_SUSPEND(Deregister, &Fdo->Suspend, Fdo->SuspendCallback);
 
-    // unregister watch on device/vbd
-    if (Fdo->RescanWatch != NULL) {
-        XENBUS_STORE(WatchRemove, &Fdo->Store, Fdo->RescanWatch);
-        Fdo->RescanWatch = NULL;
-    }
+    __FdoD0ToD3(Fdo);
 
     // Power DOWN any PDOs
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
@@ -1196,12 +1541,12 @@ FdoDevicePower(
             switch (DeviceState) {
             case PowerDeviceD0:
                 Verbose("FDO:PowerDeviceD0\n");
-                __FdoD3ToD0(Fdo);
+                FdoD3ToD0(Fdo);
                 break;
 
             case PowerDeviceD3:
                 Verbose("FDO:PowerDeviceD3 (%s)\n", PowerActionName(Action));
-                __FdoD0ToD3(Fdo);
+                FdoD0ToD3(Fdo);
                 break;
 
             default:
@@ -1559,7 +1904,7 @@ FdoFindAdapter(
 
     FdoUnplugRequest(Fdo, TRUE);
 
-    if (!NT_SUCCESS(__FdoD3ToD0(Fdo)))
+    if (!NT_SUCCESS(FdoD3ToD0(Fdo)))
         return SP_RETURN_ERROR;
 
     return SP_RETURN_FOUND;
