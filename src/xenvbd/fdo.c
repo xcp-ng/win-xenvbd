@@ -1109,7 +1109,7 @@ __FdoMatchDistribution(
     Text = VENDOR_NAME_STR;
 
     for (Index = 0; Text[Index] != 0; Index++) {
-        if (!isalnum(Text[Index])) {
+        if (!isalnum((UCHAR)Text[Index])) {
             if (Vendor[Index] != '_') {
                 Match = FALSE;
                 break;
@@ -1255,7 +1255,7 @@ update:
     ASSERT(NT_SUCCESS(status));
 
     for (Index  = 0; Vendor[Index] != '\0'; Index++)
-        if (!isalnum(Vendor[Index]))
+        if (!isalnum((UCHAR)Vendor[Index]))
             Vendor[Index] = '_';
 
     Product = "XENVBD";
