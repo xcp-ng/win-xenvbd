@@ -1578,8 +1578,7 @@ PdoPreResume(
     )
 {
     LIST_ENTRY          List;
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
-    
+
     InitializeListHead(&List);
 
     // pop all submitted requests, cleanup and add associated SRB to a list
@@ -1592,7 +1591,6 @@ PdoPreResume(
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        BlockRingAbort(BlockRing, Request);
         PdoPutRequest(Pdo, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
