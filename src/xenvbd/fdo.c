@@ -1485,6 +1485,7 @@ FdoD0ToD3(
 
     // remove suspend callback
     XENBUS_SUSPEND(Deregister, &Fdo->Suspend, Fdo->SuspendCallback);
+    Fdo->SuspendCallback = NULL;
 
     __FdoD0ToD3(Fdo);
 
