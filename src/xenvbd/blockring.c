@@ -56,7 +56,6 @@ struct _XENVBD_BLOCKRING {
     ULONG                           DeviceId;
     ULONG                           Order;
     PVOID                           Grants[XENVBD_MAX_RING_PAGES];
-    ULONG                           Outstanding;
     ULONG                           Submitted;
     ULONG                           Received;
 };
@@ -235,7 +234,6 @@ __BlockRingInsert(
         break;
     }
     ++BlockRing->Submitted;
-    ++BlockRing->Outstanding;
 }
 
 NTSTATUS
@@ -432,7 +430,6 @@ BlockRingDisconnect(
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
     ASSERT(BlockRing->Connected == TRUE);
-    ASSERT3U(BlockRing->Outstanding, ==, 0);
 
     BlockRing->Submitted = 0;
     BlockRing->Received = 0;
@@ -467,8 +464,7 @@ BlockRingDebugCallback(
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
     XENBUS_DEBUG(Printf, Debug,
-                 "BLOCKRING: Requests  : %d / %d / %d\n",
-                 BlockRing->Outstanding,
+                 "BLOCKRING: Requests  : %d / %d\n",
                  BlockRing->Submitted,
                  BlockRing->Received);
 
@@ -543,7 +539,6 @@ BlockRingPoll(
 
             if (__BlockRingPutTag(BlockRing, Response->id, &Tag)) {
                 ++BlockRing->Received;
-                --BlockRing->Outstanding;
                 PdoCompleteResponse(Pdo, Tag, Response->status);
             }
 
@@ -588,25 +583,4 @@ BlockRingSubmit(
         NotifierSend(FrontendGetNotifier(BlockRing->Frontend));
 
     return TRUE;
-}
-
-VOID
-BlockRingAbort(
-    IN  PXENVBD_BLOCKRING           BlockRing,
-    IN  PXENVBD_REQUEST             Request
-    )
-{
-    KIRQL               Irql;
-
-    UNREFERENCED_PARAMETER(Request);
-
-    KeAcquireSpinLock(&BlockRing->Lock, &Irql);
-
-    // Should check Request is present on the ring, but
-    // the shared page(s) may not contain any valid data,
-    // due to suspend/resume
-    ASSERT3U(BlockRing->Outstanding, >, 0);
-    --BlockRing->Outstanding;
-
-    KeReleaseSpinLock(&BlockRing->Lock, Irql);
 }
