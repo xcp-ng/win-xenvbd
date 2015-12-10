@@ -1015,7 +1015,7 @@ __FdoMultiSzToUpcaseAnsi(
             if (Buffer[Index] == '\0')
                 break;
         } else {
-            Buffer[Index] = (CHAR)toupper(Buffer[Index]);
+            Buffer[Index] = __toupper(Buffer[Index]);
             Index++;
         }
     }

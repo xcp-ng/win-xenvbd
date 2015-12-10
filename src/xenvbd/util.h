@@ -266,4 +266,15 @@ __strtok_r(
     return Token;
 }
 
+static FORCEINLINE CHAR
+__toupper(
+    IN  CHAR    Character
+    )
+{
+    if (Character < 'a' || Character > 'z')
+        return Character;
+
+    return 'A' + Character - 'a';
+}
+
 #endif  // _UTIL_H
