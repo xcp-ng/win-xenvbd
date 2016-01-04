@@ -86,7 +86,7 @@ NotifierInterrupt(
     
     UNREFERENCED_PARAMETER(Interrupt);
 
-    ASSERT(Notifier);
+    ASSERT(Notifier != NULL);
 
 	++Notifier->NumInts;
 	if (Notifier->Connected) {
@@ -115,7 +115,7 @@ NotifierDpc(
     UNREFERENCED_PARAMETER(Arg1);
     UNREFERENCED_PARAMETER(Arg2);
 
-    ASSERT(Notifier);
+    ASSERT(Notifier != NULL);
     Pdo = FrontendGetPdo(Notifier->Frontend);
 
     if (PdoIsPaused(Pdo)) {

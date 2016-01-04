@@ -91,6 +91,8 @@ __BugCheck(
 #define BUG_ON_MSG(_EXP, _TEXT)                \
         if (_EXP) BUG_MSG(#_EXP, _TEXT)
 
+#undef  ASSERT
+
 #if DBG
 
 #define __NT_ASSERT(_EXP)                                       \
@@ -109,15 +111,6 @@ __BugCheck(
 
 #define __ASSERT(_EXP)              __NT_ASSERT(_EXP)
 #define __ASSERT_MSG(_EXP, _TEXT)   __NT_ASSERT_MSG(_EXP, _TEXT)
-
-#else   // DBG
-
-#define __ASSERT(_EXP)              BUG_ON(!(_EXP))
-#define __ASSERT_MSG(_EXP, _TEXT)   BUG_ON_MSG(!(_EXP), _TEXT)
-
-#endif  // DBG
-
-#undef  ASSERT
 
 #define ASSERT(_EXP)                    \
         do {                            \
@@ -174,6 +167,52 @@ __BugCheck(
                 ASSERT_MSG(_X _OP _Y, (_Z));        \
             }                                       \
         } while (FALSE)
+
+#else   // DBG
+
+static FORCEINLINE VOID
+_IgnoreAssertion(
+    IN  BOOLEAN Value
+    )
+{
+    UNREFERENCED_PARAMETER(Value);
+}
+
+#define ASSERT(_EXP)                    \
+        do {                            \
+            _IgnoreAssertion(_EXP);     \
+            __analysis_assume(_EXP);    \
+        } while (FALSE)
+
+static FORCEINLINE VOID
+_IgnoreAssertionMessage(
+    IN  BOOLEAN Value,
+    IN  const CHAR *Text
+    )
+{
+    UNREFERENCED_PARAMETER(Value);
+    UNREFERENCED_PARAMETER(Text);
+}
+
+#define ASSERT_MSG(_EXP, _TEXT)                     \
+        do {                                        \
+            _IgnoreAssertionMessage(_EXP, _TEXT);   \
+            __analysis_assume(_EXP);                \
+        } while (FALSE)
+
+#define ASSERT3U(_X, _OP, _Y)           \
+        ASSERT((_X) _OP (_Y))
+
+#define ASSERT3S(_X, _OP, _Y)           \
+        ASSERT((_X) _OP (_Y))
+
+#define ASSERT3P(_X, _OP, _Y)           \
+        ASSERT((_X) _OP (_Y))
+
+#define ASSERTREFCOUNT(_X, _OP, _Y, _Z) \
+        ASSERT_MSG((_X) _OP (_Y), (_Z))
+
+#endif  // DBG
 
 #ifndef TEST_MEMORY
 #define TEST_MEMORY DBG
