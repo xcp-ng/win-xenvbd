@@ -1982,7 +1982,7 @@ FdoDispatchPnp(
     switch (Stack->MinorFunction) {
     case IRP_MN_REMOVE_DEVICE:
         Verbose("FDO:IRP_MN_REMOVE_DEVICE\n");
-        __FdoD0ToD3(Fdo);
+        FdoD0ToD3(Fdo);
         FdoUnplugRequest(Fdo, FALSE);
         // drop ref-count acquired in DriverGetFdo *before* destroying Fdo
         FdoDereference(Fdo);
