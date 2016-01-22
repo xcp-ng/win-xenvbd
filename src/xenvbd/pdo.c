@@ -1461,8 +1461,7 @@ PrepareUnmap(
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
     PUNMAP_LIST_HEADER  Unmap = Srb->DataBuffer;
-    ULONG               Count = _byteswap_ushort(*(PUSHORT)Unmap->DataLength) /
-                                _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength);
+	ULONG               Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
     ULONG               Index;
     LIST_ENTRY          List;
 
