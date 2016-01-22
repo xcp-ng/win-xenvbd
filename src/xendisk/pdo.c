@@ -401,7 +401,7 @@ PdoQueryProperty(
 
             Trim = Irp->AssociatedIrp.SystemBuffer;
 
-            Trim->Version = 0;
+            Trim->Version = sizeof(DEVICE_TRIM_DESCRIPTOR);
             Trim->Size = sizeof(DEVICE_TRIM_DESCRIPTOR);
             Trim->TrimEnabled = TRUE;
 
@@ -557,8 +557,8 @@ PdoSendTrimSynchronous(
     Cdb->UNMAP.OperationCode = SCSIOP_UNMAP;
     *(PUSHORT)Cdb->UNMAP.AllocationLength = _byteswap_ushort((USHORT)Length);
 
-    *(PUSHORT)Unmap->DataLength = _byteswap_ushort((USHORT)Length);
-    *(PUSHORT)Unmap->BlockDescrDataLength = _byteswap_ushort((USHORT)sizeof(UNMAP_BLOCK_DESCRIPTOR));
+	*(PUSHORT)Unmap->DataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, BlockDescrDataLength)));
+	*(PUSHORT)Unmap->BlockDescrDataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, Descriptors[0])));
 
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Block = &Unmap->Descriptors[Index];
