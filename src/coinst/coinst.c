@@ -46,6 +46,9 @@ __user_code;
 #define SERVICE_KEY(_Driver)    \
         SERVICES_KEY ## "\\" ## #_Driver
 
+#define PARAMETERS_KEY(_Driver) \
+        SERVICE_KEY(_Driver) ## "\\Parameters"
+
 #define UNPLUG_KEY \
         SERVICE_KEY(XEN) ## "\\Unplug"
 
@@ -257,7 +260,7 @@ OverrideGroupPolicyOptions(
                           0,
                           REG_DWORD,
                           (LPBYTE)&Value,
-                          (DWORD)sizeof(DWORD));
+                          (DWORD)sizeof (DWORD));
     if (Error != ERROR_SUCCESS) {
         SetLastError(Error);
         goto fail2;
@@ -268,7 +271,7 @@ OverrideGroupPolicyOptions(
                           0,
                           REG_DWORD,
                           (LPBYTE)&Value,
-                          (DWORD)sizeof(DWORD));
+                          (DWORD)sizeof (DWORD));
     if (Error != ERROR_SUCCESS) {
         SetLastError(Error);
         goto fail3;
@@ -346,6 +349,7 @@ IncreaseDiskTimeOut(
         goto done;
 
     Value = 120;
+
     Error = RegSetValueEx(Key,
                           "TimeOutValue",
                           0,
@@ -367,6 +371,61 @@ fail4:
 
 fail3:
     Log("fail3\n");
+
+fail2:
+    Log("fail2");
+
+    RegCloseKey(Key);
+
+fail1:
+    Error = GetLastError();
+
+    {
+        PTCHAR  Message;
+
+        Message = __GetErrorMessage(Error);
+        Log("fail1 (%s)", Message);
+        LocalFree(Message);
+    }
+
+    return FALSE;
+}
+
+static BOOLEAN
+OverrideSanPolicy(
+    VOID
+    )
+{
+    HKEY        Key;
+    DWORD       Value;
+    HRESULT     Error;
+
+    Error = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                         PARAMETERS_KEY(PARTMGR),
+                         0,
+                         KEY_ALL_ACCESS,
+                         &Key);
+    if (Error != ERROR_SUCCESS) {
+        SetLastError(Error);
+        goto fail1;
+    }
+
+    Value = 1;
+
+    Error = RegSetValueEx(Key,
+                          "SanPolicy",
+                          0,
+                          REG_DWORD,
+                          (LPBYTE)&Value,
+                          (DWORD)sizeof (DWORD));
+    if (Error != ERROR_SUCCESS) {
+        SetLastError(Error);
+        goto fail2;
+    }
+
+    RegCloseKey(Key);
+
+    return TRUE;
 
 fail2:
     Log("fail2");
@@ -691,6 +750,7 @@ __DifInstallPostProcess(
     Log("====>");
 
     (VOID) OverrideGroupPolicyOptions();
+    (VOID) OverrideSanPolicy();
     (VOID) IncreaseDiskTimeOut();
 
     NeedReboot = FALSE;
