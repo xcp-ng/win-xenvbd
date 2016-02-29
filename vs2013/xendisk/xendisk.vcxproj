@@ -62,7 +62,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <BufferSecurityCheck>false</BufferSecurityCheck>
-      <PreprocessorDefinitions>__MODULE__="XENDISK";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>__MODULE__="XENDISK";POOL_NX_OPTIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>EnableAllWarnings</WarningLevel>
       <DisableSpecificWarnings>4548;4711;4820;4668;4255;6001;6054;28196;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
