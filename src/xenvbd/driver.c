@@ -539,7 +539,6 @@ HwStartIo(
 
 //=============================================================================
 // Driver Redirections
-extern PULONG       InitSafeBootMode;
 
 __drv_dispatchType(IRP_MJ_PNP)
 DRIVER_DISPATCH             DispatchPnp;
@@ -662,11 +661,6 @@ DriverEntry(
     Verbose("%s (%s)\n",
          MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
          DAY_STR "/" MONTH_STR "/" YEAR_STR);
-
-    if (*InitSafeBootMode > 0) {
-        Status = STATUS_SUCCESS;
-        goto done;
-    }
 
     InitializeObjectAttributes(&Attributes,
                                RegistryPath,

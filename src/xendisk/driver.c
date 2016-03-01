@@ -36,8 +36,6 @@
 #include "assert.h"
 #include <version.h>
 
-extern PULONG       InitSafeBootMode;
-
 typedef struct _XENDISK_DRIVER {
     PDRIVER_OBJECT              DriverObject;
 } XENDISK_DRIVER, *PXENDISK_DRIVER;
@@ -177,9 +175,6 @@ DriverEntry(
 
     DriverObject->DriverUnload = DriverUnload;
 
-    if (*InitSafeBootMode > 0)
-        goto done;
-
     Verbose("XENDISK %d.%d.%d (%d) (%02d.%02d.%04d)\n",
             MAJOR_VERSION,
             MINOR_VERSION,
@@ -197,7 +192,6 @@ DriverEntry(
         DriverObject->MajorFunction[Index] = Dispatch;
     }
 
-done:
     Trace("<====\n");
     return STATUS_SUCCESS;
 }
