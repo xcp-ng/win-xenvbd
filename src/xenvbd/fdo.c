@@ -90,8 +90,9 @@ struct _XENVBD_FDO {
     PXENVBD_PDO                 Targets[XENVBD_MAX_TARGETS];
 
     // Target Enumeration
-    PXENVBD_THREAD              RescanThread;
-    PXENBUS_STORE_WATCH         RescanWatch;
+    PXENVBD_THREAD              ScanThread;
+    KEVENT                      ScanEvent;
+    PXENBUS_STORE_WATCH         ScanWatch;
     PXENVBD_THREAD              FrontendThread;
 
     // Statistics
@@ -121,6 +122,21 @@ __FdoSetDevicePowerState(
     KeReleaseSpinLock(&Fdo->Lock, Irql);
 
     return Changed;
+}
+
+static FORCEINLINE DEVICE_POWER_STATE
+__FdoGetDevicePowerState(
+    __in PXENVBD_FDO                Fdo
+    )
+{
+    KIRQL               Irql;
+    DEVICE_POWER_STATE  State;
+
+    KeAcquireSpinLock(&Fdo->Lock, &Irql);
+    State = Fdo->DevicePower;
+    KeReleaseSpinLock(&Fdo->Lock, Irql);
+
+    return State;
 }
 
 __checkReturn
@@ -637,48 +653,29 @@ __FdoEnumerate(
         *NeedInvalidate |= (NT_SUCCESS(Status)) ? TRUE : FALSE;
     }
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
 static DECLSPEC_NOINLINE VOID
 FdoScanTargets(
-    __in    PXENVBD_FDO Fdo,
-    __out   PBOOLEAN    NeedInvalidate,
-    __out   PBOOLEAN    NeedReboot
+    __in    PXENVBD_FDO Fdo
     )
 {
     NTSTATUS        Status;
     PCHAR           Buffer;
+    BOOLEAN         NeedInvalidate;
+    BOOLEAN         NeedReboot;
 
-    Trace("====>\n");
     Status = XENBUS_STORE(Directory, &Fdo->Store, NULL, "device", FdoEnum(Fdo), &Buffer);
-    if (NT_SUCCESS(Status)) {
-        __FdoEnumerate(Fdo, Buffer, NeedInvalidate, NeedReboot);
-        XENBUS_STORE(Free, &Fdo->Store, Buffer);
-    } else {
-        *NeedInvalidate = FALSE;
-        *NeedReboot = FALSE;
-    }
-    Trace("<====\n");
-}
+    if (!NT_SUCCESS(Status))
+        return;
 
-static DECLSPEC_NOINLINE VOID
-FdoLogTargets(
-    __in PCHAR                       Caller,
-    __in PXENVBD_FDO                 Fdo
-    )
-{
-    ULONG   TargetId;
+    __FdoEnumerate(Fdo, Buffer, &NeedInvalidate, &NeedReboot);
+    XENBUS_STORE(Free, &Fdo->Store, Buffer);
 
-    Verbose("%s ===>\n", Caller);
-    for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdoAlways(Fdo, TargetId, __FUNCTION__);
-        if (Pdo) {
-            const CHAR* Reason = PdoMissingReason(Pdo);
-            Verbose("%s : Target[%d] = 0x%p %s\n", Caller, TargetId, Pdo, 
-                        (Reason != NULL) ? Reason : "(present)");
-            PdoDereference(Pdo);
-        }
+    if (NeedInvalidate) {
+        StorPortNotification(BusChangeDetected, Fdo, 0);
     }
-    Verbose("%s <===\n", Caller);
+    if (NeedReboot) {
+        DriverNotifyInstaller();
+    }
 }
 
 __checkReturn
@@ -689,33 +686,27 @@ FdoScan(
     )
 {
     PXENVBD_FDO     Fdo = Context;
+    PKEVENT         Event = ThreadGetEvent(Thread);
 
     for (;;) {
-        KIRQL   Irql;
-        BOOLEAN NeedInvalidate;
-        BOOLEAN NeedReboot;
-        
-        if (!ThreadWait(Thread))
+        Trace("waiting...\n");
+
+        (VOID) KeWaitForSingleObject(Event,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     NULL);
+        KeClearEvent(Event);
+
+        if (ThreadIsAlerted(Thread))
             break;
-        
-        KeAcquireSpinLock(&Fdo->Lock, &Irql);
-        if (Fdo->DevicePower != PowerDeviceD0) {
-            KeReleaseSpinLock(&Fdo->Lock, Irql);
-            continue;
-        }
-        
-        FdoScanTargets(Fdo, &NeedInvalidate, &NeedReboot);
 
-        KeReleaseSpinLock(&Fdo->Lock, Irql);
+        if (__FdoGetDevicePowerState(Fdo) == PowerDeviceD0)
+            FdoScanTargets(Fdo);
 
-        if (NeedInvalidate) {
-            FdoLogTargets("ScanThread", Fdo);
-            StorPortNotification(BusChangeDetected, Fdo, 0);
-        }
-
-        if (NeedReboot)
-            DriverNotifyInstaller();
+        KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
     }
+    KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
 
     return STATUS_SUCCESS;
 }
@@ -1258,13 +1249,13 @@ __FdoD3ToD0(
 
     (VOID) FdoSetDistribution(Fdo);
 
-    ASSERT3P(Fdo->RescanWatch, ==, NULL);
+    ASSERT3P(Fdo->ScanWatch, ==, NULL);
     Status = XENBUS_STORE(WatchAdd,
                           &Fdo->Store,
                           "device",
                           FdoEnum(Fdo),
-                          ThreadGetEvent(Fdo->RescanThread),
-                          &Fdo->RescanWatch);
+                          ThreadGetEvent(Fdo->ScanThread),
+                          &Fdo->ScanWatch);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
@@ -1300,8 +1291,8 @@ __FdoD0ToD3(
 
     (VOID) XENBUS_STORE(WatchRemove,
                         &Fdo->Store,
-                        Fdo->RescanWatch);
-    Fdo->RescanWatch = NULL;
+                        Fdo->ScanWatch);
+    Fdo->ScanWatch = NULL;
 
     FdoClearDistribution(Fdo);
 
@@ -1539,6 +1530,7 @@ __FdoInitialize(
     KeInitializeSpinLock(&Fdo->TargetLock);
     KeInitializeSpinLock(&Fdo->Lock);
     KeInitializeEvent(&Fdo->RemoveEvent, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&Fdo->ScanEvent, SynchronizationEvent, FALSE);
 
     Fdo->ReferenceCount = 1;
     Fdo->Signature = FDO_SIGNATURE;
@@ -1559,7 +1551,7 @@ __FdoInitialize(
         goto fail2;
 
     // start enum thread
-    Status = ThreadCreate(FdoScan, Fdo, &Fdo->RescanThread);
+    Status = ThreadCreate(FdoScan, Fdo, &Fdo->ScanThread);
     if (!NT_SUCCESS(Status))
         goto fail3;
 
@@ -1588,9 +1580,9 @@ fail5:
     Fdo->FrontendThread = NULL;
 fail4:
     Error("fail4\n");
-    ThreadAlert(Fdo->RescanThread);
-    ThreadJoin(Fdo->RescanThread);
-    Fdo->RescanThread = NULL;
+    ThreadAlert(Fdo->ScanThread);
+    ThreadJoin(Fdo->ScanThread);
+    Fdo->ScanThread = NULL;
 fail3:
     Error("fail3\n");
     __FdoZeroInterfaces(Fdo);
@@ -1634,9 +1626,9 @@ __FdoTerminate(
     Fdo->FrontendThread = NULL;
 
     // stop enum thread
-    ThreadAlert(Fdo->RescanThread);
-    ThreadJoin(Fdo->RescanThread);
-    Fdo->RescanThread = NULL;
+    ThreadAlert(Fdo->ScanThread);
+    ThreadJoin(Fdo->ScanThread);
+    Fdo->ScanThread = NULL;
 
     // clear device objects
     Fdo->DeviceObject = NULL;
@@ -1669,6 +1661,7 @@ __FdoTerminate(
     RtlZeroMemory(&Fdo->Enumerator, sizeof(ANSI_STRING));
     RtlZeroMemory(&Fdo->TargetLock, sizeof(KSPIN_LOCK));
     RtlZeroMemory(&Fdo->Lock, sizeof(KSPIN_LOCK));
+    RtlZeroMemory(&Fdo->ScanEvent, sizeof(KEVENT));
     RtlZeroMemory(&Fdo->RemoveEvent, sizeof(KEVENT));
     __FdoZeroInterfaces(Fdo);
 
@@ -2035,26 +2028,16 @@ FdoDispatchPnp(
 
     case IRP_MN_QUERY_DEVICE_RELATIONS:
         if (Stack->Parameters.QueryDeviceRelations.Type == BusRelations) {
-            KIRQL   Irql;
-            BOOLEAN NeedInvalidate;
-            BOOLEAN NeedReboot;
+            KeClearEvent(&Fdo->ScanEvent);
+            ThreadWake(Fdo->ScanThread);
 
-            KeAcquireSpinLock(&Fdo->Lock, &Irql);
+            Trace("waiting for scan thread\n");
 
-            if (Fdo->DevicePower == PowerDeviceD0) {
-                FdoScanTargets(Fdo, &NeedInvalidate, &NeedReboot);
-            } else {
-                NeedInvalidate = FALSE;
-                NeedReboot = FALSE;
-            }
-
-            KeReleaseSpinLock(&Fdo->Lock, Irql);
-
-            if (NeedInvalidate)
-                FdoLogTargets("QUERY_RELATIONS", Fdo);
-
-            if (NeedReboot)
-                DriverNotifyInstaller();
+            (VOID) KeWaitForSingleObject(&Fdo->ScanEvent,
+                                         Executive,
+                                         KernelMode,
+                                         FALSE,
+                                         NULL);
         }
         FdoDereference(Fdo);
         break;
