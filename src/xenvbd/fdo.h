@@ -109,13 +109,6 @@ FdoResetBus(
     __in PXENVBD_FDO                 Fdo
     );
 
-extern SCSI_ADAPTER_CONTROL_STATUS
-FdoAdapterControl(
-    __in PXENVBD_FDO                 Fdo,
-    __in SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    __in PVOID                       Parameters
-    );
-
 extern ULONG
 FdoFindAdapter(
     __in PXENVBD_FDO                 Fdo,

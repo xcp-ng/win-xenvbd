@@ -431,35 +431,6 @@ DriverFormatFree(
         __FreePoolWithTag(Buffer, XENVBD_POOL_TAG);
 }
 
-//=============================================================================
-// StorPort redirections
-static FORCEINLINE PCHAR
-__ScsiAdapterControlTypeName(
-    __in SCSI_ADAPTER_CONTROL_TYPE   ControlType
-    )
-{
-    switch (ControlType) {
-    case ScsiQuerySupportedControlTypes:    return "QuerySupportedControlTypes";
-    case ScsiStopAdapter:                   return "StopAdapter";
-    case ScsiRestartAdapter:                return "RestartAdapter";
-    case ScsiSetBootConfig:                 return "SetBootConfig";
-    case ScsiSetRunningConfig:              return "SetRunningConfig";
-    default:                                return "UNKNOWN";
-    }
-}
-
-static FORCEINLINE PCHAR
-__ScsiAdapterControlStatus(
-    __in SCSI_ADAPTER_CONTROL_STATUS Status
-    )
-{
-    switch (Status) {
-    case ScsiAdapterControlSuccess:         return "Success";
-    case ScsiAdapterControlUnsuccessful:    return "Unsuccessful";
-    default:                                return "UNKNOWN";
-    }
-}
-
 HW_INITIALIZE       HwInitialize;
 
 BOOLEAN 
@@ -467,7 +438,7 @@ HwInitialize(
     __in PVOID   HwDeviceExtension
     )
 {
-    Trace("(0x%p) @%d <---> TRUE\n", HwDeviceExtension, KeGetCurrentIrql());
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
     return TRUE;
 }
 
@@ -482,21 +453,6 @@ HwInterrupt(
     return TRUE;
 }
 
-HW_RESET_BUS        HwResetBus;
-
-BOOLEAN 
-HwResetBus(
-    __in PVOID   HwDeviceExtension,
-    __in ULONG   PathId
-    )
-{
-    BOOLEAN RetVal;
-    Trace("(0x%p, %d) @%d --->\n", HwDeviceExtension, PathId, KeGetCurrentIrql());
-    RetVal = FdoResetBus((PXENVBD_FDO)HwDeviceExtension);
-    Trace("(0x%p, %d) @%d <--- %s\n", HwDeviceExtension, PathId, KeGetCurrentIrql(), RetVal ? "TRUE" : "FALSE");
-    return RetVal;
-}
-
 HW_ADAPTER_CONTROL  HwAdapterControl;
 
 SCSI_ADAPTER_CONTROL_STATUS
@@ -506,11 +462,39 @@ HwAdapterControl(
     __in PVOID                       Parameters
     )
 {
-    SCSI_ADAPTER_CONTROL_STATUS RetVal;
-    Trace("(0x%p, %s, 0x%p) @%d --->\n", HwDeviceExtension, __ScsiAdapterControlTypeName(ControlType), Parameters, KeGetCurrentIrql());
-    RetVal = FdoAdapterControl((PXENVBD_FDO)HwDeviceExtension, ControlType, Parameters);
-    Trace("(0x%p, %s, 0x%p) @%d <--- %s\n", HwDeviceExtension, __ScsiAdapterControlTypeName(ControlType), Parameters, KeGetCurrentIrql(), __ScsiAdapterControlStatus(RetVal));
-    return RetVal;
+    PSCSI_SUPPORTED_CONTROL_TYPE_LIST   List;
+    ULONG                               Index;
+
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+
+    switch (ControlType) {
+    case ScsiQuerySupportedControlTypes:
+        List = Parameters;
+        for (Index = 0; Index < List->MaxControlType; ++Index)
+            List->SupportedTypeList[Index] = TRUE;
+        break;
+
+    case ScsiStopAdapter:
+    case ScsiRestartAdapter:
+    case ScsiSetBootConfig:
+    case ScsiSetRunningConfig:
+    default:
+        break;
+    }
+    return ScsiAdapterControlSuccess;
+}
+
+HW_RESET_BUS        HwResetBus;
+
+BOOLEAN
+HwResetBus(
+    __in PVOID   HwDeviceExtension,
+    __in ULONG   PathId
+    )
+{
+    UNREFERENCED_PARAMETER(PathId);
+
+    return FdoResetBus((PXENVBD_FDO)HwDeviceExtension);
 }
 
 HW_FIND_ADAPTER     HwFindAdapter;
@@ -525,13 +509,12 @@ HwFindAdapter(
     OUT PBOOLEAN                           Again
     )
 {
-    ULONG RetVal;
-    Trace("(0x%p, 0x%p, 0x%p, %s, 0x%p, 0x%p) @%d --->\n", HwDeviceExtension, 
-                Context, BusInformation, ArgumentString, ConfigInfo, Again, KeGetCurrentIrql());
-    RetVal = FdoFindAdapter((PXENVBD_FDO)HwDeviceExtension, ConfigInfo);
-    Trace("(0x%p, 0x%p, 0x%p, %s, 0x%p, 0x%p) @%d <--- %d\n", HwDeviceExtension, 
-                Context, BusInformation, ArgumentString, ConfigInfo, Again, KeGetCurrentIrql(), RetVal);
-    return RetVal;
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(BusInformation);
+    UNREFERENCED_PARAMETER(ArgumentString);
+    UNREFERENCED_PARAMETER(Again);
+
+    return FdoFindAdapter((PXENVBD_FDO)HwDeviceExtension, ConfigInfo);
 }
 
 static FORCEINLINE BOOLEAN

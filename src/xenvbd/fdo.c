@@ -1759,45 +1759,6 @@ FdoResetBus(
     return TRUE;
 }
 
-SCSI_ADAPTER_CONTROL_STATUS
-FdoAdapterControl(
-    __in PXENVBD_FDO                 Fdo,
-    __in SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    __in PVOID                       Parameters
-    )
-{
-    UNREFERENCED_PARAMETER(Fdo);
-
-    switch (ControlType) {
-    case ScsiQuerySupportedControlTypes:
-        {
-            PSCSI_SUPPORTED_CONTROL_TYPE_LIST List = Parameters;
-
-#define SET_SUPPORTED(_l, _i, _v)           \
-    if (_l->MaxControlType > _i)    _l->SupportedTypeList[_i] = _v;
-
-            SET_SUPPORTED(List, 0, TRUE);   // ScsiQuerySupportedControlTypes
-            SET_SUPPORTED(List, 1, FALSE);  // ScsiStopAdapter
-            SET_SUPPORTED(List, 2, FALSE);  // ScsiRestartAdapter
-            SET_SUPPORTED(List, 3, FALSE);  // ScsiSetBootConfig
-            SET_SUPPORTED(List, 4, FALSE);  // ScsiSetRunningConfig
-
-#undef SET_SUPPORTED
-
-        } break;
-    case ScsiStopAdapter:
-    case ScsiRestartAdapter:
-    case ScsiSetBootConfig:
-    case ScsiSetRunningConfig:
-        {
-            Trace("<----> %s (%d)\n", ScsiAdapterControlTypeName(ControlType), KeGetCurrentIrql());
-        } break;
-    default:
-        break;
-    }
-    return ScsiAdapterControlSuccess;
-}
-
 static VOID
 FdoUnplugRequest(
     IN  PXENVBD_FDO Fdo,
