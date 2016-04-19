@@ -322,9 +322,52 @@ done:
     return Status;
 }
 
-//=============================================================================
-// Global Functions
-#define FORMAT_POOL_TAG     'tmFX'
+VOID
+DriverNotifyInstaller(
+    VOID
+    )
+{
+    UNICODE_STRING                  Unicode;
+    PKEY_VALUE_PARTIAL_INFORMATION  Partial;
+    NTSTATUS                        status;
+
+    ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
+
+    Partial = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                            __LINE__,
+                                            FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) +
+                                            sizeof (ULONG),
+                                            XENVBD_POOL_TAG);
+    status = STATUS_NO_MEMORY;
+    if (Partial == NULL)
+        goto fail1;
+
+    Partial->TitleIndex = 0;
+    Partial->Type = REG_DWORD;
+    Partial->DataLength = sizeof (ULONG);
+    *(PULONG)Partial->Data = 1;
+
+    RtlInitUnicodeString(&Unicode, L"NeedReboot");
+
+    status = ZwSetValueKey(DriverStatusKey,
+                           &Unicode,
+                           Partial->TitleIndex,
+                           Partial->Type,
+                           Partial->Data,
+                           Partial->DataLength);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    __FreePoolWithTag(Partial, XENVBD_POOL_TAG);
+
+    return;
+
+fail2:
+    Error("fail2\n");
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+}
 
 __checkReturn
 __drv_allocatesMem(mem)
@@ -340,7 +383,7 @@ __DriverFormatV(
     ULONG       Size = 32;
 
     for (;;) {
-        Str = (PCHAR)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Size, FORMAT_POOL_TAG);
+        Str = (PCHAR)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Size, XENVBD_POOL_TAG);
         if (!Str) {
             return NULL;
         }
@@ -352,7 +395,7 @@ __DriverFormatV(
             return Str;
         } 
         
-        __FreePoolWithTag(Str, FORMAT_POOL_TAG);
+        __FreePoolWithTag(Str, XENVBD_POOL_TAG);
         if (Status == STATUS_BUFFER_OVERFLOW) {
             Size *= 2;
         } else {
@@ -385,7 +428,7 @@ DriverFormatFree(
     )
 {
     if (Buffer)
-        __FreePoolWithTag(Buffer, FORMAT_POOL_TAG);
+        __FreePoolWithTag(Buffer, XENVBD_POOL_TAG);
 }
 
 //=============================================================================

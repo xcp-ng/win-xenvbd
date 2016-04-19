@@ -57,8 +57,6 @@ typedef struct _XENVBD_PARAMETERS {
 
 extern XENVBD_PARAMETERS    DriverParameters;
 
-extern HANDLE               DriverStatusKey;
-
 extern NTSTATUS
 DriverDispatchPnp(
     IN  PDEVICE_OBJECT  DeviceObject,
@@ -82,7 +80,11 @@ DriverUnlinkFdo(
     __in PXENVBD_FDO             Fdo
     );
 
-// Global Functions
+extern VOID
+DriverNotifyInstaller(
+    VOID
+    );
+
 __checkReturn
 __drv_allocatesMem(mem)
 extern PCHAR
