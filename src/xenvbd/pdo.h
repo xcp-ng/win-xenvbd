@@ -50,12 +50,11 @@ PdoDebugCallback(
 
 // Creation/Deletion
 __checkReturn
-extern NTSTATUS
+extern BOOLEAN
 PdoCreate(
     __in PXENVBD_FDO             Fdo,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
-    __in BOOLEAN                 EmulatedMasked,
     __in PKEVENT                 FrontendEvent,
     __in XENVBD_DEVICE_TYPE      DeviceType
     );

@@ -583,7 +583,6 @@ __FdoEnumerate(
     ULONG               TargetId;
     PCHAR               Device;
     PXENVBD_PDO         Pdo;
-    NTSTATUS            Status;
 
     *NeedInvalidate = FALSE;
     *NeedReboot = FALSE;
@@ -621,7 +620,6 @@ __FdoEnumerate(
 
     // add new targets
     for (Device = Devices; *Device; Device = __NextSz(Device)) {
-        BOOLEAN     EmulatedUnplugged;
         XENVBD_DEVICE_TYPE  DeviceType;
 
         TargetId = __ParseVbd(Device);
@@ -639,18 +637,21 @@ __FdoEnumerate(
             continue;
         }
 
-        EmulatedUnplugged = __FdoIsPdoUnplugged(Fdo,
-                                                FdoEnum(Fdo),
-                                                Device,
-                                                TargetId);
-        *NeedReboot |= !EmulatedUnplugged;
+        if (!__FdoIsPdoUnplugged(Fdo,
+                                FdoEnum(Fdo),
+                                Device,
+                                TargetId)) {
+            *NeedReboot = TRUE;
+            continue;
+        }
 
-        Status = PdoCreate(Fdo,
-                           Device,
-                           TargetId,
-                           EmulatedUnplugged,
-                           ThreadGetEvent(Fdo->FrontendThread), DeviceType);
-        *NeedInvalidate |= (NT_SUCCESS(Status)) ? TRUE : FALSE;
+        if (PdoCreate(Fdo,
+                      Device,
+                      TargetId,
+                      ThreadGetEvent(Fdo->FrontendThread),
+                      DeviceType)) {
+            *NeedInvalidate = TRUE;
+        }
     }
 }
 static DECLSPEC_NOINLINE VOID

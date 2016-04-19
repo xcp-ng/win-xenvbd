@@ -87,7 +87,6 @@ struct _XENVBD_PDO {
     XENVBD_DEVICE_TYPE          DeviceType;
 
     // State
-    BOOLEAN                     EmulatedUnplugged;
     LONG                        Paused;
 
     // Eject
@@ -285,8 +284,7 @@ PdoDebugCallback(
                  "PDO: DevicePowerState %s\n",
                  PowerDeviceStateName(Pdo->DevicePowerState));
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: %s %s\n",
-                 Pdo->EmulatedUnplugged ? "PV" : "EMULATED",
+                 "PDO: %s\n",
                  Pdo->Missing ? Pdo->Reason : "Not Missing");
 
     XENBUS_DEBUG(Printf, DebugInterface,
@@ -398,15 +396,6 @@ PdoMissingReason(
     KeReleaseSpinLock(&Pdo->Lock, Irql);
 
     return Reason;
-}
-
-__checkReturn
-FORCEINLINE BOOLEAN
-PdoIsEmulatedUnplugged(
-    __in PXENVBD_PDO             Pdo
-    )
-{
-    return Pdo->EmulatedUnplugged;
 }
 
 FORCEINLINE VOID
@@ -2161,13 +2150,6 @@ __ValidateSrbForPdo(
         return FALSE;
     }
 
-    if (!Pdo->EmulatedUnplugged) {
-        Error("Target[%d] : Disk is Emulated (%02x:%s)\n", 
-                PdoGetTargetId(Pdo), Operation, Cdb_OperationName(Operation));
-        Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
-        return FALSE;
-    }
-
     return TRUE;
 }
 
@@ -2498,7 +2480,7 @@ PdoD3ToD0(
         return STATUS_SUCCESS;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-    Verbose("Target[%d] : D3->D0 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
+    Verbose("Target[%d] : D3->D0\n", TargetId);
 
     // power up frontend
     Status = FrontendD3ToD0(Pdo->Frontend);
@@ -2506,12 +2488,10 @@ PdoD3ToD0(
         goto fail1;
 
     // connect frontend
-    if (Pdo->EmulatedUnplugged) {
-        Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
-        if (!NT_SUCCESS(Status))
-            goto fail2;
-        __PdoUnpauseDataPath(Pdo);
-    }
+    Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
+    if (!NT_SUCCESS(Status))
+        goto fail2;
+    __PdoUnpauseDataPath(Pdo);
 
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return STATUS_SUCCESS;
@@ -2539,14 +2519,12 @@ PdoD0ToD3(
         return;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-    Verbose("Target[%d] : D0->D3 (%s)\n", TargetId, Pdo->EmulatedUnplugged ? "PV" : "Emulated");
+    Verbose("Target[%d] : D0->D3\n", TargetId);
 
     // close frontend
-    if (Pdo->EmulatedUnplugged) {
-        __PdoPauseDataPath(Pdo, FALSE);
-        (VOID) FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
-        ASSERT3U(QueueCount(&Pdo->SubmittedReqs), ==, 0);
-    }
+    __PdoPauseDataPath(Pdo, FALSE);
+    (VOID) FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
+    ASSERT3U(QueueCount(&Pdo->SubmittedReqs), ==, 0);
 
     // power down frontend
     FrontendD0ToD3(Pdo->Frontend);
@@ -2555,12 +2533,11 @@ PdoD0ToD3(
 }
 
 __checkReturn
-NTSTATUS
+BOOLEAN
 PdoCreate(
     __in PXENVBD_FDO             Fdo,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
-    __in BOOLEAN                 EmulatedUnplugged,
     __in PKEVENT                 FrontendEvent,
     __in XENVBD_DEVICE_TYPE      DeviceType
     )
@@ -2576,7 +2553,7 @@ PdoCreate(
     if (!Pdo)
         goto fail1;
 
-    Verbose("Target[%d] : Creating (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
+    Verbose("Target[%d] : Creating\n", TargetId);
     Pdo->Signature      = PDO_SIGNATURE;
     Pdo->Fdo            = Fdo;
     Pdo->DeviceObject   = NULL; // filled in later
@@ -2585,7 +2562,6 @@ PdoCreate(
     Pdo->Paused         = 1; // Paused until D3->D0 transition
     Pdo->DevicePnpState = Present;
     Pdo->DevicePowerState = PowerDeviceD3;
-    Pdo->EmulatedUnplugged = EmulatedUnplugged;
     Pdo->DeviceType     = DeviceType;
 
     KeInitializeSpinLock(&Pdo->Lock);
@@ -2609,9 +2585,9 @@ PdoCreate(
     if (!FdoLinkPdo(Fdo, Pdo))
         goto fail4;
 
-    Verbose("Target[%d] : Created (%s)\n", TargetId, EmulatedUnplugged ? "PV" : "Emulated");
+    Verbose("Target[%d] : Created (%s)\n", TargetId);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-    return STATUS_SUCCESS;
+    return TRUE;
 
 fail4:
     Error("Fail4\n");
@@ -2631,7 +2607,7 @@ fail2:
 
 fail1:
     Error("Fail1 (%08x)\n", Status);
-    return Status;
+    return FALSE;
 }
 
 VOID
