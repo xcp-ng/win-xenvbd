@@ -2458,15 +2458,6 @@ PdoIssueDeviceEject(
     }
 }
 
-__drv_requiresIRQL(DISPATCH_LEVEL)
-VOID
-PdoBackendPathChanged(
-    __in PXENVBD_PDO             Pdo
-    )
-{
-    FrontendBackendPathChanged(Pdo->Frontend);
-}
-
 __checkReturn
 NTSTATUS
 PdoD3ToD0(
@@ -2538,7 +2529,6 @@ PdoCreate(
     __in PXENVBD_FDO             Fdo,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
-    __in PKEVENT                 FrontendEvent,
     __in XENVBD_DEVICE_TYPE      DeviceType
     )
 {
@@ -2569,14 +2559,13 @@ PdoCreate(
     QueueInit(&Pdo->PreparedReqs);
     QueueInit(&Pdo->SubmittedReqs);
     QueueInit(&Pdo->ShutdownSrbs);
-
-    Status = FrontendCreate(Pdo, DeviceId, TargetId, FrontendEvent, &Pdo->Frontend);
-    if (!NT_SUCCESS(Status))
-        goto fail2;
-
     __LookasideInit(&Pdo->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
     __LookasideInit(&Pdo->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
     __LookasideInit(&Pdo->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
+
+    Status = FrontendCreate(Pdo, DeviceId, TargetId, &Pdo->Frontend);
+    if (!NT_SUCCESS(Status))
+        goto fail2;
 
     Status = PdoD3ToD0(Pdo);
     if (!NT_SUCCESS(Status))
@@ -2595,14 +2584,14 @@ fail4:
 
 fail3:
     Error("Fail3\n");
-    __LookasideTerm(&Pdo->IndirectList);
-    __LookasideTerm(&Pdo->SegmentList);
-    __LookasideTerm(&Pdo->RequestList);
     FrontendDestroy(Pdo->Frontend);
     Pdo->Frontend = NULL;
 
 fail2:
     Error("Fail2\n");
+    __LookasideTerm(&Pdo->IndirectList);
+    __LookasideTerm(&Pdo->SegmentList);
+    __LookasideTerm(&Pdo->RequestList);
     __PdoFree(Pdo);
 
 fail1:
@@ -2665,12 +2654,12 @@ PdoDestroy(
     ASSERT3S(Pdo->ReferenceCount, ==, 0);
     ASSERT3U(PdoGetDevicePnpState(Pdo), ==, Deleted);
 
+    FrontendDestroy(Pdo->Frontend);
+    Pdo->Frontend = NULL;
+
     __LookasideTerm(&Pdo->IndirectList);
     __LookasideTerm(&Pdo->SegmentList);
     __LookasideTerm(&Pdo->RequestList);
-
-    FrontendDestroy(Pdo->Frontend);
-    Pdo->Frontend = NULL;
 
     ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
     RtlZeroMemory(Pdo, sizeof(XENVBD_PDO));

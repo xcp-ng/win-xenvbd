@@ -171,19 +171,12 @@ FrontendSetState(
     __in  XENVBD_STATE            State
     );
 
-__drv_requiresIRQL(DISPATCH_LEVEL)
-extern VOID
-FrontendBackendPathChanged(
-    __in  PXENVBD_FRONTEND        Frontend
-    );
-
 __checkReturn
 extern NTSTATUS
 FrontendCreate(
     __in  PXENVBD_PDO             Pdo,
     __in  PCHAR                   DeviceId, 
     __in  ULONG                   TargetId, 
-    __in  PKEVENT                 Event,
     __out PXENVBD_FRONTEND*       _Frontend
     );
 

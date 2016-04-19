@@ -41,6 +41,7 @@
 #include "notifier.h"
 #include "blockring.h"
 #include "granter.h"
+#include "thread.h"
 #include <store_interface.h>
 #include <suspend_interface.h>
 
@@ -76,7 +77,7 @@ struct _XENVBD_FRONTEND {
 
     // Backend State Watch
     BOOLEAN                     Active;
-    PKEVENT                     BackendEvent;
+    PXENVBD_THREAD              BackendThread;
     PXENBUS_STORE_WATCH         BackendWatch;
 };
 
@@ -925,7 +926,7 @@ FrontendPrepare(
                           Frontend->Store,
                           NULL,
                           Frontend->BackendPath,
-                          Frontend->BackendEvent,
+                          ThreadGetEvent(Frontend->BackendThread),
                           &Frontend->BackendWatch);
     if (!NT_SUCCESS(Status))
         goto fail2;
@@ -1502,21 +1503,32 @@ FrontendSetState(
     return Status;
 }
 
-__drv_requiresIRQL(DISPATCH_LEVEL)
-VOID
-FrontendBackendPathChanged(
-    __in  PXENVBD_FRONTEND        Frontend
+__checkReturn
+static DECLSPEC_NOINLINE NTSTATUS
+FrontendBackend(
+    __in PXENVBD_THREAD              Thread,
+    __in PVOID                       Context
     )
 {
-    KIRQL       Irql;
-    KeAcquireSpinLock(&Frontend->StateLock, &Irql);
-    // Only attempt this if Active, Active is set/cleared on D3->D0/D0->D3
-    if (Frontend->Active) {
-        // Note: Nothing may have changed with this target, this could be caused by another target changing
-        __ReadDiskInfo(Frontend);
-        __CheckBackendForEject(Frontend);
+    PXENVBD_FRONTEND                Frontend = Context;
+
+    for (;;) {
+        KIRQL       Irql;
+
+        if (ThreadWait(Thread))
+            break;
+
+        KeAcquireSpinLock(&Frontend->StateLock, &Irql);
+        // Only attempt this if Active, Active is set/cleared on D3->D0/D0->D3
+        if (Frontend->Active) {
+            __ReadDiskInfo(Frontend);
+            __CheckBackendForEject(Frontend);
+        }
+        KeReleaseSpinLock(&Frontend->StateLock, Irql);
     }
-    KeReleaseSpinLock(&Frontend->StateLock, Irql);
+
+    return STATUS_SUCCESS;
+
 }
 
 __checkReturn
@@ -1525,7 +1537,6 @@ FrontendCreate(
     __in  PXENVBD_PDO             Pdo,
     __in  PCHAR                   DeviceId, 
     __in  ULONG                   TargetId, 
-    __in  PKEVENT                 Event,
     __out PXENVBD_FRONTEND*       _Frontend
     )
 {
@@ -1547,7 +1558,6 @@ FrontendCreate(
     Frontend->State = XENVBD_INITIALIZED;
     Frontend->DiskInfo.SectorSize = 512; // default sector size
     Frontend->BackendId = DOMID_INVALID;
-    Frontend->BackendEvent = Event;
     
     Status = STATUS_INSUFFICIENT_RESOURCES;
     Frontend->FrontendPath = DriverFormat("device/%s/%s", FdoEnum(PdoGetFdo(Pdo)), DeviceId);
@@ -1570,6 +1580,10 @@ FrontendCreate(
     if (!NT_SUCCESS(Status))
         goto fail6;
 
+    Status = ThreadCreate(FrontendBackend, Frontend, &Frontend->BackendThread);
+    if (!NT_SUCCESS(Status))
+        goto fail7;
+
     // kernel objects
     KeInitializeSpinLock(&Frontend->StateLock);
     
@@ -1577,6 +1591,10 @@ FrontendCreate(
     *_Frontend = Frontend;
     return STATUS_SUCCESS;
 
+fail7:
+    Error("fail7\n");
+    GranterDestroy(Frontend->Granter);
+    Frontend->Granter = NULL;
 fail6:
     Error("fail6\n");
     BlockRingDestroy(Frontend->BlockRing);
@@ -1613,6 +1631,10 @@ FrontendDestroy(
 
     PdoFreeInquiryData(Frontend->Inquiry);
     Frontend->Inquiry = NULL;
+
+    ThreadAlert(Frontend->BackendThread);
+    ThreadJoin(Frontend->BackendThread);
+    Frontend->BackendThread = NULL;
 
     GranterDestroy(Frontend->Granter);
     Frontend->Granter = NULL;

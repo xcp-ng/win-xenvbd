@@ -55,7 +55,6 @@ PdoCreate(
     __in PXENVBD_FDO             Fdo,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
-    __in PKEVENT                 FrontendEvent,
     __in XENVBD_DEVICE_TYPE      DeviceType
     );
 
@@ -72,12 +71,6 @@ PdoD3ToD0(
 
 extern VOID
 PdoD0ToD3(
-    __in PXENVBD_PDO             Pdo
-    );
-
-__drv_requiresIRQL(DISPATCH_LEVEL)
-extern VOID
-PdoBackendPathChanged(
     __in PXENVBD_PDO             Pdo
     );
 

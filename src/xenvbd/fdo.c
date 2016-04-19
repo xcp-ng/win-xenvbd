@@ -93,7 +93,6 @@ struct _XENVBD_FDO {
     PXENVBD_THREAD              ScanThread;
     KEVENT                      ScanEvent;
     PXENBUS_STORE_WATCH         ScanWatch;
-    PXENVBD_THREAD              FrontendThread;
 
     // Statistics
     LONG                        CurrentSrbs;
@@ -648,7 +647,6 @@ __FdoEnumerate(
         if (PdoCreate(Fdo,
                       Device,
                       TargetId,
-                      ThreadGetEvent(Fdo->FrontendThread),
                       DeviceType)) {
             *NeedInvalidate = TRUE;
         }
@@ -708,43 +706,6 @@ FdoScan(
         KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
     }
     KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
-
-    return STATUS_SUCCESS;
-}
-
-__checkReturn
-static DECLSPEC_NOINLINE NTSTATUS
-FdoFrontend(
-    __in PXENVBD_THREAD              Thread,
-    __in PVOID                       Context
-    )
-{
-    PXENVBD_FDO     Fdo = Context;
-
-    for (;;) {
-        ULONG       TargetId;
-        KIRQL       Irql;
-        
-        if (!ThreadWait(Thread))
-            break;
-
-        KeAcquireSpinLock(&Fdo->Lock, &Irql);
-
-        if (Fdo->DevicePower != PowerDeviceD0) {
-            KeReleaseSpinLock(&Fdo->Lock, Irql);
-            continue;
-        }
-
-        for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-            PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
-            if (Pdo) {
-                PdoBackendPathChanged(Pdo);
-                PdoDereference(Pdo);
-            }
-        }
-
-        KeReleaseSpinLock(&Fdo->Lock, Irql);
-    }
 
     return STATUS_SUCCESS;
 }
@@ -1556,13 +1517,9 @@ __FdoInitialize(
     if (!NT_SUCCESS(Status))
         goto fail3;
 
-    Status = ThreadCreate(FdoFrontend, Fdo, &Fdo->FrontendThread);
-    if (!NT_SUCCESS(Status))
-        goto fail4;
-
     Status = ThreadCreate(FdoDevicePower, Fdo, &Fdo->DevicePowerThread);
     if (!NT_SUCCESS(Status))
-        goto fail5;
+        goto fail4;
 
     // query enumerator
     // fix this up to query from device location(?)
@@ -1574,11 +1531,6 @@ __FdoInitialize(
     Trace("<===== (%d)\n", KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
-fail5:
-    Error("fail5\n");
-    ThreadAlert(Fdo->FrontendThread);
-    ThreadJoin(Fdo->FrontendThread);
-    Fdo->FrontendThread = NULL;
 fail4:
     Error("fail4\n");
     ThreadAlert(Fdo->ScanThread);
@@ -1620,11 +1572,6 @@ __FdoTerminate(
     ThreadAlert(Fdo->DevicePowerThread);
     ThreadJoin(Fdo->DevicePowerThread);
     Fdo->DevicePowerThread = NULL;
-
-    // stop frontend thread
-    ThreadAlert(Fdo->FrontendThread);
-    ThreadJoin(Fdo->FrontendThread);
-    Fdo->FrontendThread = NULL;
 
     // stop enum thread
     ThreadAlert(Fdo->ScanThread);
