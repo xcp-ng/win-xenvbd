@@ -42,10 +42,6 @@
 #include <xencrsh_interface.h>
 #include <xenvbd-ntstrsafe.h>
 
-#define IS_NULL         ((ULONG)'llun')
-#define IS_FDO          ((ULONG)'odf')
-#define IS_PDO          ((ULONG)'odp')
-//=============================================================================
 XENVBD_PARAMETERS   DriverParameters;
 HANDLE              DriverStatusKey;
 
@@ -261,65 +257,26 @@ DriverUnlinkFdo(
     KeReleaseSpinLock(&__XenvbdLock, Irql);
 }
 
-__checkReturn
-static FORCEINLINE ULONG
-DriverGetFdoOrPdo(
-    __in PDEVICE_OBJECT          DeviceObject,
-    __out PXENVBD_FDO*           _Fdo,
-    __out PXENVBD_PDO*           _Pdo
+static FORCEINLINE BOOLEAN
+__DriverGetFdo(
+    IN  PDEVICE_OBJECT      DeviceObject,
+    OUT PXENVBD_FDO         *Fdo
     )
 {
     KIRQL       Irql;
-    ULONG       Result = IS_NULL;
-    
-    *_Fdo = NULL;
-    *_Pdo = NULL;
+    BOOLEAN     IsFdo = FALSE;
 
     KeAcquireSpinLock(&__XenvbdLock, &Irql);
-    if (__XenvbdFdo) {
-        PXENVBD_FDO Fdo = __XenvbdFdo;
-        if (FdoReference(Fdo) > 0) {
-            if (FdoGetDeviceObject(Fdo) == DeviceObject) {
-                *_Fdo = Fdo;
-                Result = IS_FDO;
-            } else {
-                KeReleaseSpinLock(&__XenvbdLock, Irql);
-
-                *_Pdo = FdoGetPdoFromDeviceObject(Fdo, DeviceObject);
-                FdoDereference(Fdo);
-                return IS_PDO;
-            }
+    *Fdo = __XenvbdFdo;
+    if (*Fdo) {
+        FdoReference(*Fdo);
+        if (FdoGetDeviceObject(*Fdo) == DeviceObject) {
+            IsFdo = TRUE;
         }
     }
     KeReleaseSpinLock(&__XenvbdLock, Irql);
 
-    return Result;
-}
-__checkReturn
-static FORCEINLINE NTSTATUS
-DriverMapPdo(
-    __in PDEVICE_OBJECT          DeviceObject, 
-    __in PIRP                    Irp
-    )
-{
-    KIRQL       Irql;
-    NTSTATUS    Status;
-
-    KeAcquireSpinLock(&__XenvbdLock, &Irql);
-    if (__XenvbdFdo && FdoGetDeviceObject(__XenvbdFdo) != DeviceObject) {
-        PXENVBD_FDO Fdo = __XenvbdFdo;
-        if (FdoReference(Fdo) > 0) {
-            KeReleaseSpinLock(&__XenvbdLock, Irql);
-            Status = FdoMapDeviceObjectToPdo(Fdo, DeviceObject, Irp);
-            FdoDereference(Fdo);
-            goto done;
-        }
-    }
-    KeReleaseSpinLock(&__XenvbdLock, Irql);
-    Status = DriverDispatchPnp(DeviceObject, Irp);
-
-done:
-    return Status;
+    return IsFdo;
 }
 
 VOID
@@ -563,9 +520,6 @@ HwStartIo(
     return FdoStartIo((PXENVBD_FDO)HwDeviceExtension, Srb);
 }
 
-//=============================================================================
-// Driver Redirections
-
 __drv_dispatchType(IRP_MJ_PNP)
 DRIVER_DISPATCH             DispatchPnp;
 
@@ -575,34 +529,15 @@ DispatchPnp(
     IN PIRP             Irp
     )
 {
-    NTSTATUS            Status;
-    ULONG               IsFdo;
     PXENVBD_FDO         Fdo;
-    PXENVBD_PDO         Pdo;
 
-    IsFdo = DriverGetFdoOrPdo(DeviceObject, &Fdo, &Pdo);
+    if (__DriverGetFdo(DeviceObject, &Fdo))
+        return FdoDispatchPnp(Fdo, DeviceObject, Irp);
 
-    switch (IsFdo) {
-    case IS_FDO:
-        Status = FdoDispatchPnp(Fdo, DeviceObject, Irp); // drops Fdo reference
-        break;
+    if (Fdo != NULL)
+        return FdoForwardPnp(Fdo, DeviceObject, Irp);
 
-    case IS_PDO:
-        if (Pdo) {
-            Status = PdoDispatchPnp(Pdo, DeviceObject, Irp); // drops Pdo reference
-        } else {
-            Status = DriverMapPdo(DeviceObject, Irp);
-        }
-        break;
-
-    case IS_NULL:
-    default:
-        Warning("DeviceObject 0x%p is not FDO (0x%p) or a PDO\n", DeviceObject, __XenvbdFdo);
-        Status = DriverDispatchPnp(DeviceObject, Irp);
-        break;
-    }
-
-    return Status;
+    return DriverDispatchPnp(DeviceObject, Irp);
 }
 
 __drv_dispatchType(IRP_MJ_POWER)
@@ -614,35 +549,15 @@ DispatchPower(
     IN PIRP             Irp
     )
 {
-    NTSTATUS            Status;
-    ULONG               IsFdo;
     PXENVBD_FDO         Fdo;
-    PXENVBD_PDO         Pdo;
 
-    IsFdo = DriverGetFdoOrPdo(DeviceObject, &Fdo, &Pdo);
+    if (__DriverGetFdo(DeviceObject, &Fdo))
+        return FdoDispatchPower(Fdo, DeviceObject, Irp);
 
-    switch (IsFdo) {
-    case IS_FDO:
-        ASSERT3P(Fdo, !=, NULL);
-        ASSERT3P(Pdo, ==, NULL);
-        Status = FdoDispatchPower(Fdo, DeviceObject, Irp); // drops Fdo reference
-        break;
+    if (Fdo != NULL)
+        FdoDereference(Fdo);
 
-    case IS_PDO:
-        if (Pdo) {
-            PdoDereference(Pdo); // drops Pdo reference
-        }
-        Status = DriverDispatchPower(DeviceObject, Irp);
-        break;
-
-    case IS_NULL:
-    default:
-        Warning("DeviceObject 0x%p is not FDO (0x%p) or a PDO\n", DeviceObject, __XenvbdFdo);
-        Status = DriverDispatchPower(DeviceObject, Irp);
-        break;
-    }
-
-    return Status;
+    return DriverDispatchPower(DeviceObject, Irp);
 }
 
 DRIVER_UNLOAD               DriverUnload;

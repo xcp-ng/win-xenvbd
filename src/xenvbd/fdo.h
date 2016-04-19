@@ -127,7 +127,14 @@ FdoStartIo(
     __in PSCSI_REQUEST_BLOCK         Srb
     );
 
-// PnP Handler
+__checkReturn
+extern NTSTATUS
+FdoForwardPnp(
+    __in PXENVBD_FDO                Fdo,
+    __in PDEVICE_OBJECT             DeviceObject,
+    __in PIRP                       Irp
+    );
+
 __checkReturn
 extern NTSTATUS
 FdoDispatchPnp(
@@ -137,22 +144,6 @@ FdoDispatchPnp(
     );
 
 __checkReturn
-extern PXENVBD_PDO
-FdoGetPdoFromDeviceObject(
-    __in PXENVBD_FDO                 Fdo,
-    __in PDEVICE_OBJECT              DeviceObject
-    );
-
-__checkReturn
-extern NTSTATUS
-FdoMapDeviceObjectToPdo(
-    __in PXENVBD_FDO                 Fdo,
-    __in PDEVICE_OBJECT              DeviceObject,
-    __in PIRP                        Irp
-    );
-
-// Power Handler
-__checkReturn
 extern NTSTATUS
 FdoDispatchPower(
     __in PXENVBD_FDO                 Fdo,
@@ -160,7 +151,6 @@ FdoDispatchPower(
     __in PIRP                        Irp
     );
 
-// Interfaces
 extern PXENBUS_STORE_INTERFACE
 FdoAcquireStore(
     __in PXENVBD_FDO                 Fdo

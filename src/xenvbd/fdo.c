@@ -1879,70 +1879,7 @@ FdoStartIo(
     return TRUE;
 }
 
-//=============================================================================
-// PnP Handler
-__checkReturn
-NTSTATUS
-FdoDispatchPnp(
-    __in PXENVBD_FDO                 Fdo,
-    __in PDEVICE_OBJECT              DeviceObject,
-    __in PIRP                        Irp
-    )
-{
-    PIO_STACK_LOCATION  Stack = IoGetCurrentIrpStackLocation(Irp);
-    UCHAR               Minor = Stack->MinorFunction;
-    NTSTATUS            Status;
-
-    switch (Stack->MinorFunction) {
-    case IRP_MN_REMOVE_DEVICE:
-        Verbose("FDO:IRP_MN_REMOVE_DEVICE\n");
-        FdoD0ToD3(Fdo);
-        FdoUnplugRequest(Fdo, FALSE);
-        // drop ref-count acquired in DriverGetFdo *before* destroying Fdo
-        FdoDereference(Fdo);
-        __FdoTerminate(Fdo);
-        break;
-
-    case IRP_MN_QUERY_DEVICE_RELATIONS:
-        if (Stack->Parameters.QueryDeviceRelations.Type == BusRelations) {
-            KIRQL   Irql;
-            BOOLEAN NeedInvalidate;
-            BOOLEAN NeedReboot;
-
-            KeAcquireSpinLock(&Fdo->Lock, &Irql);
-            
-            if (Fdo->DevicePower == PowerDeviceD0) {
-                FdoScanTargets(Fdo, &NeedInvalidate, &NeedReboot);
-            } else {
-                NeedInvalidate = FALSE;
-                NeedReboot = FALSE;
-            }
-            
-            KeReleaseSpinLock(&Fdo->Lock, Irql);
-
-            if (NeedInvalidate)
-                FdoLogTargets("QUERY_RELATIONS", Fdo);
-
-            if (NeedReboot)
-                DriverNotifyInstaller();
-        }
-        FdoDereference(Fdo);
-        break;
-
-    default:
-        FdoDereference(Fdo);
-        break;
-    }
-
-    Status = DriverDispatchPnp(DeviceObject, Irp);
-    if (!NT_SUCCESS(Status)) {
-        Verbose("%02x:%s -> %08x\n", Minor, PnpMinorFunctionName(Minor), Status);
-    }
-    return Status;
-}
-
-__checkReturn
-PXENVBD_PDO
+static PXENVBD_PDO
 FdoGetPdoFromDeviceObject(
     __in PXENVBD_FDO                 Fdo,
     __in PDEVICE_OBJECT              DeviceObject
@@ -1964,24 +1901,27 @@ FdoGetPdoFromDeviceObject(
     return NULL;
 }
 
-__checkReturn
-static FORCEINLINE NTSTATUS
-__FdoSendQueryId(
-    __in PDEVICE_OBJECT              DeviceObject,
-    __out PWCHAR*                    _String
+static PXENVBD_PDO
+FdoMapDeviceObjectToPdo(
+    __in PXENVBD_FDO                Fdo,
+    __in PDEVICE_OBJECT             DeviceObject
     )
 {
-    KEVENT              Complete;
-    PIRP                Irp;
-    IO_STATUS_BLOCK     StatusBlock;
-    PIO_STACK_LOCATION  Stack;
-    NTSTATUS            Status;
+    PXENVBD_PDO                 Pdo;
+    KEVENT                      Complete;
+    PIRP                        Irp;
+    IO_STATUS_BLOCK             StatusBlock;
+    PIO_STACK_LOCATION          Stack;
+    NTSTATUS                    Status;
+    PWCHAR                      String;
+    ULONG                       TargetId;
+    DECLARE_UNICODE_STRING_SIZE(UniStr, 4);
 
     KeInitializeEvent(&Complete, NotificationEvent, FALSE);
     
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &Complete, &StatusBlock);
-    if (!Irp)
-        return STATUS_INSUFFICIENT_RESOURCES;
+    if (Irp == NULL)
+        goto fail1;
 
     Stack = IoGetNextIrpStackLocation(Irp);
     Stack->MinorFunction = IRP_MN_QUERY_ID;
@@ -1994,21 +1934,10 @@ __FdoSendQueryId(
         (VOID) KeWaitForSingleObject(&Complete, Executive, KernelMode, FALSE, NULL);
         Status = StatusBlock.Status;
     }
-    if (NT_SUCCESS(Status)) {
-        *_String = (PWCHAR)StatusBlock.Information;
-    }
-    return Status;
-}
+    if (!NT_SUCCESS(Status))
+        goto fail2;
 
-__checkReturn
-static FORCEINLINE NTSTATUS
-__FdoExtractTargetId(
-    __in PWCHAR                      String,
-    __out PULONG                     TargetId
-    )
-{
-    DECLARE_UNICODE_STRING_SIZE(UniStr, 4);
-
+    String = (PWCHAR)StatusBlock.Information;
     switch (wcslen(String)) {
     case 3:
         UniStr.Length = 1 * sizeof(WCHAR);
@@ -2022,75 +1951,122 @@ __FdoExtractTargetId(
         UniStr_buffer[2] = UNICODE_NULL;
         break;
     default:
-        return STATUS_INVALID_PARAMETER;
+        goto fail3;
     }
 
-    return RtlUnicodeStringToInteger(&UniStr, 16, TargetId);
-}
-
-static FORCEINLINE VOID
-__FdoSetDeviceObject(
-    __in PXENVBD_FDO                 Fdo,
-    __in ULONG                       TargetId,
-    __in PDEVICE_OBJECT              DeviceObject
-    )
-{
-    PXENVBD_PDO Pdo;
+    Status = RtlUnicodeStringToInteger(&UniStr, 16, &TargetId);
+    if (!NT_SUCCESS(Status))
+        goto fail4;
 
     Pdo = __FdoGetPdo(Fdo, TargetId);
-    if (Pdo) {
-        PdoSetDeviceObject(Pdo, DeviceObject);
-        PdoDereference(Pdo);
-    }
+    if (Pdo == NULL)
+        goto fail5;
+
+    PdoSetDeviceObject(Pdo, DeviceObject);
+    ExFreePool(String);
+
+    return Pdo;
+
+fail5:
+fail4:
+fail3:
+    ExFreePool(String);
+fail2:
+fail1:
+    return NULL;
 }
 
 __checkReturn
 NTSTATUS
-FdoMapDeviceObjectToPdo(
+FdoForwardPnp(
+    __in PXENVBD_FDO                Fdo,
+    __in PDEVICE_OBJECT             DeviceObject,
+    __in PIRP                       Irp
+    )
+{
+    PIO_STACK_LOCATION  Stack;
+    PXENVBD_PDO         Pdo;
+
+    ASSERT3P(DeviceObject, !=, Fdo->DeviceObject);
+
+    Pdo = FdoGetPdoFromDeviceObject(Fdo, DeviceObject);
+    if (Pdo != NULL) {
+        FdoDereference(Fdo);
+        return PdoDispatchPnp(Pdo, DeviceObject, Irp);
+    }
+
+    Stack = IoGetCurrentIrpStackLocation(Irp);
+    if (Stack->MinorFunction == IRP_MN_QUERY_ID &&
+        Stack->Parameters.QueryId.IdType == BusQueryDeviceID) {
+        Pdo = FdoMapDeviceObjectToPdo(Fdo, DeviceObject);
+        if (Pdo != NULL) {
+            FdoDereference(Fdo);
+            return PdoDispatchPnp(Pdo, DeviceObject, Irp);
+        }
+    }
+
+    FdoDereference(Fdo);
+    return DriverDispatchPnp(DeviceObject, Irp);
+}
+
+__checkReturn
+NTSTATUS
+FdoDispatchPnp(
     __in PXENVBD_FDO                 Fdo,
     __in PDEVICE_OBJECT              DeviceObject,
     __in PIRP                        Irp
     )
 {
-    PWCHAR              String;
-    NTSTATUS            Status;
-    ULONG               TargetId;
-    PIO_STACK_LOCATION  StackLocation;
-    UCHAR               Minor;
+    PIO_STACK_LOCATION  Stack;
 
-    StackLocation = IoGetCurrentIrpStackLocation(Irp);
-    Minor = StackLocation->MinorFunction;
+    ASSERT3P(DeviceObject, ==, Fdo->DeviceObject);
 
-    if (!(StackLocation->MinorFunction == IRP_MN_QUERY_ID &&
-          StackLocation->Parameters.QueryId.IdType == BusQueryDeviceID)) {
-        goto done;
+    Stack = IoGetCurrentIrpStackLocation(Irp);
+
+    switch (Stack->MinorFunction) {
+    case IRP_MN_REMOVE_DEVICE:
+        Verbose("FDO:IRP_MN_REMOVE_DEVICE\n");
+        FdoD0ToD3(Fdo);
+        FdoUnplugRequest(Fdo, FALSE);
+        // drop ref-count acquired in DriverGetFdo *before* destroying Fdo
+        FdoDereference(Fdo);
+        __FdoTerminate(Fdo);
+        break;
+
+    case IRP_MN_QUERY_DEVICE_RELATIONS:
+        if (Stack->Parameters.QueryDeviceRelations.Type == BusRelations) {
+            KIRQL   Irql;
+            BOOLEAN NeedInvalidate;
+            BOOLEAN NeedReboot;
+
+            KeAcquireSpinLock(&Fdo->Lock, &Irql);
+
+            if (Fdo->DevicePower == PowerDeviceD0) {
+                FdoScanTargets(Fdo, &NeedInvalidate, &NeedReboot);
+            } else {
+                NeedInvalidate = FALSE;
+                NeedReboot = FALSE;
+            }
+
+            KeReleaseSpinLock(&Fdo->Lock, Irql);
+
+            if (NeedInvalidate)
+                FdoLogTargets("QUERY_RELATIONS", Fdo);
+
+            if (NeedReboot)
+                DriverNotifyInstaller();
+        }
+        FdoDereference(Fdo);
+        break;
+
+    default:
+        FdoDereference(Fdo);
+        break;
     }
 
-    Status = __FdoSendQueryId(DeviceObject, &String);
-    if (!NT_SUCCESS(Status)) {
-        goto done;
-    }
-
-    Status = __FdoExtractTargetId(String, &TargetId);
-    if (NT_SUCCESS(Status)) {
-        __FdoSetDeviceObject(Fdo, TargetId, DeviceObject);
-        Verbose("0x%p --> Target %d (%ws)\n", DeviceObject, TargetId, String);
-    }
-
-    // String is PagedPool, allocated by lower driver
-    ASSERT3U(KeGetCurrentIrql(), <=, APC_LEVEL);
-    ExFreePool(String);
-
-done:
-    Status = DriverDispatchPnp(DeviceObject, Irp);;
-    if (!NT_SUCCESS(Status)) {
-        Verbose("%02x:%s -> %08x\n", Minor, PnpMinorFunctionName(Minor), Status);
-    }
-    return Status;
+    return DriverDispatchPnp(DeviceObject, Irp);
 }
 
-//=============================================================================
-// Power Handler
 __checkReturn
 NTSTATUS
 FdoDispatchPower(
@@ -2102,6 +2078,8 @@ FdoDispatchPower(
     PIO_STACK_LOCATION  Stack;
     POWER_STATE_TYPE    PowerType;
     NTSTATUS            status;
+
+    ASSERT3P(DeviceObject, ==, Fdo->DeviceObject);
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
     PowerType = Stack->Parameters.Power.Type;
@@ -2136,8 +2114,6 @@ FdoDispatchPower(
     return status;
 }
 
-//=============================================================================
-// Interfaces
 PXENBUS_STORE_INTERFACE
 FdoAcquireStore(
     __in PXENVBD_FDO    Fdo
