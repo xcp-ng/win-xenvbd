@@ -428,16 +428,6 @@ FdoDebugCallback(
 
 //=============================================================================
 // Enumeration
-__checkReturn
-static FORCEINLINE PCHAR
-__NextSz(
-    __in PCHAR                       Str
-    )
-{
-    for (; *Str; ++Str) ;
-    ++Str;
-    return Str;
-}
 static FORCEINLINE ULONG
 __ParseVbd(
     __in PCHAR                       DeviceIdStr
@@ -573,14 +563,15 @@ __FdoIsPdoUnplugged(
 
 static FORCEINLINE VOID
 __FdoEnumerate(
-    __in    PXENVBD_FDO Fdo,
-    __in    PCHAR       Devices,
-    __out   PBOOLEAN    NeedInvalidate,
-    __out   PBOOLEAN    NeedReboot
+    __in    PXENVBD_FDO     Fdo,
+    __in    PANSI_STRING    Devices,
+    __out   PBOOLEAN        NeedInvalidate,
+    __out   PBOOLEAN        NeedReboot
     )
 {
     ULONG               TargetId;
-    PCHAR               Device;
+    PANSI_STRING        Device;
+    ULONG               Index;
     PXENVBD_PDO         Pdo;
 
     *NeedInvalidate = FALSE;
@@ -593,8 +584,10 @@ __FdoEnumerate(
         if (Pdo == NULL)
             continue;
 
-        for (Device = Devices; *Device; Device = __NextSz(Device)) {
-            ULONG DeviceTargetId = __ParseVbd(Device);
+        for (Index = 0; Devices[Index].Buffer != NULL; ++Index) {
+            ULONG DeviceTargetId;
+            Device = &Devices[Index];
+            DeviceTargetId = __ParseVbd(Device->Buffer);
             if (TargetId == DeviceTargetId) {
                 Missing = FALSE;
                 break;
@@ -618,10 +611,12 @@ __FdoEnumerate(
     }
 
     // add new targets
-    for (Device = Devices; *Device; Device = __NextSz(Device)) {
+    for (Index = 0; Devices[Index].Buffer != NULL; ++Index) {
         XENVBD_DEVICE_TYPE  DeviceType;
 
-        TargetId = __ParseVbd(Device);
+        Device = &Devices[Index];
+
+        TargetId = __ParseVbd(Device->Buffer);
         if (TargetId == 0xFFFFFFFF) {
             continue;
         }
@@ -632,26 +627,181 @@ __FdoEnumerate(
             continue;
         }
 
-        if (__FdoHiddenTarget(Fdo, Device, &DeviceType)) {
+        if (__FdoHiddenTarget(Fdo, Device->Buffer, &DeviceType)) {
             continue;
         }
 
         if (!__FdoIsPdoUnplugged(Fdo,
                                 FdoEnum(Fdo),
-                                Device,
+                                Device->Buffer,
                                 TargetId)) {
             *NeedReboot = TRUE;
             continue;
         }
 
         if (PdoCreate(Fdo,
-                      Device,
+                      Device->Buffer,
                       TargetId,
                       DeviceType)) {
             *NeedInvalidate = TRUE;
         }
     }
 }
+
+static FORCEINLINE PANSI_STRING
+__FdoMultiSzToAnsi(
+    IN  PCHAR       Buffer
+    )
+{
+    PANSI_STRING    Ansi;
+    LONG            Index;
+    LONG            Count;
+    NTSTATUS        status;
+
+    Index = 0;
+    Count = 0;
+    for (;;) {
+        if (Buffer[Index] == '\0') {
+            Count++;
+            Index++;
+
+            // Check for double NUL
+            if (Buffer[Index] == '\0')
+                break;
+        } else {
+            Index++;
+        }
+    }
+
+    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                         __LINE__,
+                                         sizeof (ANSI_STRING) * (Count + 1),
+                                         FDO_SIGNATURE);
+
+    status = STATUS_NO_MEMORY;
+    if (Ansi == NULL)
+        goto fail1;
+
+    for (Index = 0; Index < Count; Index++) {
+        ULONG   Length;
+
+        Length = (ULONG)strlen(Buffer);
+        Ansi[Index].MaximumLength = (USHORT)(Length + 1);
+        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                                           __LINE__,
+                                                           Ansi[Index].MaximumLength,
+                                                           FDO_SIGNATURE);
+
+        status = STATUS_NO_MEMORY;
+        if (Ansi[Index].Buffer == NULL)
+            goto fail2;
+
+        RtlCopyMemory(Ansi[Index].Buffer, Buffer, Length);
+        Ansi[Index].Length = (USHORT)Length;
+
+        Buffer += Length + 1;
+    }
+
+    return Ansi;
+
+fail2:
+    Error("fail2\n");
+
+    while (--Index >= 0)
+            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+
+    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return NULL;
+}
+
+static FORCEINLINE PANSI_STRING
+__FdoMultiSzToUpcaseAnsi(
+    IN  PCHAR       Buffer
+    )
+{
+    PANSI_STRING    Ansi;
+    LONG            Index;
+    LONG            Count;
+    NTSTATUS        status;
+
+    Index = 0;
+    Count = 0;
+    for (;;) {
+        if (Buffer[Index] == '\0') {
+            Count++;
+            Index++;
+
+            // Check for double NUL
+            if (Buffer[Index] == '\0')
+                break;
+        } else {
+            Buffer[Index] = __toupper(Buffer[Index]);
+            Index++;
+        }
+    }
+
+    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                         __LINE__,
+                                         sizeof (ANSI_STRING) * (Count + 1),
+                                         FDO_SIGNATURE);
+
+    status = STATUS_NO_MEMORY;
+    if (Ansi == NULL)
+        goto fail1;
+
+    for (Index = 0; Index < Count; Index++) {
+        ULONG   Length;
+
+        Length = (ULONG)strlen(Buffer);
+        Ansi[Index].MaximumLength = (USHORT)(Length + 1);
+        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
+                                                           __LINE__,
+                                                           Ansi[Index].MaximumLength,
+                                                           FDO_SIGNATURE);
+
+        status = STATUS_NO_MEMORY;
+        if (Ansi[Index].Buffer == NULL)
+            goto fail2;
+
+        RtlCopyMemory(Ansi[Index].Buffer, Buffer, Length);
+        Ansi[Index].Length = (USHORT)Length;
+
+        Buffer += Length + 1;
+    }
+
+    return Ansi;
+
+fail2:
+    Error("fail2\n");
+
+    while (--Index >= 0)
+            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+
+    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return NULL;
+}
+
+static FORCEINLINE VOID
+__FdoFreeAnsi(
+    IN  PANSI_STRING    Ansi
+    )
+{
+    ULONG               Index;
+
+    for (Index = 0; Ansi[Index].Buffer != NULL; Index++)
+            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+
+    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+}
+
 static DECLSPEC_NOINLINE VOID
 FdoScanTargets(
     __in    PXENVBD_FDO Fdo
@@ -659,6 +809,7 @@ FdoScanTargets(
 {
     NTSTATUS        Status;
     PCHAR           Buffer;
+    PANSI_STRING    Devices;
     BOOLEAN         NeedInvalidate;
     BOOLEAN         NeedReboot;
 
@@ -666,8 +817,14 @@ FdoScanTargets(
     if (!NT_SUCCESS(Status))
         return;
 
-    __FdoEnumerate(Fdo, Buffer, &NeedInvalidate, &NeedReboot);
+    Devices = __FdoMultiSzToAnsi(Buffer);
     XENBUS_STORE(Free, &Fdo->Store, Buffer);
+
+    if (Devices == NULL)
+        return;
+
+    __FdoEnumerate(Fdo, Devices, &NeedInvalidate, &NeedReboot);
+    __FdoFreeAnsi(Devices);
 
     if (NeedInvalidate) {
         StorPortNotification(BusChangeDetected, Fdo, 0);
@@ -898,90 +1055,6 @@ __FdoRelease(
     XENBUS_SUSPEND(Release, &Fdo->Suspend);
     if (Fdo->Emulated.Interface.Context)
         XENFILT_EMULATED(Release, &Fdo->Emulated);
-}
-
-static FORCEINLINE PANSI_STRING
-__FdoMultiSzToUpcaseAnsi(
-    IN  PCHAR       Buffer
-    )
-{
-    PANSI_STRING    Ansi;
-    LONG            Index;
-    LONG            Count;
-    NTSTATUS        status;
-
-    Index = 0;
-    Count = 0;
-    for (;;) {
-        if (Buffer[Index] == '\0') {
-            Count++;
-            Index++;
-
-            // Check for double NUL
-            if (Buffer[Index] == '\0')
-                break;
-        } else {
-            Buffer[Index] = __toupper(Buffer[Index]);
-            Index++;
-        }
-    }
-
-    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                         __LINE__,
-                                         sizeof (ANSI_STRING) * (Count + 1),
-                                         FDO_SIGNATURE);
-
-    status = STATUS_NO_MEMORY;
-    if (Ansi == NULL)
-        goto fail1;
-
-    for (Index = 0; Index < Count; Index++) {
-        ULONG   Length;
-
-        Length = (ULONG)strlen(Buffer);
-        Ansi[Index].MaximumLength = (USHORT)(Length + 1);
-        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                                           __LINE__,
-                                                           Ansi[Index].MaximumLength,
-                                                           FDO_SIGNATURE);
-
-        status = STATUS_NO_MEMORY;
-        if (Ansi[Index].Buffer == NULL)
-            goto fail2;
-
-        RtlCopyMemory(Ansi[Index].Buffer, Buffer, Length);
-        Ansi[Index].Length = (USHORT)Length;
-
-        Buffer += Length + 1;
-    }
-
-    return Ansi;
-
-fail2:
-    Error("fail2\n");
-
-    while (--Index >= 0)
-            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
-
-    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
-
-fail1:
-    Error("fail1 (%08x)\n", status);
-
-    return NULL;
-}
-
-static FORCEINLINE VOID
-__FdoFreeAnsi(
-    IN  PANSI_STRING    Ansi
-    )
-{
-    ULONG               Index;
-
-    for (Index = 0; Ansi[Index].Buffer != NULL; Index++)
-            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
-
-    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
 }
 
 static FORCEINLINE BOOLEAN
