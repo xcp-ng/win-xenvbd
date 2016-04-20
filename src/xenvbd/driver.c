@@ -42,8 +42,18 @@
 #include <xencrsh_interface.h>
 #include <xenvbd-ntstrsafe.h>
 
+typedef struct _XENVBD_DRIVER {
+    HANDLE              StatusKey;
+    PDRIVER_DISPATCH    StorPortDispatchPnp;
+    PDRIVER_DISPATCH    StorPortDispatchPower;
+    PDRIVER_UNLOAD      StorPortDriverUnload;
+    PXENVBD_FDO         Fdo;
+    KSPIN_LOCK          Lock;
+} XENVBD_DRIVER;
+
+static XENVBD_DRIVER Driver;
+
 XENVBD_PARAMETERS   DriverParameters;
-HANDLE              DriverStatusKey;
 
 #define XENVBD_POOL_TAG     'dbvX'
 
@@ -203,18 +213,13 @@ __DriverParseParameterKey(
             DriverParameters.PVCDRom ? "PV_CDROM " : "");
 }
 
-//=============================================================================
-static PDRIVER_DISPATCH     StorPortDispatchPnp;
-static PDRIVER_DISPATCH     StorPortDispatchPower;
-static PDRIVER_UNLOAD       StorPortDriverUnload;
-
 NTSTATUS
 DriverDispatchPnp(
     IN  PDEVICE_OBJECT  DeviceObject,
     IN  PIRP            Irp
     )
 {
-    return StorPortDispatchPnp(DeviceObject, Irp);
+    return Driver.StorPortDispatchPnp(DeviceObject, Irp);
 }
 
 NTSTATUS
@@ -223,13 +228,8 @@ DriverDispatchPower(
     IN  PIRP            Irp
     )
 {
-    return StorPortDispatchPower(DeviceObject, Irp);
+    return Driver.StorPortDispatchPower(DeviceObject, Irp);
 }
-
-//=============================================================================
-// Fdo Device Extension management
-static PXENVBD_FDO              __XenvbdFdo;
-static KSPIN_LOCK               __XenvbdLock;
 
 VOID
 DriverLinkFdo(
@@ -238,9 +238,9 @@ DriverLinkFdo(
 {
     KIRQL       Irql;
 
-    KeAcquireSpinLock(&__XenvbdLock, &Irql);
-    __XenvbdFdo = Fdo;
-    KeReleaseSpinLock(&__XenvbdLock, Irql);
+    KeAcquireSpinLock(&Driver.Lock, &Irql);
+    Driver.Fdo = Fdo;
+    KeReleaseSpinLock(&Driver.Lock, Irql);
 }
 
 VOID
@@ -252,9 +252,9 @@ DriverUnlinkFdo(
 
     UNREFERENCED_PARAMETER(Fdo);
 
-    KeAcquireSpinLock(&__XenvbdLock, &Irql);
-    __XenvbdFdo = NULL;
-    KeReleaseSpinLock(&__XenvbdLock, Irql);
+    KeAcquireSpinLock(&Driver.Lock, &Irql);
+    Driver.Fdo = NULL;
+    KeReleaseSpinLock(&Driver.Lock, Irql);
 }
 
 static FORCEINLINE BOOLEAN
@@ -266,15 +266,15 @@ __DriverGetFdo(
     KIRQL       Irql;
     BOOLEAN     IsFdo = FALSE;
 
-    KeAcquireSpinLock(&__XenvbdLock, &Irql);
-    *Fdo = __XenvbdFdo;
+    KeAcquireSpinLock(&Driver.Lock, &Irql);
+    *Fdo = Driver.Fdo;
     if (*Fdo) {
         FdoReference(*Fdo);
         if (FdoGetDeviceObject(*Fdo) == DeviceObject) {
             IsFdo = TRUE;
         }
     }
-    KeReleaseSpinLock(&__XenvbdLock, Irql);
+    KeReleaseSpinLock(&Driver.Lock, Irql);
 
     return IsFdo;
 }
@@ -306,7 +306,7 @@ DriverNotifyInstaller(
 
     RtlInitUnicodeString(&Unicode, L"NeedReboot");
 
-    status = ZwSetValueKey(DriverStatusKey,
+    status = ZwSetValueKey(Driver.StatusKey,
                            &Unicode,
                            Partial->TitleIndex,
                            Partial->Type,
@@ -571,9 +571,11 @@ DriverUnload(
     Verbose("%s (%s)\n",
          MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
          DAY_STR "/" MONTH_STR "/" YEAR_STR);
-    StorPortDriverUnload(_DriverObject);
+
+    Driver.StorPortDriverUnload(_DriverObject);
     BufferTerminate();
-    ZwClose(DriverStatusKey);
+    ZwClose(Driver.StatusKey);
+
     Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
 }
 
@@ -623,7 +625,7 @@ DriverEntry(
                                ServiceKey,
                                NULL);
 
-    Status = ZwCreateKey(&DriverStatusKey,
+    Status = ZwCreateKey(&Driver.StatusKey,
                          KEY_ALL_ACCESS,
                          &Attributes,
                          0,
@@ -637,8 +639,8 @@ DriverEntry(
     if (!NT_SUCCESS(Status))
         goto done;
 
-    KeInitializeSpinLock(&__XenvbdLock);
-    __XenvbdFdo = NULL;
+    KeInitializeSpinLock(&Driver.Lock);
+    Driver.Fdo = NULL;
     BufferInitialize();
     __DriverParseParameterKey();
 
@@ -668,9 +670,9 @@ DriverEntry(
 
     Status = StorPortInitialize(_DriverObject, RegistryPath, &InitData, NULL);
     if (NT_SUCCESS(Status)) {
-        StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
-        StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
-        StorPortDriverUnload    = _DriverObject->DriverUnload;
+        Driver.StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
+        Driver.StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
+        Driver.StorPortDriverUnload    = _DriverObject->DriverUnload;
 
         _DriverObject->MajorFunction[IRP_MJ_PNP]    = DispatchPnp;
         _DriverObject->MajorFunction[IRP_MJ_POWER]  = DispatchPower;
