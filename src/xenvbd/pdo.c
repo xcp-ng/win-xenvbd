@@ -2366,7 +2366,6 @@ PdoDispatchPnp(
     PIO_STACK_LOCATION  Stack = IoGetCurrentIrpStackLocation(Irp);
     UCHAR               Minor = Stack->MinorFunction;
     ULONG               TargetId = PdoGetTargetId(Pdo);
-    NTSTATUS            Status;
 
     __PdoCheckEjectPending(Pdo);
 
@@ -2418,11 +2417,7 @@ PdoDispatchPnp(
         break;
     }
     PdoDereference(Pdo);
-    Status = DriverDispatchPnp(DeviceObject, Irp);
-    if (!NT_SUCCESS(Status)) {
-        Verbose("Target[%d] : %02x:%s -> %08x\n", TargetId, Minor, PnpMinorFunctionName(Minor), Status);
-    }
-    return Status;
+    return DriverDispatchPnp(DeviceObject, Irp);
 }
 
 __drv_maxIRQL(DISPATCH_LEVEL)
