@@ -2364,8 +2364,6 @@ PdoDispatchPnp(
     )
 {
     PIO_STACK_LOCATION  Stack = IoGetCurrentIrpStackLocation(Irp);
-    UCHAR               Minor = Stack->MinorFunction;
-    ULONG               TargetId = PdoGetTargetId(Pdo);
 
     __PdoCheckEjectPending(Pdo);
 
