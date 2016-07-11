@@ -1515,7 +1515,7 @@ FrontendBackend(
     for (;;) {
         KIRQL       Irql;
 
-        if (ThreadWait(Thread))
+        if (!ThreadWait(Thread))
             break;
 
         KeAcquireSpinLock(&Frontend->StateLock, &Irql);
