@@ -204,6 +204,12 @@ PdoStartIo(
     __in PSCSI_REQUEST_BLOCK     Srb
     );
 
+extern VOID
+PdoSrbPnp(
+    __in PXENVBD_PDO             Pdo,
+    __in PSCSI_PNP_REQUEST_BLOCK Srb
+    );
+
 // PnP Handler
 __checkReturn
 extern NTSTATUS

@@ -2238,6 +2238,34 @@ PdoReset(
     Trace("Target[%d] <==== (Irql=%d)\n", PdoGetTargetId(Pdo), KeGetCurrentIrql());
 }
 
+
+VOID
+PdoSrbPnp(
+    __in PXENVBD_PDO             Pdo,
+    __in PSCSI_PNP_REQUEST_BLOCK Srb
+    )
+{
+    switch (Srb->PnPAction) {
+    case StorQueryCapabilities: {
+        PSTOR_DEVICE_CAPABILITIES DeviceCaps = Srb->DataBuffer;
+        PXENVBD_CAPS    Caps = FrontendGetCaps(Pdo->Frontend);
+
+        if (Caps->Removable)
+            DeviceCaps->Removable = 1;
+        if (Caps->Removable)
+            DeviceCaps->EjectSupported = 1;
+        if (Caps->SurpriseRemovable)
+            DeviceCaps->SurpriseRemovalOK = 1;
+
+        DeviceCaps->UniqueID = 1;
+
+        } break;
+
+    default:
+        break;
+    }
+}
+
 //=============================================================================
 // PnP Handler
 static FORCEINLINE VOID
