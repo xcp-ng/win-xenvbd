@@ -35,6 +35,7 @@ ClassGUID={4D36E97B-E325-11CE-BFC1-08002BE10318}
 Provider=%Vendor% 
 CatalogFile=xenvbd.cat
 DriverVer=01/01/1900,0.0.0.0
+DriverPackageDisplayName=%DiskDesc%
 
 [DestinationDirs] 
 DefaultDestDir=12 
