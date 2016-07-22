@@ -279,48 +279,73 @@ __DriverGetFdo(
     return IsFdo;
 }
 
+#define SERVICES_PATH "\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
+
+#define SERVICE_KEY(_Name) \
+        SERVICES_PATH ## "\\" ## #_Name
+
+#define REQUEST_KEY \
+        SERVICE_KEY(XENBUS_MONITOR) ## "\\Request"
+
 VOID
-DriverNotifyInstaller(
+DriverRequestReboot(
     VOID
     )
 {
-    UNICODE_STRING                  Unicode;
-    PKEY_VALUE_PARTIAL_INFORMATION  Partial;
+    ANSI_STRING                     Ansi;
+    UNICODE_STRING                  KeyName;
+    UNICODE_STRING                  ValueName;
+    WCHAR                           Value[] = L"XENVBD";
+    OBJECT_ATTRIBUTES               Attributes;
+    HANDLE                          Key;
     NTSTATUS                        status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
-    Partial = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                            __LINE__,
-                                            FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) +
-                                            sizeof (ULONG),
-                                            XENVBD_POOL_TAG);
-    status = STATUS_NO_MEMORY;
-    if (Partial == NULL)
+    RtlInitAnsiString(&Ansi, REQUEST_KEY);
+
+    status = RtlAnsiStringToUnicodeString(&KeyName, &Ansi, TRUE);
+    if (!NT_SUCCESS(status))
         goto fail1;
 
-    Partial->TitleIndex = 0;
-    Partial->Type = REG_DWORD;
-    Partial->DataLength = sizeof (ULONG);
-    *(PULONG)Partial->Data = 1;
+    InitializeObjectAttributes(&Attributes,
+                               &KeyName,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
 
-    RtlInitUnicodeString(&Unicode, L"NeedReboot");
-
-    status = ZwSetValueKey(Driver.StatusKey,
-                           &Unicode,
-                           Partial->TitleIndex,
-                           Partial->Type,
-                           Partial->Data,
-                           Partial->DataLength);
+    status = ZwOpenKey(&Key,
+                       KEY_ALL_ACCESS,
+                       &Attributes);
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    __FreePoolWithTag(Partial, XENVBD_POOL_TAG);
+    RtlInitUnicodeString(&ValueName, L"Reboot");
+
+    status = ZwSetValueKey(Key,
+                           &ValueName,
+                           0,
+                           REG_SZ,
+                           Value,
+                           sizeof(Value));
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    ZwClose(Key);
+
+    RtlFreeUnicodeString(&KeyName);
 
     return;
 
+fail3:
+    Error("fail3\n");
+
+    ZwClose(Key);
+
 fail2:
     Error("fail2\n");
+
+    RtlFreeUnicodeString(&KeyName);
 
 fail1:
     Error("fail1 (%08x)\n", status);

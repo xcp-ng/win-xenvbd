@@ -81,7 +81,7 @@ DriverUnlinkFdo(
     );
 
 extern VOID
-DriverNotifyInstaller(
+DriverRequestReboot(
     VOID
     );
 

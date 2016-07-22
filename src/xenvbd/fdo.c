@@ -830,7 +830,7 @@ FdoScanTargets(
         StorPortNotification(BusChangeDetected, Fdo, 0);
     }
     if (NeedReboot) {
-        DriverNotifyInstaller();
+        DriverRequestReboot();
     }
 }
 
