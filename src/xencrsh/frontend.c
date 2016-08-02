@@ -731,6 +731,14 @@ FrontendClose(
             goto fail6;
     }
 
+    // Clean up
+    (VOID) StoreRemove(NULL, Frontend->FrontendPath,
+                       "ring-page-order");
+    (VOID) StoreRemove(NULL, Frontend->FrontendPath,
+                       "feature-online-resize");
+    (VOID) StoreRemove(NULL, Frontend->FrontendPath,
+                       "feature-surprise-remove");
+
     return STATUS_SUCCESS;
 
 fail6:
