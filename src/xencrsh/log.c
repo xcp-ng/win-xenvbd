@@ -279,7 +279,6 @@ __LogMessage(
     va_start(Args, Format);
     LogPrintf(LogQemuPut, "%s|%s|%s:", Module, __Mode(), Function);
     LogVPrintf(LogQemuPut, Format, Args);
-    LogQemuPut('\0');
     va_end(Args);
 
 #if DBG
