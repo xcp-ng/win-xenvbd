@@ -469,7 +469,7 @@ DriverUnload(
 
     Driver.StorPortDriverUnload(_DriverObject);
     BufferTerminate();
-    RegistryClose(Driver.ParametersKey);
+    RegistryCloseKey(Driver.ParametersKey);
 
     Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
 }
