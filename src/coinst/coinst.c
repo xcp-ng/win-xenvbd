@@ -52,9 +52,6 @@ __user_code;
 #define UNPLUG_KEY \
         SERVICE_KEY(XEN) ## "\\Unplug"
 
-#define STATUS_KEY  \
-        SERVICE_KEY(XENVBD) ## "\\Status"
-
 #define CONTROL_KEY "SYSTEM\\CurrentControlSet\\Control"
 
 #define PNP_KEY \

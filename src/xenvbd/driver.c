@@ -32,6 +32,7 @@
 #include "driver.h"
 #include "fdo.h"
 #include "pdo.h"
+#include "registry.h"
 #include "srbext.h"
 #include "buffer.h"
 #include "debug.h"
@@ -43,7 +44,7 @@
 #include <xenvbd-ntstrsafe.h>
 
 typedef struct _XENVBD_DRIVER {
-    HANDLE              StatusKey;
+    HANDLE              ParametersKey;
     PDRIVER_DISPATCH    StorPortDispatchPnp;
     PDRIVER_DISPATCH    StorPortDispatchPower;
     PDRIVER_UNLOAD      StorPortDriverUnload;
@@ -57,160 +58,28 @@ XENVBD_PARAMETERS   DriverParameters;
 
 #define XENVBD_POOL_TAG     'dbvX'
 
-static FORCEINLINE BOOLEAN
-__IsValid(
-    __in WCHAR                  Char
-    )
-{
-    return !(Char == 0 || Char == L' ' || Char == L'\t' || Char == L'\n' || Char == L'\r');
-}
-static DECLSPEC_NOINLINE BOOLEAN
-__DriverGetOption(
-    __in PWCHAR                 Options,
-    __in PWCHAR                 Parameter,
-    __out PWCHAR*               Value
-    )
-{
-    PWCHAR  Ptr;
-    PWCHAR  Buffer;
-    ULONG   Index;
-    ULONG   Length;
-
-    *Value = NULL;
-    Ptr = wcsstr(Options, Parameter);
-    if (Ptr == NULL)
-        return FALSE; // option not present
-
-    // skip Parameter
-    while (*Parameter) {
-        ++Ptr;
-        ++Parameter;
-    }
-
-    // find length of Value, up to next NULL or whitespace
-    for (Length = 0; __IsValid(Ptr[Length]); ++Length) 
-        ;
-    if (Length == 0)
-        return TRUE; // found the option, it had no value so *Value == NULL!
-
-    Buffer = (PWCHAR)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, (Length + 1) * sizeof(WCHAR), XENVBD_POOL_TAG);
-    if (Buffer == NULL)
-        return FALSE; // memory allocation failure, ignore option
-
-    // copy Value
-    for (Index = 0; Index < Length; ++Index)
-        Buffer[Index] = Ptr[Index];
-    Buffer[Length] = L'\0';
-
-    *Value = Buffer;
-    return TRUE;
-}
-static DECLSPEC_NOINLINE NTSTATUS
-__DriverGetSystemStartParams(
-    __out PWCHAR*               Options
-    )
-{
-    UNICODE_STRING      Unicode;
-    OBJECT_ATTRIBUTES   Attributes;
-    HANDLE              Key;
-    PKEY_VALUE_PARTIAL_INFORMATION  Value;
-    ULONG               Size;
-    NTSTATUS            Status;
-
-    RtlInitUnicodeString(&Unicode, L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control");
-    InitializeObjectAttributes(&Attributes, &Unicode, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
-
-    Status = ZwOpenKey(&Key, KEY_READ, &Attributes);
-    if (!NT_SUCCESS(Status))
-        goto fail1;
-
-    RtlInitUnicodeString(&Unicode, L"SystemStartOptions");
-    Status = ZwQueryValueKey(Key, &Unicode, KeyValuePartialInformation, NULL, 0, &Size);
-    if (Status != STATUS_BUFFER_TOO_SMALL &&
-        Status != STATUS_BUFFER_OVERFLOW)
-        goto fail2;
-
-    Status = STATUS_NO_MEMORY;
-#pragma prefast(suppress:6102)
-    Value = (PKEY_VALUE_PARTIAL_INFORMATION)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Size, XENVBD_POOL_TAG);
-    if (Value == NULL)
-        goto fail3;
-
-    Status = ZwQueryValueKey(Key, &Unicode, KeyValuePartialInformation, Value, Size, &Size);
-    if (!NT_SUCCESS(Status))
-        goto fail4;
-
-    Status = STATUS_INVALID_PARAMETER;
-    if (Value->Type != REG_SZ)
-        goto fail5;
-
-    Status = STATUS_NO_MEMORY;
-    *Options = (PWCHAR)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Value->DataLength + sizeof(WCHAR), XENVBD_POOL_TAG);
-    if (*Options == NULL)
-        goto fail6;
-
-    RtlCopyMemory(*Options, Value->Data, Value->DataLength);
-
-    __FreePoolWithTag(Value, XENVBD_POOL_TAG);
-
-    ZwClose(Key);
-    return STATUS_SUCCESS;
-
-fail6:
-fail5:
-fail4:
-    __FreePoolWithTag(Value, XENVBD_POOL_TAG);
-fail3:
-fail2:
-    ZwClose(Key);
-fail1:
-    *Options = NULL;
-    return Status;
-}
 static DECLSPEC_NOINLINE VOID
-__DriverParseParameterKey(
+__DriverParseOption(
+    IN  const CHAR  *Key,
+    OUT PBOOLEAN    Flag
     )
 {
-    NTSTATUS    Status;
-    PWCHAR      Options;
-    PWCHAR      Value;
+    PANSI_STRING    Option;
+    PCHAR           Value;
+    NTSTATUS        status;
 
-    // Set default parameters
-    DriverParameters.SynthesizeInquiry = FALSE;
-    DriverParameters.PVCDRom           = FALSE;
+    *Flag = FALSE;
 
-    // attempt to read registry for system start parameters
-    Status = __DriverGetSystemStartParams(&Options);
-    if (NT_SUCCESS(Status)) {
-        Trace("Options = \"%ws\"\n", Options);
+    status = RegistryQuerySystemStartOption(Key, &Option);
+    if (!NT_SUCCESS(status))
+        return;
 
-        // check each option
-        if (__DriverGetOption(Options, L"XENVBD:SYNTH_INQ=", &Value)) {
-            // Value may be NULL (it shouldnt be though!)
-            if (Value) {
-                if (wcscmp(Value, L"ON") == 0) {
-                    DriverParameters.SynthesizeInquiry = TRUE;
-                }
-                __FreePoolWithTag(Value, XENVBD_POOL_TAG);
-            }
-        }
+    Value = Option->Buffer + strlen(Key);
 
-        if (__DriverGetOption(Options, L"XENVBD:PVCDROM=", &Value)) {
-            // Value may be NULL (it shouldnt be though!)
-            if (Value) {
-                if (wcscmp(Value, L"ON") == 0) {
-                    DriverParameters.PVCDRom = TRUE;
-                }
-                __FreePoolWithTag(Value, XENVBD_POOL_TAG);
-            }
-        }
+    if (strcmp(Value, "ON") == 0)
+        *Flag = TRUE;
 
-        __FreePoolWithTag(Options, XENVBD_POOL_TAG);
-    }
-
-    Verbose("DriverParameters: %s%s\n", 
-            DriverParameters.SynthesizeInquiry ? "SYNTH_INQ " : "",
-            DriverParameters.PVCDRom ? "PV_CDROM " : "");
+    RegistryFreeSzValue(Option);
 }
 
 NTSTATUS
@@ -279,73 +148,74 @@ __DriverGetFdo(
     return IsFdo;
 }
 
-#define SERVICES_PATH "\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
-
-#define SERVICE_KEY(_Name) \
-        SERVICES_PATH ## "\\" ## #_Name
-
-#define REQUEST_KEY \
-        SERVICE_KEY(XENBUS_MONITOR) ## "\\Request"
+#define MAXNAMELEN  128
 
 VOID
 DriverRequestReboot(
     VOID
     )
 {
-    ANSI_STRING                     Ansi;
-    UNICODE_STRING                  KeyName;
-    UNICODE_STRING                  ValueName;
-    WCHAR                           Value[] = L"XENVBD";
-    OBJECT_ATTRIBUTES               Attributes;
-    HANDLE                          Key;
-    NTSTATUS                        status;
+    PANSI_STRING    Ansi;
+    CHAR            RequestKeyName[MAXNAMELEN];
+    HANDLE          RequestKey;
+    HANDLE          SubKey;
+    NTSTATUS        status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
-    RtlInitAnsiString(&Ansi, REQUEST_KEY);
-
-    status = RtlAnsiStringToUnicodeString(&KeyName, &Ansi, TRUE);
+    status = RegistryQuerySzValue(Driver.ParametersKey,
+                                  "RequestKey",
+                                  NULL,
+                                  &Ansi);
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    InitializeObjectAttributes(&Attributes,
-                               &KeyName,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL,
-                               NULL);
+    status = RtlStringCbPrintfA(RequestKeyName,
+                                MAXNAMELEN,
+                                "\\Registry\\Machine\\%Z",
+                                &Ansi[0]);
+    ASSERT(NT_SUCCESS(status));
 
-    status = ZwOpenKey(&Key,
-                       KEY_ALL_ACCESS,
-                       &Attributes);
+    status = RegistryOpenSubKey(NULL,
+                                RequestKeyName,
+                                KEY_ALL_ACCESS,
+                                &RequestKey);
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    RtlInitUnicodeString(&ValueName, L"Reboot");
-
-    status = ZwSetValueKey(Key,
-                           &ValueName,
-                           0,
-                           REG_SZ,
-                           Value,
-                           sizeof(Value));
+    status = RegistryCreateSubKey(RequestKey,
+                                  __MODULE__,
+                                  REG_OPTION_NON_VOLATILE,
+                                  &SubKey);
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    ZwClose(Key);
+    status = RegistryUpdateDwordValue(SubKey,
+                                      "Reboot",
+                                      1);
+    if (!NT_SUCCESS(status))
+        goto fail4;
 
-    RtlFreeUnicodeString(&KeyName);
+    RegistryCloseKey(SubKey);
+
+    RegistryFreeSzValue(Ansi);
 
     return;
+
+fail4:
+    Error("fail4\n");
+
+    RegistryCloseKey(SubKey);
 
 fail3:
     Error("fail3\n");
 
-    ZwClose(Key);
+    RegistryCloseKey(RequestKey);
 
 fail2:
     Error("fail2\n");
 
-    RtlFreeUnicodeString(&KeyName);
+    RegistryFreeSzValue(Ansi);
 
 fail1:
     Error("fail1 (%08x)\n", status);
@@ -599,7 +469,7 @@ DriverUnload(
 
     Driver.StorPortDriverUnload(_DriverObject);
     BufferTerminate();
-    ZwClose(Driver.StatusKey);
+    RegistryClose(Driver.ParametersKey);
 
     Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
 }
@@ -608,15 +478,14 @@ DRIVER_INITIALIZE           DriverEntry;
 
 NTSTATUS
 DriverEntry(
-    IN PDRIVER_OBJECT  _DriverObject,
-    IN PUNICODE_STRING RegistryPath
+    IN PDRIVER_OBJECT       _DriverObject,
+    IN PUNICODE_STRING      RegistryPath
     )
 {
-    NTSTATUS                Status;
-    OBJECT_ATTRIBUTES       Attributes;
-    UNICODE_STRING          Unicode;
     HW_INITIALIZATION_DATA  InitData;
     HANDLE                  ServiceKey;
+    HANDLE                  ParametersKey;
+    NTSTATUS                status;
 
     // RegistryPath == NULL if crashing!
     if (RegistryPath == NULL) {
@@ -630,44 +499,33 @@ DriverEntry(
          MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
          DAY_STR "/" MONTH_STR "/" YEAR_STR);
 
-    InitializeObjectAttributes(&Attributes,
-                               RegistryPath,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL,
-                               NULL);
+    status = RegistryInitialize(RegistryPath);
+    if (!NT_SUCCESS(status))
+        goto fail1;
 
-    Status = ZwOpenKey(&ServiceKey,
-                       KEY_ALL_ACCESS,
-                       &Attributes);
-    if (!NT_SUCCESS(Status))
-        goto done;
+    status = RegistryOpenServiceKey(KEY_ALL_ACCESS, &ServiceKey);
+    if (!NT_SUCCESS(status))
+        goto fail2;
 
-    RtlInitUnicodeString(&Unicode, L"Status");
+    status = RegistryOpenSubKey(ServiceKey,
+                                "Parameters",
+                                KEY_READ,
+                                &ParametersKey);
+    if (!NT_SUCCESS(status))
+        goto fail3;
 
-    InitializeObjectAttributes(&Attributes,
-                               &Unicode,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               ServiceKey,
-                               NULL);
+    Driver.ParametersKey = ParametersKey;
 
-    Status = ZwCreateKey(&Driver.StatusKey,
-                         KEY_ALL_ACCESS,
-                         &Attributes,
-                         0,
-                         NULL,
-                         REG_OPTION_VOLATILE,
-                         NULL
-                         );
-
-    ZwClose(ServiceKey);
-
-    if (!NT_SUCCESS(Status))
-        goto done;
+    RegistryCloseKey(ServiceKey);
 
     KeInitializeSpinLock(&Driver.Lock);
     Driver.Fdo = NULL;
     BufferInitialize();
-    __DriverParseParameterKey();
+
+    __DriverParseOption("XENVBD:SYNTH_INQ=",
+                        &DriverParameters.SynthesizeInquiry);
+    __DriverParseOption("XENVBD:PVCDROM=",
+                        &DriverParameters.PVCDRom);
 
     RtlZeroMemory(&InitData, sizeof(InitData));
 
@@ -693,8 +551,11 @@ DriverEntry(
     InitData.HwAdapterControl           =   HwAdapterControl;
     InitData.HwBuildIo                  =   HwBuildIo;
 
-    Status = StorPortInitialize(_DriverObject, RegistryPath, &InitData, NULL);
-    if (NT_SUCCESS(Status)) {
+    status = StorPortInitialize(_DriverObject,
+                                RegistryPath,
+                                &InitData,
+                                NULL);
+    if (NT_SUCCESS(status)) {
         Driver.StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
         Driver.StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
         Driver.StorPortDriverUnload    = _DriverObject->DriverUnload;
@@ -704,7 +565,21 @@ DriverEntry(
         _DriverObject->DriverUnload                 = DriverUnload;
     }
 
-done:
-    Trace("<=== (%08x) (Irql=%d)\n", Status, KeGetCurrentIrql());
-    return Status;
+    Trace("<=== (%08x) (Irql=%d)\n", status, KeGetCurrentIrql());
+    return status;
+
+fail3:
+    Error("fail3\n");
+
+    RegistryCloseKey(ServiceKey);
+
+fail2:
+    Error("fail2\n");
+
+    RegistryTeardown();
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return status;
 }

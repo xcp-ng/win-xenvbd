@@ -54,9 +54,9 @@ xenvbd_coinst.dll=0,,
 %Vendor%=Inst,NT$ARCH$
 
 [Inst.NT$ARCH$]
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_08000009
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_08000009
-%XenVbdDesc%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_08000009
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_08000009
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_08000009
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_08000009
 
 [XenVbd_Inst] 
 CopyFiles=XenVbd_Copyfiles
@@ -77,7 +77,7 @@ AddService=xenvbd,2,XenVbd_Service,
 AddService=xendisk,,XenDisk_Service,
 
 [XenDisk_Service]
-DisplayName=%XenDiskDesc%
+DisplayName=%XenDiskName%
 ServiceType=%SERVICE_KERNEL_DRIVER%
 StartType=%SERVICE_BOOT_START%
 ErrorControl=%SERVICE_ERROR_NORMAL%
@@ -85,7 +85,7 @@ ServiceBinary=%12%\xendisk.sys
 LoadOrderGroup="Scsi Miniport"
 
 [XenVbd_Service] 
-DisplayName=%XenVbdDesc%
+DisplayName=%XenVbdName%
 ServiceType=%SERVICE_KERNEL_DRIVER% 
 StartType=%SERVICE_BOOT_START% 
 ErrorControl=%SERVICE_ERROR_NORMAL% 
@@ -97,6 +97,7 @@ AddReg=XenVbd_Parameters
 HKR,"Parameters",,0x00000010
 HKR,"Parameters","BusType",0x00010001,0x00000001 
 HKR,"Parameters\PnpInterface","5",0x00010001,0x00000001 
+HKR,"Parameters","RequestKey",0x00000000,%RequestKey%
 
 [XenVbd_Inst.CoInstallers]
 CopyFiles=CoInst_CopyFiles
@@ -112,8 +113,9 @@ HKR,,CoInstallers32,0x00010000,"xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@M
 
 Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
-XenVbdDesc= "@PRODUCT_NAME@ PV Storage Host Adapter"
-XenDiskDesc= "@PRODUCT_NAME@ PV Storage Filter"
+XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
+XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
+RequestKey="SOFTWARE\@VENDOR_NAME@\@PRODUCT_NAME@\PV Driver Monitor\Request"
 
 SERVICE_BOOT_START = 0x0 
 SERVICE_SYSTEM_START = 0x1 

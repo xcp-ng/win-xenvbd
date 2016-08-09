@@ -31,11 +31,11 @@
 
 #include <ntddk.h>
 
-#include "util.h"
 #include "registry.h"
 #include "assert.h"
+#include "util.h"
 
-#define REGISTRY_POOL 'GERX'
+#define REGISTRY_TAG 'GERX'
 
 static UNICODE_STRING   RegistryPath;
 
@@ -47,7 +47,7 @@ __RegistryAllocate(
     return __AllocateNonPagedPoolWithTag(__FUNCTION__,
                                          __LINE__,
                                          Length,
-                                         REGISTRY_POOL);
+                                         REGISTRY_TAG);
 }
 
 static FORCEINLINE VOID
@@ -55,7 +55,7 @@ __RegistryFree(
     IN  PVOID   Buffer
     )
 {
-    __FreePoolWithTag(Buffer, REGISTRY_POOL);
+    __FreePoolWithTag(Buffer, REGISTRY_TAG);
 }
 
 NTSTATUS
@@ -119,12 +119,54 @@ fail1:
 }
 
 NTSTATUS
+RegistryCreateKey(
+    IN  HANDLE          Parent,
+    IN  PUNICODE_STRING Path,
+    IN  ULONG           Options,
+    OUT PHANDLE         Key
+    )
+{
+    OBJECT_ATTRIBUTES   Attributes;
+    NTSTATUS            status;
+
+    InitializeObjectAttributes(&Attributes,
+                               Path,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               Parent,
+                               NULL);
+
+    status = ZwCreateKey(Key,
+                         KEY_ALL_ACCESS,
+                         &Attributes,
+                         0,
+                         NULL,
+                         Options,
+                         NULL
+                         );
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    return STATUS_SUCCESS;
+
+fail1:
+    return status;
+}
+
+NTSTATUS
 RegistryOpenServiceKey(
     IN  ACCESS_MASK     DesiredAccess,
     OUT PHANDLE         Key
     )
 {
     return RegistryOpenKey(NULL, &RegistryPath, DesiredAccess, Key);
+}
+
+NTSTATUS
+RegistryCreateServiceKey(
+    OUT PHANDLE         Key
+    )
+{
+    return RegistryCreateKey(NULL, &RegistryPath, REG_OPTION_NON_VOLATILE, Key);
 }
 
 NTSTATUS
@@ -333,6 +375,8 @@ RegistryDeleteSubKey(
 
     ZwClose(SubKey);
 
+    (VOID) ZwFlushKey(Key);
+
     RtlFreeUnicodeString(&Unicode);
 
     return STATUS_SUCCESS;
@@ -350,7 +394,7 @@ fail1:
 NTSTATUS
 RegistryEnumerateSubKeys(
     IN  HANDLE              Key,
-    IN  NTSTATUS            (*Callback)(PVOID, HANDLE, PCHAR),
+    IN  NTSTATUS            (*Callback)(PVOID, HANDLE, PANSI_STRING),
     IN  PVOID               Context
     )
 {
@@ -393,6 +437,7 @@ RegistryEnumerateSubKeys(
         goto fail4;
 
     for (Index = 0; Index < Full->SubKeys; Index++) {
+        ULONG           Ignore;
         UNICODE_STRING  Unicode;
         ANSI_STRING     Ansi;
 
@@ -401,7 +446,7 @@ RegistryEnumerateSubKeys(
                                 KeyBasicInformation,
                                 Basic,
                                 Size,
-                                &Size);
+                                &Ignore);
         if (!NT_SUCCESS(status))
             goto fail5;
 
@@ -421,7 +466,7 @@ RegistryEnumerateSubKeys(
 
         Ansi.Length = (USHORT)(strlen(Ansi.Buffer) * sizeof (CHAR));        
 
-        status = Callback(Context, Key, Ansi.Buffer);
+        status = Callback(Context, Key, &Ansi);
 
         __RegistryFree(Ansi.Buffer);
         Ansi.Buffer = NULL;
@@ -453,7 +498,7 @@ fail1:
 NTSTATUS
 RegistryEnumerateValues(
     IN  HANDLE                      Key,
-    IN  NTSTATUS                    (*Callback)(PVOID, HANDLE, PCHAR),
+    IN  NTSTATUS                    (*Callback)(PVOID, HANDLE, PANSI_STRING, ULONG),
     IN  PVOID                       Context
     )
 {
@@ -496,6 +541,7 @@ RegistryEnumerateValues(
         goto fail4;
 
     for (Index = 0; Index < Full->Values; Index++) {
+        ULONG           Ignore;
         UNICODE_STRING  Unicode;
         ANSI_STRING     Ansi;
 
@@ -504,7 +550,7 @@ RegistryEnumerateValues(
                                      KeyValueBasicInformation,
                                      Basic,
                                      Size,
-                                     &Size);
+                                     &Ignore);
         if (!NT_SUCCESS(status))
             goto fail5;
 
@@ -520,7 +566,7 @@ RegistryEnumerateValues(
 
         Ansi.Length = (USHORT)(strlen(Ansi.Buffer) * sizeof (CHAR));        
 
-        status = Callback(Context, Key, Ansi.Buffer);
+        status = Callback(Context, Key, &Ansi, Basic->Type);
 
         __RegistryFree(Ansi.Buffer);
 
@@ -568,6 +614,8 @@ RegistryDeleteValue(
         goto fail2;
 
     RtlFreeUnicodeString(&Unicode);
+
+    (VOID) ZwFlushKey(Key);
 
     return STATUS_SUCCESS;
 
@@ -689,6 +737,8 @@ RegistryUpdateDwordValue(
 
     __RegistryFree(Partial);
 
+    (VOID) ZwFlushKey(Key);
+
     RtlFreeUnicodeString(&Unicode);
 
     return STATUS_SUCCESS;
@@ -809,6 +859,7 @@ NTSTATUS
 RegistryQuerySzValue(
     IN  HANDLE                      Key,
     IN  PCHAR                       Name,
+    OUT PULONG                      Type OPTIONAL,
     OUT PANSI_STRING                *Array
     )
 {
@@ -870,6 +921,9 @@ RegistryQuerySzValue(
     if (*Array == NULL)
         goto fail5;
 
+    if (Type != NULL)
+        *Type = Value->Type;
+
     __RegistryFree(Value);
 
     RtlFreeUnicodeString(&Unicode);
@@ -885,6 +939,150 @@ fail2:
     RtlFreeUnicodeString(&Unicode);
 
 fail1:
+    return status;
+}
+
+NTSTATUS
+RegistryQueryBinaryValue(
+    IN  HANDLE                      Key,
+    IN  PCHAR                       Name,
+    OUT PVOID                       *Buffer,
+    OUT PULONG                      Length
+    )
+{
+    ANSI_STRING                     Ansi;
+    UNICODE_STRING                  Unicode;
+    PKEY_VALUE_PARTIAL_INFORMATION  Partial;
+    ULONG                           Size;
+    NTSTATUS                        status;
+
+    RtlInitAnsiString(&Ansi, Name);
+
+    status = RtlAnsiStringToUnicodeString(&Unicode, &Ansi, TRUE);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = ZwQueryValueKey(Key,
+                             &Unicode,
+                             KeyValuePartialInformation,
+                             NULL,
+                             0,
+                             &Size);
+    if (status != STATUS_BUFFER_OVERFLOW &&
+        status != STATUS_BUFFER_TOO_SMALL)
+        goto fail2;
+
+#pragma prefast(suppress:6102)
+    Partial = __RegistryAllocate(Size);
+
+    status = STATUS_NO_MEMORY;
+    if (Partial == NULL)
+        goto fail3;
+
+    status = ZwQueryValueKey(Key,
+                             &Unicode,
+                             KeyValuePartialInformation,
+                             Partial,
+                             Size,
+                             &Size);
+    if (!NT_SUCCESS(status))
+        goto fail4;
+
+    switch (Partial->Type) {
+    case REG_BINARY:
+        *Buffer = __RegistryAllocate(Partial->DataLength);
+
+        status = STATUS_NO_MEMORY;
+        if (*Buffer == NULL)
+            break;
+
+        *Length = Partial->DataLength;
+        RtlCopyMemory(*Buffer, Partial->Data, Partial->DataLength);
+        break;
+
+    default:
+        status = STATUS_INVALID_PARAMETER;
+        *Buffer = NULL;
+        break;
+    }
+
+    if (*Buffer == NULL)
+        goto fail5;
+
+    __RegistryFree(Partial);
+
+    RtlFreeUnicodeString(&Unicode);
+
+    return STATUS_SUCCESS;
+
+fail5:
+fail4:
+    __RegistryFree(Partial);
+
+fail3:
+fail2:
+    RtlFreeUnicodeString(&Unicode);
+
+fail1:
+    return status;
+}
+
+NTSTATUS
+RegistryUpdateBinaryValue(
+    IN  HANDLE                      Key,
+    IN  PCHAR                       Name,
+    IN  PVOID                       Buffer,
+    IN  ULONG                       Length
+    )
+{
+    ANSI_STRING                     Ansi;
+    UNICODE_STRING                  Unicode;
+    PKEY_VALUE_PARTIAL_INFORMATION  Partial;
+    NTSTATUS                        status;
+
+    RtlInitAnsiString(&Ansi, Name);
+
+    status = RtlAnsiStringToUnicodeString(&Unicode, &Ansi, TRUE);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    Partial = __RegistryAllocate(FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) +
+                                 Length);
+
+    status = STATUS_NO_MEMORY;
+    if (Partial == NULL)
+        goto fail2;
+
+    Partial->TitleIndex = 0;
+    Partial->Type = REG_BINARY;
+    Partial->DataLength = Length;
+    RtlCopyMemory(Partial->Data, Buffer, Partial->DataLength);
+
+    status = ZwSetValueKey(Key,
+                           &Unicode,
+                           Partial->TitleIndex,
+                           Partial->Type,
+                           Partial->Data,
+                           Partial->DataLength);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    __RegistryFree(Partial);
+
+    (VOID) ZwFlushKey(Key);
+
+    RtlFreeUnicodeString(&Unicode);
+
+    return STATUS_SUCCESS;
+
+fail3:
+    __RegistryFree(Partial);
+
+fail2:
+    RtlFreeUnicodeString(&Unicode);
+
+fail1:
+
     return status;
 }
 
@@ -945,7 +1143,7 @@ fail1:
 
 NTSTATUS
 RegistryQuerySystemStartOption(
-    IN  PCHAR                       Prefix,
+    IN  const CHAR                  *Prefix,
     OUT PANSI_STRING                *Value
     )
 {
@@ -963,7 +1161,7 @@ RegistryQuerySystemStartOption(
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    status = RegistryQuerySzValue(Key, "SystemStartOptions", &Ansi);
+    status = RegistryQuerySzValue(Key, "SystemStartOptions", NULL, &Ansi);
     if (!NT_SUCCESS(status))
         goto fail2;
 
@@ -972,12 +1170,12 @@ RegistryQuerySystemStartOption(
     Length = (ULONG)strlen(Prefix);
 
     Option = __strtok_r(Ansi[0].Buffer, " ", &Context);
-    if (strncmp(Prefix, Option, Length) == 0)
-        goto found;
-
-    while ((Option = __strtok_r(NULL, " ", &Context)) != NULL)
+    while (Option != NULL) {
         if (strncmp(Prefix, Option, Length) == 0)
             goto found;
+
+        Option = __strtok_r(NULL, " ", &Context);
+    }
 
     status = STATUS_OBJECT_NAME_NOT_FOUND;
     goto fail3;
@@ -1118,12 +1316,11 @@ RegistryUpdateSzValue(
     IN  HANDLE                      Key,
     IN  PCHAR                       Name,
     IN  ULONG                       Type,
-    ...
+    IN  PANSI_STRING                Array
     )
 {
     ANSI_STRING                     Ansi;
     UNICODE_STRING                  Unicode;
-    va_list                         Arguments;
     PKEY_VALUE_PARTIAL_INFORMATION  Partial;
     NTSTATUS                        status;
 
@@ -1132,33 +1329,23 @@ RegistryUpdateSzValue(
     status = RtlAnsiStringToUnicodeString(&Unicode, &Ansi, TRUE);
     if (!NT_SUCCESS(status))
         goto fail1;
-        
-    va_start(Arguments, Type);
+
     switch (Type) {
-    case REG_SZ: {
-        PANSI_STRING    Argument;
-
-        Argument = va_arg(Arguments, PANSI_STRING);
-
+    case REG_SZ:
         status = STATUS_NO_MEMORY;
-        Partial = RegistryAnsiToSz(Argument);        
+        Partial = RegistryAnsiToSz(Array);
         break;
-    }
-    case REG_MULTI_SZ: {
-        PANSI_STRING    Argument;
 
-        Argument = va_arg(Arguments, PANSI_STRING);
-
+    case REG_MULTI_SZ:
         status = STATUS_NO_MEMORY;
-        Partial = RegistryAnsiToMultiSz(Argument);        
+        Partial = RegistryAnsiToMultiSz(Array);
         break;
-    }
+
     default:
         status = STATUS_INVALID_PARAMETER;
         Partial = NULL;
         break;
     }
-    va_end(Arguments);
 
     if (Partial == NULL)
         goto fail2;
@@ -1173,6 +1360,8 @@ RegistryUpdateSzValue(
         goto fail3;
 
     __RegistryFree(Partial);
+
+    (VOID) ZwFlushKey(Key);
 
     RtlFreeUnicodeString(&Unicode);
 
@@ -1202,6 +1391,14 @@ RegistryFreeSzValue(
         __RegistryFree(Array[Index].Buffer);
 
     __RegistryFree(Array);
+}
+
+VOID
+RegistryFreeBinaryValue(
+    IN  PVOID   Buffer
+    )
+{
+    __RegistryFree(Buffer);
 }
 
 VOID
