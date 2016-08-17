@@ -148,7 +148,7 @@ __DriverGetFdo(
     return IsFdo;
 }
 
-#define MAXNAMELEN  1024
+#define MAXNAMELEN  256
 
 VOID
 DriverRequestReboot(
