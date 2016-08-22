@@ -115,7 +115,7 @@ Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
 XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
-RequestKey="SOFTWARE\@VENDOR_NAME@\@PRODUCT_NAME@\PV Driver Monitor\Request"
+RequestKey="SYSTEM\CurrentControlSet\Services\xenbus_monitor\Request"
 
 SERVICE_BOOT_START = 0x0 
 SERVICE_SYSTEM_START = 0x1 
