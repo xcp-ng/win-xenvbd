@@ -2595,7 +2595,7 @@ PdoCreate(
     if (!FdoLinkPdo(Fdo, Pdo))
         goto fail4;
 
-    Verbose("Target[%d] : Created (%s)\n", TargetId);
+    Verbose("Target[%d] : Created (%s)\n", TargetId, Pdo);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return TRUE;
 
