@@ -42,7 +42,7 @@
 #define GUID_LENGTH     36 
 
 // 00 00 00 00 00 00 00 00 "XENSRC  00000000"
-#define PAGE83_MIN_SIZE (4 + 4 + 16 + 1)
+#define PAGE83_MIN_SIZE (4 + 4 + 16)
 
 // 00 00 00 00 + GUID_LENGTH
 #define VDI_ID_LENGTH   (4 + GUID_LENGTH)
@@ -331,13 +331,14 @@ __HandlePage83(
     PCHAR   Data = (PCHAR)Srb->DataBuffer;
     ULONG   Length = Srb->DataTransferLength;
 
-	RtlZeroMemory(Data, Length);
-	if (DriverParameters.SynthesizeInquiry ||
+    RtlZeroMemory(Data, Length);
+    if (DriverParameters.SynthesizeInquiry ||
         Inquiry == NULL || 
         Inquiry->Page83.Data == NULL || 
         Inquiry->Page83.Length == 0) {
         // generate the id page data
         PVPD_IDENTIFICATION_DESCRIPTOR  Id;
+        CHAR    Buffer[17];
 
         if (Length < PAGE83_MIN_SIZE)
             return FALSE;
@@ -349,7 +350,8 @@ __HandlePage83(
         Id->CodeSet             = VpdCodeSetAscii;
         Id->IdentifierType      = VpdIdentifierTypeVendorId;
         Id->IdentifierLength    = 16;
-        (VOID) RtlStringCchPrintfA((PCHAR)Id->Identifier, 17, "XENSRC  %08u", TargetId);
+        (VOID)RtlStringCchPrintfA(Buffer, 17, "XENSRC  %08u", TargetId);
+        RtlCopyMemory((PCHAR)Id->Identifier, Buffer, 16);
 
         Verbose("Target[%u] : INQUIRY Using Fake Page83 Data\n", TargetId);
 
