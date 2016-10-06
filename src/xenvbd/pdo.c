@@ -1982,10 +1982,13 @@ PdoReadCapacity16(
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    PREAD_CAPACITY_DATA_EX  Capacity = Srb->DataBuffer;
+    PREAD_CAPACITY16_DATA   Capacity = Srb->DataBuffer;
     PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Pdo->Frontend);
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
+    ULONG                   PhysSectorSize;
+    ULONG                   LogicalPerPhysical;
+    ULONG                   LogicalPerPhysicalExponent;
 
     if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0) {
         Srb->ScsiStatus = 0x02; // CHECK_CONDITION
@@ -1994,10 +1997,17 @@ PdoReadCapacity16(
 
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
+    PhysSectorSize = DiskInfo->PhysSectorSize;
+
+    LogicalPerPhysical = PhysSectorSize / SectorSize;
+
+    if (!_BitScanReverse(&LogicalPerPhysicalExponent, LogicalPerPhysical))
+        LogicalPerPhysicalExponent = 0;
 
     if (Capacity) {
         Capacity->LogicalBlockAddress.QuadPart = _byteswap_uint64(SectorCount - 1);
         Capacity->BytesPerBlock = _byteswap_ulong(SectorSize);
+        Capacity->LogicalPerPhysicalExponent = (UCHAR)LogicalPerPhysicalExponent;
     }
 
     Srb->SrbStatus = SRB_STATUS_SUCCESS;

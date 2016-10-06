@@ -326,104 +326,6 @@ PdoCompleteIrp(
 __drv_functionClass(IO_COMPLETION_ROUTINE)
 __drv_sameIRQL
 static NTSTATUS
-__PdoQueryProperty(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp,
-    IN  PVOID           Context
-    )
-{
-    PXENDISK_PDO        Pdo = Context;
-    PSTORAGE_ACCESS_ALIGNMENT_DESCRIPTOR    Descriptor = Irp->UserBuffer;
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-
-    if (Irp->PendingReturned)
-        IoMarkIrpPending(Irp);
-
-    if (!NT_SUCCESS(Irp->IoStatus.Status))
-        goto done;
-
-    if (Irp->IoStatus.Information != (ULONG_PTR)sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR))
-        goto done;
-
-    Descriptor = Irp->AssociatedIrp.SystemBuffer;
-    Pdo->SectorSize = Descriptor->BytesPerLogicalSector;
-    Verbose("%p : %u bytes per sector\n", Pdo->Dx->DeviceObject, Pdo->SectorSize);
-
-done:
-    IoReleaseRemoveLock(&Pdo->Dx->RemoveLock, Irp);
-
-    return STATUS_SUCCESS;
-}
-
-static DECLSPEC_NOINLINE NTSTATUS
-PdoQueryProperty(
-    IN  PXENDISK_PDO        Pdo,
-    IN  PIRP                Irp
-    )
-{
-    PIO_STACK_LOCATION      StackLocation;
-    PSTORAGE_PROPERTY_QUERY Query;
-    NTSTATUS                status;
-
-    StackLocation = IoGetCurrentIrpStackLocation(Irp);
-
-    if (StackLocation->Parameters.DeviceIoControl.InputBufferLength <
-        sizeof (STORAGE_PROPERTY_QUERY))
-        return PdoCompleteIrp(Pdo, Irp, STATUS_INFO_LENGTH_MISMATCH);
-
-    Query = Irp->AssociatedIrp.SystemBuffer;
-
-    switch (Query->PropertyId) {
-    case StorageAccessAlignmentProperty:
-        if (Query->QueryType == PropertyStandardQuery) {
-            IoCopyCurrentIrpStackLocationToNext(Irp);
-            IoSetCompletionRoutine(Irp,
-                                   __PdoQueryProperty,
-                                   Pdo,
-                                   TRUE,
-                                   TRUE,
-                                   TRUE);
-
-            status = IoCallDriver(Pdo->LowerDeviceObject, Irp);
-        } else {
-            status = PdoForwardIrpAndForget(Pdo, Irp);
-        }
-        break;
-
-    case StorageDeviceTrimProperty:
-        if (Query->QueryType == PropertyStandardQuery) {
-            PDEVICE_TRIM_DESCRIPTOR Trim;
-
-            if (StackLocation->Parameters.DeviceIoControl.OutputBufferLength <
-                sizeof (DEVICE_TRIM_DESCRIPTOR))
-                return PdoCompleteIrp(Pdo, Irp, STATUS_BUFFER_OVERFLOW);
-
-            Trim = Irp->AssociatedIrp.SystemBuffer;
-
-            Trim->Version = sizeof(DEVICE_TRIM_DESCRIPTOR);
-            Trim->Size = sizeof(DEVICE_TRIM_DESCRIPTOR);
-            Trim->TrimEnabled = TRUE;
-
-            Irp->IoStatus.Information = (ULONG_PTR)sizeof(DEVICE_TRIM_DESCRIPTOR);
-        } else {
-            Irp->IoStatus.Information = 0;
-        }
-
-        status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
-        break;
-
-    default:
-        status = PdoForwardIrpAndForget(Pdo, Irp);
-        break;
-    }
-
-    return status;
-}
-
-__drv_functionClass(IO_COMPLETION_ROUTINE)
-__drv_sameIRQL
-static NTSTATUS
 __PdoSendAwaitSrb(
     IN  PDEVICE_OBJECT          DeviceObject,
     IN  PIRP                    Irp,
@@ -488,7 +390,7 @@ PdoSendAwaitSrb(
 
 #pragma warning(disable:6320)
     try {
-        MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoReadAccess);
+        MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
     } except (EXCEPTION_EXECUTE_HANDLER) {
         status = GetExceptionCode();
 
@@ -515,6 +417,70 @@ fail2:
     Error("fail2\n");
 
     IoFreeIrp(Irp);
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+static NTSTATUS
+PdoSendReadCapacity16Synchronous(
+    IN  PXENDISK_PDO            Pdo,
+    OUT PULONG                  SectorSize
+    )
+{
+    SCSI_REQUEST_BLOCK          Srb;
+    PCDB                        Cdb;
+    PREAD_CAPACITY16_DATA       Capacity;
+    ULONG                       Length;
+    NTSTATUS                    status;
+
+    Trace("====>\n");
+
+    Length = sizeof(READ_CAPACITY16_DATA);
+
+    status = STATUS_NO_MEMORY;
+    Capacity = __PdoAllocate(Length);
+    if (Capacity == NULL)
+        goto fail1;
+
+    RtlZeroMemory(&Srb, sizeof(SCSI_REQUEST_BLOCK));
+    Srb.Length = sizeof(SCSI_REQUEST_BLOCK);
+    Srb.SrbFlags = 0;
+    Srb.Function = SRB_FUNCTION_EXECUTE_SCSI;
+    Srb.DataBuffer = Capacity;
+    Srb.DataTransferLength = Length;
+    Srb.TimeOutValue = (ULONG)-1;
+    Srb.CdbLength = 16;
+
+    Cdb = (PCDB)&Srb.Cdb[0];
+    Cdb->READ_CAPACITY16.OperationCode = SCSIOP_READ_CAPACITY16;
+    Cdb->READ_CAPACITY16.ServiceAction = SERVICE_ACTION_READ_CAPACITY16;
+    *(PULONG)Cdb->READ_CAPACITY16.AllocationLength = _byteswap_ulong(Length);
+
+    status = PdoSendAwaitSrb(Pdo, &Srb);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = STATUS_UNSUCCESSFUL;
+    if (Srb.DataTransferLength < Length)
+        goto fail3;
+
+    *SectorSize = _byteswap_ulong(Capacity->BytesPerBlock);
+
+    __PdoFree(Capacity);
+
+    Trace("<====\n");
+    return STATUS_SUCCESS;
+
+fail3:
+    Error("fail3\n");
+
+fail2:
+    Error("fail2\n");
+
+    __PdoFree(Capacity);
 
 fail1:
     Error("fail1 (%08x)\n", status);
@@ -590,6 +556,95 @@ fail2:
 
 fail1:
     Error("fail1 (%08x)\n", status);
+
+    return status;
+}
+
+static const CHAR *
+PropertyIdName(
+    IN  STORAGE_PROPERTY_ID Id
+    )
+{
+#define _STORAGE_PROPERTY_NAME(_Id) \
+    case Storage ## _Id:            \
+        return #_Id;
+
+    switch (Id) {
+    _STORAGE_PROPERTY_NAME(DeviceProperty);
+    _STORAGE_PROPERTY_NAME(AdapterProperty);
+    _STORAGE_PROPERTY_NAME(DeviceIdProperty);
+    _STORAGE_PROPERTY_NAME(DeviceUniqueIdProperty);
+    _STORAGE_PROPERTY_NAME(DeviceWriteCacheProperty);
+    _STORAGE_PROPERTY_NAME(MiniportProperty);
+    _STORAGE_PROPERTY_NAME(AccessAlignmentProperty);
+    _STORAGE_PROPERTY_NAME(DeviceSeekPenaltyProperty);
+    _STORAGE_PROPERTY_NAME(DeviceTrimProperty);
+    _STORAGE_PROPERTY_NAME(DeviceWriteAggregationProperty);
+    _STORAGE_PROPERTY_NAME(DeviceDeviceTelemetryProperty);
+    _STORAGE_PROPERTY_NAME(DeviceLBProvisioningProperty);
+    _STORAGE_PROPERTY_NAME(DevicePowerProperty);
+    _STORAGE_PROPERTY_NAME(DeviceCopyOffloadProperty);
+    _STORAGE_PROPERTY_NAME(DeviceResiliencyProperty);
+    _STORAGE_PROPERTY_NAME(DeviceMediumProductType);
+    _STORAGE_PROPERTY_NAME(DeviceTieringProperty);
+    default:
+        break;
+    }
+
+    return "UNKNOWN";
+
+#undef _STORAGE_PROPERTY_NAME
+}
+
+static DECLSPEC_NOINLINE NTSTATUS
+PdoQueryProperty(
+    IN  PXENDISK_PDO        Pdo,
+    IN  PIRP                Irp
+    )
+{
+    PIO_STACK_LOCATION      StackLocation;
+    PSTORAGE_PROPERTY_QUERY Query;
+    NTSTATUS                status;
+
+    StackLocation = IoGetCurrentIrpStackLocation(Irp);
+
+    if (StackLocation->Parameters.DeviceIoControl.InputBufferLength <
+        sizeof (STORAGE_PROPERTY_QUERY))
+        return PdoCompleteIrp(Pdo, Irp, STATUS_INFO_LENGTH_MISMATCH);
+
+    Query = Irp->AssociatedIrp.SystemBuffer;
+
+    Trace("%s\n", PropertyIdName(Query->PropertyId));
+
+    switch (Query->PropertyId) {
+    case StorageDeviceTrimProperty:
+        if (Query->QueryType == PropertyStandardQuery) {
+            PDEVICE_TRIM_DESCRIPTOR Trim;
+
+            if (StackLocation->Parameters.DeviceIoControl.OutputBufferLength <
+                sizeof (DEVICE_TRIM_DESCRIPTOR))
+                return PdoCompleteIrp(Pdo, Irp, STATUS_BUFFER_OVERFLOW);
+
+            Trim = Irp->AssociatedIrp.SystemBuffer;
+
+            RtlZeroMemory(Trim, sizeof(DEVICE_TRIM_DESCRIPTOR));
+
+            Trim->Version = sizeof(DEVICE_TRIM_DESCRIPTOR);
+            Trim->Size = sizeof(DEVICE_TRIM_DESCRIPTOR);
+            Trim->TrimEnabled = TRUE;
+
+            Irp->IoStatus.Information = sizeof(DEVICE_TRIM_DESCRIPTOR);
+        } else {
+            Irp->IoStatus.Information = 0;
+        }
+
+        status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
+        break;
+
+    default:
+        status = PdoForwardIrpAndForget(Pdo, Irp);
+        break;
+    }
 
     return status;
 }
@@ -677,6 +732,7 @@ PdoStartDevice(
     IN  PIRP            Irp
     )
 {
+    ULONG               SectorSize;
     POWER_STATE         PowerState;
     NTSTATUS            status;
 
@@ -687,6 +743,12 @@ PdoStartDevice(
     status = PdoForwardIrpSynchronously(Pdo, Irp);
     if (!NT_SUCCESS(status))
         goto fail2;
+
+    status = PdoSendReadCapacity16Synchronous(Pdo, &SectorSize);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    Pdo->SectorSize = SectorSize;
 
     __PdoSetSystemPowerState(Pdo, PowerSystemWorking);
     __PdoSetDevicePowerState(Pdo, PowerDeviceD0);
@@ -705,10 +767,17 @@ PdoStartDevice(
 
     return STATUS_SUCCESS;
 
+fail3:
+    Error("fail3\n");
+
 fail2:
+    Error("fail2\n");
+
     IoReleaseRemoveLock(&Pdo->Dx->RemoveLock, Irp);
 
 fail1:
+    Error("fail1 (%08x)\n", status);
+
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -843,6 +912,8 @@ __PdoStopDevice(
         IoMarkIrpPending(Irp);
 
     IoReleaseRemoveLock(&Pdo->Dx->RemoveLock, Irp);
+
+    Pdo->SectorSize = 0;
 
     return STATUS_SUCCESS;
 }
@@ -1093,6 +1164,8 @@ done:
 
     status = PdoForwardIrpSynchronously(Pdo, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    Pdo->SectorSize = 0;
 
     FdoAcquireMutex(Fdo);
     PdoDestroy(Pdo);
@@ -1965,7 +2038,6 @@ PdoCreate(
     Pdo->Dx = Dx;
     Pdo->PhysicalDeviceObject = PhysicalDeviceObject;
     Pdo->LowerDeviceObject = LowerDeviceObject;
-    Pdo->SectorSize = 512;
 
     status = ThreadCreate(PdoSystemPower, Pdo, &Pdo->SystemPowerThread);
     if (!NT_SUCCESS(status))
@@ -2048,7 +2120,6 @@ PdoDestroy(
     ThreadJoin(Pdo->SystemPowerThread);
     Pdo->SystemPowerThread = NULL;
 
-    Pdo->SectorSize = 0;
     Pdo->PhysicalDeviceObject = NULL;
     Pdo->LowerDeviceObject = NULL;
     Pdo->Dx = NULL;
