@@ -585,8 +585,6 @@ PropertyIdName(
     _STORAGE_PROPERTY_NAME(DevicePowerProperty);
     _STORAGE_PROPERTY_NAME(DeviceCopyOffloadProperty);
     _STORAGE_PROPERTY_NAME(DeviceResiliencyProperty);
-    _STORAGE_PROPERTY_NAME(DeviceMediumProductType);
-    _STORAGE_PROPERTY_NAME(DeviceTieringProperty);
     default:
         break;
     }
