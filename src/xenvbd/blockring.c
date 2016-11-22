@@ -211,6 +211,7 @@ __BlockRingInsert(
         break;
 
     case BLKIF_OP_WRITE_BARRIER:
+    case BLKIF_OP_FLUSH_DISKCACHE:
         req->operation                  = Request->Operation;
         req->nr_segments                = 0;
         req->handle                     = (USHORT)BlockRing->DeviceId;

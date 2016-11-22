@@ -113,6 +113,7 @@ struct _XENVBD_PDO {
     ULONG                       BlkOpIndirectWrite;
     ULONG                       BlkOpBarrier;
     ULONG                       BlkOpDiscard;
+    ULONG                       BlkOpFlush;
     // Stats - Failures
     ULONG                       FailedMaps;
     ULONG                       FailedBounces;
@@ -294,8 +295,8 @@ PdoDebugCallback(
                  "PDO: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
                  Pdo->BlkOpIndirectRead, Pdo->BlkOpIndirectWrite);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: BLKIF_OPs: BARRIER=%u DISCARD=%u\n",
-                 Pdo->BlkOpBarrier, Pdo->BlkOpDiscard);
+                 "PDO: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
+                 Pdo->BlkOpBarrier, Pdo->BlkOpDiscard, Pdo->BlkOpFlush);
     XENBUS_DEBUG(Printf, DebugInterface,
                  "PDO: Failed: Maps=%u Bounces=%u Grants=%u\n",
                  Pdo->FailedMaps, Pdo->FailedBounces, Pdo->FailedGrants);
@@ -316,7 +317,7 @@ PdoDebugCallback(
 
     Pdo->BlkOpRead = Pdo->BlkOpWrite = 0;
     Pdo->BlkOpIndirectRead = Pdo->BlkOpIndirectWrite = 0;
-    Pdo->BlkOpBarrier = Pdo->BlkOpDiscard = 0;
+    Pdo->BlkOpBarrier = Pdo->BlkOpDiscard = Pdo->BlkOpFlush = 0;
     Pdo->FailedMaps = Pdo->FailedBounces = Pdo->FailedGrants = 0;
     Pdo->SegsGranted = Pdo->SegsBounced = 0;
 }
@@ -754,6 +755,9 @@ __PdoIncBlkifOpCount(
         break;
     case BLKIF_OP_DISCARD:
         ++Pdo->BlkOpDiscard;
+        break;
+    case BLKIF_OP_FLUSH_DISKCACHE:
+        ++Pdo->BlkOpFlush;
         break;
     default:
         ASSERT(FALSE);
@@ -1222,7 +1226,13 @@ PrepareSyncCache(
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
     PXENVBD_REQUEST     Request;
     LIST_ENTRY          List;
+    UCHAR               Operation;
     
+    if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache)
+        Operation = BLKIF_OP_FLUSH_DISKCACHE;
+    else
+        Operation = BLKIF_OP_WRITE_BARRIER;
+
     InitializeListHead(&List);
     SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_PENDING;
@@ -1233,7 +1243,7 @@ PrepareSyncCache(
     InsertTailList(&List, &Request->Entry);
 
     Request->Srb        = Srb;
-    Request->Operation  = BLKIF_OP_WRITE_BARRIER;
+    Request->Operation  = Operation;
     Request->FirstSector = Cdb_LogicalBlock(Srb);
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
@@ -1722,8 +1732,9 @@ PdoSyncCache(
         return TRUE;
     }
 
-    if (FrontendGetDiskInfo(Pdo->Frontend)->Barrier == FALSE) {
-        Trace("Target[%d] : BARRIER not supported, suppressing\n", PdoGetTargetId(Pdo));
+    if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache == FALSE &&
+        FrontendGetDiskInfo(Pdo->Frontend)->Barrier == FALSE) {
+        Trace("Target[%d] : FLUSH and BARRIER not supported, suppressing\n", PdoGetTargetId(Pdo));
         Srb->ScsiStatus = 0x00; // SCSI_GOOD
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         return TRUE;
@@ -1826,7 +1837,7 @@ PdoModeSense(
         Caching->PageLength                 = MODE_CACHING_PAGE_LENGTH;
         Caching->ReadDisableCache           = 0;
         Caching->MultiplicationFactor       = 0;
-        Caching->WriteCacheEnable           = 0;
+        Caching->WriteCacheEnable           = FrontendGetDiskInfo(Pdo->Frontend)->FlushCache ? 1 : 0;
         Caching->WriteRetensionPriority     = 0;
         Caching->ReadRetensionPriority      = 0;
         Caching->DisablePrefetchTransfer[0] = 0;
