@@ -1121,17 +1121,17 @@ abort:
     if (BackendState != XenbusStateConnected)
         goto fail7;
 
-    // Frontend: -> CONNECTED
-    Status = ___SetState(Frontend, XenbusStateConnected);
-    if (!NT_SUCCESS(Status))
-        goto fail8;
-
     // read disk info
     __ReadDiskInfo(Frontend);
     FrontendReadDiskInfo(Frontend);
 
     // blkback doesnt write features before InitWait, blkback writes features before Connected!
     FrontendReadFeatures(Frontend);
+
+    // Frontend: -> CONNECTED
+    Status = ___SetState(Frontend, XenbusStateConnected);
+    if (!NT_SUCCESS(Status))
+        goto fail8;
 
     return STATUS_SUCCESS;
 
