@@ -136,15 +136,19 @@ FrontendRemoveFeature(
 {
     switch (BlkifOperation) {
     case BLKIF_OP_FLUSH_DISKCACHE:
+        Verbose("FLUSH_DISKCACHE\n");
         Frontend->DiskInfo.FlushCache = FALSE;
         break;
     case BLKIF_OP_WRITE_BARRIER:    
+        Verbose("WRITE_BARRIER\n");
         Frontend->DiskInfo.Barrier = FALSE;
         break;
     case BLKIF_OP_DISCARD:
+        Verbose("DISCARD\n");
         Frontend->DiskInfo.Discard = FALSE;
         break;
     case BLKIF_OP_INDIRECT:
+        Verbose("INDIRECT\n");
         Frontend->Features.Indirect = 0;
         break;
     default:

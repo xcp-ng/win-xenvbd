@@ -1539,9 +1539,8 @@ PdoCompleteResponse(
     case BLKIF_RSP_EOPNOTSUPP:
         // Remove appropriate feature support
         FrontendRemoveFeature(Pdo->Frontend, Request->Operation);
-        Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
-        Warning("Target[%d] : %s BLKIF_RSP_EOPNOTSUPP (Tag %x)\n",
-                PdoGetTargetId(Pdo), BlkifOperationName(Request->Operation), Tag);
+        // Succeed this SRB, subsiquent SRBs will be succeeded instead of being passed to the backend.
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
 
     case BLKIF_RSP_ERROR:
