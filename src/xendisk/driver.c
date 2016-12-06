@@ -30,14 +30,18 @@
  */
 
 #include <ntddk.h>
+
+#include "registry.h"
 #include "driver.h"
 #include "util.h"
 #include "debug.h"
 #include "assert.h"
+
 #include <version.h>
 
 typedef struct _XENDISK_DRIVER {
-    PDRIVER_OBJECT              DriverObject;
+    PDRIVER_OBJECT  DriverObject;
+    HANDLE          ParametersKey;
 } XENDISK_DRIVER, *PXENDISK_DRIVER;
 
 static XENDISK_DRIVER   Driver;
@@ -66,6 +70,30 @@ DriverGetDriverObject(
     return __DriverGetDriverObject();
 }
 
+static FORCEINLINE VOID
+__DriverSetParametersKey(
+    IN  HANDLE  Key
+    )
+{
+    Driver.ParametersKey = Key;
+}
+
+static FORCEINLINE HANDLE
+__DriverGetParametersKey(
+    VOID
+    )
+{
+    return Driver.ParametersKey;
+}
+
+HANDLE
+DriverGetParametersKey(
+    VOID
+    )
+{
+    return __DriverGetParametersKey();
+}
+
 DRIVER_UNLOAD   DriverUnload;
 
 VOID
@@ -73,9 +101,27 @@ DriverUnload(
     IN  PDRIVER_OBJECT  DriverObject
     )
 {
+    HANDLE              ParametersKey;
+
     ASSERT3P(DriverObject, ==, __DriverGetDriverObject());
 
     Trace("====>\n");
+
+    ParametersKey = __DriverGetParametersKey();
+    __DriverSetParametersKey(NULL);
+
+    RegistryCloseKey(ParametersKey);
+
+    RegistryTeardown();
+
+    Verbose("XENDISK %d.%d.%d (%d) (%02d.%02d.%04d)\n",
+            MAJOR_VERSION,
+            MINOR_VERSION,
+            MICRO_VERSION,
+            BUILD_NUMBER,
+            DAY,
+            MONTH,
+            YEAR);
 
     __DriverSetDriverObject(NULL);
 
@@ -162,7 +208,10 @@ DriverEntry(
     IN  PUNICODE_STRING RegistryPath
     )
 {
+    HANDLE              ServiceKey;
+    HANDLE              ParametersKey;
     ULONG               Index;
+    NTSTATUS            status;
 
     ASSERT3P(__DriverGetDriverObject(), ==, NULL);
     UNREFERENCED_PARAMETER(RegistryPath);
@@ -184,6 +233,25 @@ DriverEntry(
             MONTH,
             YEAR);
 
+    status = RegistryInitialize(RegistryPath);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = RegistryOpenServiceKey(KEY_ALL_ACCESS, &ServiceKey);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = RegistryOpenSubKey(ServiceKey,
+                                "Parameters",
+                                KEY_READ,
+                                &ParametersKey);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    __DriverSetParametersKey(ParametersKey);
+
+    RegistryCloseKey(ServiceKey);
+
     DriverObject->DriverExtension->AddDevice = AddDevice;
 
     for (Index = 0; Index <= IRP_MJ_MAXIMUM_FUNCTION; Index++) {
@@ -193,5 +261,25 @@ DriverEntry(
     }
 
     Trace("<====\n");
+
     return STATUS_SUCCESS;
+
+fail3:
+    Error("fail3\n");
+
+    RegistryCloseKey(ServiceKey);
+
+fail2:
+    Error("fail2\n");
+
+    RegistryTeardown();
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    __DriverSetDriverObject(NULL);
+
+    ASSERT(IsZeroMemory(&Driver, sizeof (XENDISK_DRIVER)));
+
+    return status;
 }

@@ -36,10 +36,10 @@
 #include "assert.h"
 #include "util.h"
 
-#define THREAD_POOL 'ERHT'
+#define THREAD_TAG 'ERHT'
 
 struct _XENDISK_THREAD {
-    XENDISK_THREAD_FUNCTION Function;
+    XENDISK_THREAD_FUNCTION  Function;
     PVOID                   Context;
     KEVENT                  Event;
     BOOLEAN                 Alerted;
@@ -52,7 +52,7 @@ __ThreadAllocate(
     IN  ULONG   Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Length, THREAD_POOL);
+    return __AllocatePoolWithTag(NonPagedPool, Length, THREAD_TAG);
 }
 
 static FORCEINLINE VOID
@@ -60,7 +60,7 @@ __ThreadFree(
     IN  PVOID   Buffer
     )
 {
-    __FreePoolWithTag(Buffer, THREAD_POOL);
+    __FreePoolWithTag(Buffer, THREAD_TAG);
 }
 
 static FORCEINLINE VOID

@@ -67,7 +67,7 @@ __FdoAllocate(
     IN  ULONG   Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Length, FDO_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, FDO_TAG);
 }
 
 static FORCEINLINE VOID

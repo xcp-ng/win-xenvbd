@@ -40,6 +40,11 @@ DriverGetDriverObject(
     VOID
     );
 
+extern HANDLE
+DriverGetParametersKey(
+    VOID
+    );
+
 #pragma warning(push)
 #pragma warning(disable:4201) // nonstandard extension used : nameless struct/union
 

@@ -83,6 +83,10 @@ StartType=%SERVICE_BOOT_START%
 ErrorControl=%SERVICE_ERROR_NORMAL%
 ServiceBinary=%12%\xendisk.sys
 LoadOrderGroup="Scsi Miniport"
+AddReg=XenDisk_Parameters
+
+[XenDisk_Parameters]
+HKR,"Parameters",,0x00000010
 
 [XenVbd_Service] 
 DisplayName=%XenVbdName%

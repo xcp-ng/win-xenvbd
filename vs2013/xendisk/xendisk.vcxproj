@@ -103,6 +103,7 @@
     <ClCompile Include="../../src/xendisk/driver.c" />
     <ClCompile Include="../../src/xendisk/fdo.c" />
     <ClCompile Include="../../src/xendisk/pdo.c" />
+    <ClCompile Include="../../src/xendisk/registry.c" />
     <ClCompile Include="../../src/xendisk/thread.c" />
   </ItemGroup>
   <ItemGroup>

@@ -43,6 +43,7 @@
 #include "fdo.h"
 #include "pdo.h"
 #include "driver.h"
+#include "registry.h"
 #include "thread.h"
 #include "debug.h"
 #include "assert.h"
@@ -62,6 +63,7 @@ struct _XENDISK_PDO {
 
     PXENDISK_FDO                Fdo;
 
+    BOOLEAN                     InterceptTrim;
     ULONG                       SectorSize;
 };
 
@@ -70,7 +72,7 @@ __PdoAllocate(
     IN  ULONG   Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Length, PDO_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, PDO_TAG);
 }
 
 static FORCEINLINE VOID
@@ -616,6 +618,11 @@ PdoQueryProperty(
 
     switch (Query->PropertyId) {
     case StorageDeviceTrimProperty:
+        if (!Pdo->InterceptTrim) {
+            status = PdoForwardIrpAndForget(Pdo, Irp);
+            break;
+        }
+
         if (Query->QueryType == PropertyStandardQuery) {
             PDEVICE_TRIM_DESCRIPTOR Trim;
 
@@ -662,6 +669,11 @@ PdoManageDataSetAttributes(
 
     switch (Attributes->Action) {
     case DeviceDsmAction_Trim:
+        if (!Pdo->InterceptTrim) {
+            status = PdoForwardIrpAndForget(Pdo, Irp);
+            break;
+        }
+
         Ranges = (PDEVICE_DATA_SET_RANGE)((PUCHAR)Attributes + Attributes->DataSetRangesOffset);
         NumRanges = Attributes->DataSetRangesLength / sizeof(DEVICE_DATA_SET_RANGE);
 
@@ -1992,6 +2004,8 @@ PdoCreate(
     PDEVICE_OBJECT                  FilterDeviceObject;
     PXENDISK_DX                     Dx;
     PXENDISK_PDO                    Pdo;
+    HANDLE                          ParametersKey;
+    ULONG                           InterceptTrim;
     NTSTATUS                        status;
 
     LowerDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);
@@ -2044,6 +2058,16 @@ PdoCreate(
     status = ThreadCreate(PdoDevicePower, Pdo, &Pdo->DevicePowerThread);
     if (!NT_SUCCESS(status))
         goto fail5;
+
+    ParametersKey = DriverGetParametersKey();
+
+    Pdo->InterceptTrim = TRUE;
+
+    status = RegistryQueryDwordValue(ParametersKey,
+                                     "InterceptTrim",
+                                     &InterceptTrim);
+    if (NT_SUCCESS(status))
+        Pdo->InterceptTrim = (InterceptTrim != 0) ? TRUE : FALSE;
 
     Verbose("%p\n", FilterDeviceObject);
 
@@ -2109,6 +2133,8 @@ PdoDestroy(
     Verbose("%p\n", FilterDeviceObject);
 
     Dx->Pdo = NULL;
+
+    Pdo->InterceptTrim = FALSE;
 
     ThreadAlert(Pdo->DevicePowerThread);
     ThreadJoin(Pdo->DevicePowerThread);
