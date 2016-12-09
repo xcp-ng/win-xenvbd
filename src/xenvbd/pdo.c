@@ -2231,8 +2231,6 @@ PdoReset(
     __in PXENVBD_PDO             Pdo
     )
 {
-    NTSTATUS        Status;
-
     Trace("Target[%d] ====> (Irql=%d)\n", PdoGetTargetId(Pdo), KeGetCurrentIrql());
 
     __PdoPauseDataPath(Pdo, TRUE);
@@ -2241,17 +2239,6 @@ PdoReset(
         Error("Target[%d] : backend has %u outstanding requests after a PdoReset\n",
                 PdoGetTargetId(Pdo), QueueCount(&Pdo->SubmittedReqs));
     }
-
-    Status = FrontendSetState(Pdo->Frontend, XENVBD_CLOSING);
-    ASSERT(NT_SUCCESS(Status));
-
-    __PdoCleanupSubmittedReqs(Pdo);
-
-    Status = FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
-    ASSERT(NT_SUCCESS(Status));
-
-    Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
-    ASSERT(NT_SUCCESS(Status));
 
     __PdoUnpauseDataPath(Pdo);
 
