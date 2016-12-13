@@ -148,8 +148,7 @@ ThreadFunction(
     // NOT REACHED
 }
 
-__checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 _ThreadCreate(
     __in  PCHAR                   Name,

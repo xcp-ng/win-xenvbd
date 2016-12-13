@@ -38,8 +38,7 @@ typedef struct _XENVBD_THREAD XENVBD_THREAD, *PXENVBD_THREAD;
 
 typedef NTSTATUS (*XENVBD_THREAD_FUNCTION)(PXENVBD_THREAD, PVOID);
 
-__checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
+__drv_requiresIRQL(PASSIVE_LEVEL)
 extern NTSTATUS
 _ThreadCreate(
     __in  PCHAR                   Name,

@@ -277,6 +277,7 @@ FdoUnlinkPdo(
 //=============================================================================
 // QueryInterface
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 FdoQueryInterface(
     IN  PXENVBD_FDO     Fdo,
@@ -870,8 +871,7 @@ FdoScan(
 //=============================================================================
 // Initialize, Start, Stop
 
-__checkReturn
-__drv_maxIRQL(APC_LEVEL)
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static FORCEINLINE NTSTATUS
 __FdoQueryInterfaces(
     __in PXENVBD_FDO             Fdo
@@ -1548,7 +1548,7 @@ FdoDevicePower(
 }
 
 __checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 __FdoInitialize(
     __in PXENVBD_FDO             Fdo
