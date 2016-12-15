@@ -80,5 +80,8 @@
   <ItemGroup>
     <ResourceCompile Include="..\..\src\xenvbd\xenvbd.rc" />
   </ItemGroup>
+  <ItemGroup>
+    <Inf Include="..\xenvbd.inf" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

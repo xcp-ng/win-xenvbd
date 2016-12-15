@@ -29,7 +29,7 @@
     <VerifyProjectOutput>True</VerifyProjectOutput>
     <VerifyFlags>133563</VerifyFlags>
     <IntDir>..\$(ProjectName)\$(ConfigurationName)\$(Platform)\</IntDir>
-    <OutDir>..\..\xenvbd\$(DDKPlatform)</OutDir>
+    <OutDir>..\..\xenvbd\$(DDKPlatform)\</OutDir>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\xenvbd_coinst\xenvbd_coinst.vcxproj">
