@@ -1170,7 +1170,6 @@ PrepareReadWrite(
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
-    Srb->SrbStatus = SRB_STATUS_PENDING;
 
     RtlZeroMemory(&SGList, sizeof(SGList));
     SGList.SGList = StorPortGetScatterGatherList(PdoGetFdo(Pdo), Srb);
@@ -1207,12 +1206,14 @@ PrepareReadWrite(
     }
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail3:
 fail2:
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
 
@@ -1235,7 +1236,6 @@ PrepareSyncCache(
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
-    Srb->SrbStatus = SRB_STATUS_PENDING;
 
     Request = PdoGetRequest(Pdo);
     if (Request == NULL)
@@ -1247,10 +1247,12 @@ PrepareSyncCache(
     Request->FirstSector = Cdb_LogicalBlock(Srb);
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
 
@@ -1269,7 +1271,6 @@ PrepareUnmap(
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
-    Srb->SrbStatus = SRB_STATUS_PENDING;
 
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
@@ -1288,10 +1289,12 @@ PrepareUnmap(
     }
 
     SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
 
@@ -1414,6 +1417,7 @@ PdoPrepareFresh(
         break;
     }
     QueueUnPop(&Pdo->FreshSrbs, &SrbExt->Entry);
+
     return FALSE;       // prepare failed
 }
 
