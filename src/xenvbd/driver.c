@@ -198,6 +198,8 @@ DriverRequestReboot(
 
     RegistryCloseKey(SubKey);
 
+    RegistryCloseKey(RequestKey);
+
     RegistryFreeSzValue(Ansi);
 
     return;
@@ -470,6 +472,7 @@ DriverUnload(
     Driver.StorPortDriverUnload(_DriverObject);
     BufferTerminate();
     RegistryCloseKey(Driver.ParametersKey);
+    RegistryTeardown();
 
     Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
 }
@@ -517,6 +520,7 @@ DriverEntry(
     Driver.ParametersKey = ParametersKey;
 
     RegistryCloseKey(ServiceKey);
+    ServiceKey = NULL;
 
     KeInitializeSpinLock(&Driver.Lock);
     Driver.Fdo = NULL;
@@ -555,23 +559,32 @@ DriverEntry(
                                 RegistryPath,
                                 &InitData,
                                 NULL);
-    if (NT_SUCCESS(status)) {
-        Driver.StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
-        Driver.StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
-        Driver.StorPortDriverUnload    = _DriverObject->DriverUnload;
+    if (!NT_SUCCESS(status))
+        goto fail4;
 
-        _DriverObject->MajorFunction[IRP_MJ_PNP]    = DispatchPnp;
-        _DriverObject->MajorFunction[IRP_MJ_POWER]  = DispatchPower;
-        _DriverObject->DriverUnload                 = DriverUnload;
-    }
+    Driver.StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
+    Driver.StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
+    Driver.StorPortDriverUnload    = _DriverObject->DriverUnload;
 
-    Trace("<=== (%08x) (Irql=%d)\n", status, KeGetCurrentIrql());
-    return status;
+    _DriverObject->MajorFunction[IRP_MJ_PNP]    = DispatchPnp;
+    _DriverObject->MajorFunction[IRP_MJ_POWER]  = DispatchPower;
+    _DriverObject->DriverUnload                 = DriverUnload;
+
+    Trace("<=== (%08x) (Irql=%d)\n", STATUS_SUCCESS, KeGetCurrentIrql());
+    return STATUS_SUCCESS;
+
+fail4:
+    Error("fail4\n");
+
+    BufferTerminate();
+    RegistryCloseKey(Driver.ParametersKey);
+    Driver.ParametersKey = NULL;
 
 fail3:
     Error("fail3\n");
 
-    RegistryCloseKey(ServiceKey);
+    if (ServiceKey)
+        RegistryCloseKey(ServiceKey);
 
 fail2:
     Error("fail2\n");
