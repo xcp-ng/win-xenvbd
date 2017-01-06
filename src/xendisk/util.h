@@ -253,6 +253,7 @@ __FreePages(
     MmUnmapLockedPages(MdlMappedSystemVa, Mdl);
 
     MmFreePagesFromMdl(Mdl);
+    ExFreePool(Mdl);
 }
 
 #define __FreePage(_Mdl)    __FreePages(_Mdl)
