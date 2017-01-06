@@ -123,12 +123,12 @@ CpuId(
 static FORCEINLINE NTSTATUS
 __InitHypercallPage()
 {
-    ULONG   eax = 'DEAD';
-    ULONG   ebx = 'DEAD';
-    ULONG   ecx = 'DEAD';
-    ULONG   edx = 'DEAD';
-    ULONG   Index;
-    ULONG   HypercallMsr;
+    ULONG       eax = 'DEAD';
+    ULONG       ebx = 'DEAD';
+    ULONG       ecx = 'DEAD';
+    ULONG       edx = 'DEAD';
+    ULONG_PTR   Index;
+    ULONG       HypercallMsr;
 
     NTSTATUS    Status;
 
