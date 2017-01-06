@@ -75,15 +75,12 @@ __drv_allocatesMem(mem)
 __bcount(Size)
 static FORCEINLINE PVOID 
 #pragma warning(suppress: 28195)
-___InquiryAlloc(
-    __in PCHAR               Caller,
-    __in ULONG               Line,
-    __in SIZE_T              Size
+__InquiryAlloc(
+    __in SIZE_T Size
     )
 {
-    return __AllocateNonPagedPoolWithTag(Caller, Line, Size, INQUIRY_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Size, INQUIRY_POOL_TAG);
 }
-#define __InquiryAlloc(Size) ___InquiryAlloc(__FUNCTION__, __LINE__, Size)
 
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)

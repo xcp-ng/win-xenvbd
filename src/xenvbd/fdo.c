@@ -674,10 +674,9 @@ __FdoMultiSzToAnsi(
         }
     }
 
-    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                         __LINE__,
-                                         sizeof (ANSI_STRING) * (Count + 1),
-                                         FDO_SIGNATURE);
+    Ansi = __AllocatePoolWithTag(NonPagedPool,
+                                 sizeof (ANSI_STRING) * (Count + 1),
+                                 FDO_SIGNATURE);
 
     status = STATUS_NO_MEMORY;
     if (Ansi == NULL)
@@ -688,10 +687,9 @@ __FdoMultiSzToAnsi(
 
         Length = (ULONG)strlen(Buffer);
         Ansi[Index].MaximumLength = (USHORT)(Length + 1);
-        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                                           __LINE__,
-                                                           Ansi[Index].MaximumLength,
-                                                           FDO_SIGNATURE);
+        Ansi[Index].Buffer = __AllocatePoolWithTag(NonPagedPool,
+                                                   Ansi[Index].MaximumLength,
+                                                   FDO_SIGNATURE);
 
         status = STATUS_NO_MEMORY;
         if (Ansi[Index].Buffer == NULL)
@@ -745,10 +743,9 @@ __FdoMultiSzToUpcaseAnsi(
         }
     }
 
-    Ansi = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                         __LINE__,
-                                         sizeof (ANSI_STRING) * (Count + 1),
-                                         FDO_SIGNATURE);
+    Ansi = __AllocatePoolWithTag(NonPagedPool,
+                                 sizeof (ANSI_STRING) * (Count + 1),
+                                 FDO_SIGNATURE);
 
     status = STATUS_NO_MEMORY;
     if (Ansi == NULL)
@@ -759,10 +756,9 @@ __FdoMultiSzToUpcaseAnsi(
 
         Length = (ULONG)strlen(Buffer);
         Ansi[Index].MaximumLength = (USHORT)(Length + 1);
-        Ansi[Index].Buffer = __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                                           __LINE__,
-                                                           Ansi[Index].MaximumLength,
-                                                           FDO_SIGNATURE);
+        Ansi[Index].Buffer = __AllocatePoolWithTag(NonPagedPool,
+                                                   Ansi[Index].MaximumLength,
+                                                   FDO_SIGNATURE);
 
         status = STATUS_NO_MEMORY;
         if (Ansi[Index].Buffer == NULL)

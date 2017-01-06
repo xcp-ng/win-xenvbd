@@ -134,15 +134,12 @@ __drv_allocatesMem(mem)
 __bcount(Size)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
-___PdoAlloc(
-    __in PCHAR                   Caller,
-    __in ULONG                   Line,
-    __in ULONG                   Size
+__PdoAlloc(
+    __in ULONG  Size
     )
 {
-    return __AllocateNonPagedPoolWithTag(Caller, Line, Size, PDO_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Size, PDO_POOL_TAG);
 }
-#define __PdoAlloc(Size) ___PdoAlloc(__FUNCTION__, __LINE__, Size)
 
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)
@@ -572,9 +569,12 @@ PdoGetIndirect(
 
     RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
 
-    Indirect->Page = __AllocPages(PAGE_SIZE, &Indirect->Mdl);
-    if (Indirect->Page == NULL)
+    Indirect->Mdl = __AllocatePage();
+    if (Indirect->Mdl == NULL)
         goto fail2;
+
+    Indirect->Page = MmGetSystemAddressForMdlSafe(Indirect->Mdl,
+                                                  NormalPagePriority);
 
     status = GranterGet(Granter,
                         MmGetMdlPfnArray(Indirect->Mdl)[0],
@@ -586,7 +586,7 @@ PdoGetIndirect(
     return Indirect;
 
 fail3:
-    __FreePages(Indirect->Page, Indirect->Mdl);
+    __FreePage(Indirect->Mdl);
 fail2:
     __LookasideFree(&Pdo->IndirectList, Indirect);
 fail1:
@@ -604,7 +604,7 @@ PdoPutIndirect(
     if (Indirect->Grant)
         GranterPut(Granter, Indirect->Grant);
     if (Indirect->Page)
-        __FreePages(Indirect->Page, Indirect->Mdl);
+        __FreePage(Indirect->Mdl);
 
     RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
     __LookasideFree(&Pdo->IndirectList, Indirect);
@@ -832,6 +832,8 @@ __PdoPriority(
 
     return HighPagePriority;
 }
+
+#define __min(_x, _y) ((_x) < (_y)) ? (_x) : (_y)
 
 static FORCEINLINE VOID
 SGListGet(
@@ -1884,7 +1886,7 @@ PdoModeSense(
 
     // Finish this SRB
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
-    Srb->DataTransferLength = __min(Cdb_AllocationLength(Srb), Header->ModeDataLength + 1);
+    Srb->DataTransferLength = __min(Cdb_AllocationLength(Srb), (ULONG)(Header->ModeDataLength + 1));
 }
 
 static DECLSPEC_NOINLINE VOID

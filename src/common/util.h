@@ -29,8 +29,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _XENDISK_UTIL_H
-#define _XENDISK_UTIL_H
+#ifndef _COMMON_UTIL_H
+#define _COMMON_UTIL_H
 
 #include <ntddk.h>
 
@@ -138,6 +138,7 @@ __InterlockedSubtract(
     return New;
 }
 
+__checkReturn
 static FORCEINLINE PVOID
 __AllocatePoolWithTag(
     IN  POOL_TYPE   PoolType,
@@ -150,6 +151,7 @@ __AllocatePoolWithTag(
     __analysis_assume(PoolType == NonPagedPool ||
                       PoolType == PagedPool);
 
+#pragma warning(suppress:28160) // annotation error
     Buffer = ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag);
     if (Buffer == NULL)
         return NULL;
@@ -224,17 +226,11 @@ __AllocatePages(
     return Mdl;
 
 fail3:
-    Error("fail3\n");
-
 fail2:
-    Error("fail2\n");
-
     MmFreePagesFromMdl(Mdl);
     ExFreePool(Mdl);
 
 fail1:
-    Error("fail1 (%08x)\n", status);
-
     return NULL;
 }
 
@@ -356,4 +352,4 @@ __tolower(
     return 'a' + Character - 'A';
 }
 
-#endif  // _XENDISK_UTIL_H
+#endif  // _COMMON_UTIL_H

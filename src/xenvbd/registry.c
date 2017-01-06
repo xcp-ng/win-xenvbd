@@ -44,10 +44,7 @@ __RegistryAllocate(
     IN  ULONG   Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                         __LINE__,
-                                         Length,
-                                         REGISTRY_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, REGISTRY_TAG);
 }
 
 static FORCEINLINE VOID

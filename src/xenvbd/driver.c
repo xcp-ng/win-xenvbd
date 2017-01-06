@@ -237,7 +237,8 @@ __DriverFormatV(
     ULONG       Size = 32;
 
     for (;;) {
-        Str = (PCHAR)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, Size, XENVBD_POOL_TAG);
+        Str = (PCHAR)__AllocatePoolWithTag(NonPagedPool, Size,
+                                           XENVBD_POOL_TAG);
         if (!Str) {
             return NULL;
         }

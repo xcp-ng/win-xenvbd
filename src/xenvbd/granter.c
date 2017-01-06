@@ -57,10 +57,7 @@ __GranterAllocate(
     IN  ULONG                       Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                        __LINE__,
-                                        Length,
-                                        GRANTER_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, GRANTER_POOL_TAG);
 }
 
 static FORCEINLINE VOID

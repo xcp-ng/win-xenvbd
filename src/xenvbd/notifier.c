@@ -59,10 +59,7 @@ __NotifierAllocate(
     IN  ULONG                       Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                        __LINE__,
-                                        Length,
-                                        NOTIFIER_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, NOTIFIER_POOL_TAG);
 }
 
 static FORCEINLINE VOID

@@ -76,15 +76,18 @@ __BufferAlloc()
 {
     PXENVBD_BUFFER  BufferId;
 
-    BufferId = (PXENVBD_BUFFER)__AllocateNonPagedPoolWithTag(__FUNCTION__, __LINE__, sizeof(XENVBD_BUFFER), BUFFER_POOL_TAG);
+    BufferId = (PXENVBD_BUFFER)__AllocatePoolWithTag(NonPagedPool, sizeof(XENVBD_BUFFER), BUFFER_POOL_TAG);
     if (BufferId == NULL)
         goto fail1;
 
     RtlZeroMemory(BufferId, sizeof(XENVBD_BUFFER));
     
-    BufferId->VAddr = __AllocPages(PAGE_SIZE, &BufferId->Mdl);
-    if (BufferId->VAddr == NULL)
+    BufferId->Mdl = __AllocatePage();
+    if (BufferId->Mdl == NULL)
         goto fail2;
+
+    BufferId->VAddr = MmGetSystemAddressForMdlSafe(BufferId->Mdl,
+                                                   NormalPagePriority);
 
     BufferId->Pfn = (PFN_NUMBER)(MmGetPhysicalAddress(BufferId->VAddr).QuadPart >> PAGE_SHIFT);
     
@@ -104,7 +107,7 @@ __BufferFree(
     if (BufferId == NULL)
         return;
 
-    __FreePages(BufferId->VAddr, BufferId->Mdl);
+    __FreePage(BufferId->Mdl);
     __FreePoolWithTag((PVOID)BufferId, BUFFER_POOL_TAG);
 
     ++__Buffer.Freed;

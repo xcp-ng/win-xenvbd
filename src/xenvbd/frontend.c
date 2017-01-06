@@ -106,15 +106,12 @@ __drv_allocatesMem(mem)
 __bcount(Size)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
-___FrontendAlloc(
-    __in  PCHAR                   Caller,
-    __in  ULONG                   Line,
-    __in  ULONG                   Size
+__FrontendAlloc(
+    __in  ULONG Size
     )
 {
-    return __AllocateNonPagedPoolWithTag(Caller, Line, Size, FRONTEND_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Size, FRONTEND_POOL_TAG);
 }
-#define __FrontendAlloc(Size) ___FrontendAlloc(__FUNCTION__, __LINE__, Size)
 
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)

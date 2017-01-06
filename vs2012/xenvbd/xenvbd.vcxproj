@@ -23,7 +23,7 @@
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" /> 
 	
 	<PropertyGroup>
-		<IncludePath>$(ProjectDir)..\..\include;$(IncludePath)</IncludePath>
+		<IncludePath>$(ProjectDir)..\..\include;$(ProjectDir)..\..\src\common;$(IncludePath)</IncludePath>
 		<RunCodeAnalysis>true</RunCodeAnalysis>
 		<EnableInf2cat>false</EnableInf2cat>
 		<IntDir>..\$(ProjectName)\$(ConfigurationName)\$(Platform)\</IntDir>

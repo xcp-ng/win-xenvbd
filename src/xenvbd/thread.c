@@ -53,15 +53,12 @@ __drv_allocatesMem(mem)
 __bcount(Length)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
-___ThreadAllocate(
-    __in PCHAR   Caller,
-    __in ULONG   Line,
-    __in ULONG   Length
+__ThreadAllocate(
+    __in ULONG  Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(Caller, Line, Length, THREAD_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, THREAD_POOL_TAG);
 }
-#define __ThreadAllocate(Length) ___ThreadAllocate(__FUNCTION__, __LINE__, Length)
 
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)

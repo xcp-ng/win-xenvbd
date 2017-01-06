@@ -70,10 +70,7 @@ __BlockRingAllocate(
     IN  ULONG                       Length
     )
 {
-    return __AllocateNonPagedPoolWithTag(__FUNCTION__,
-                                        __LINE__,
-                                        Length,
-                                        BLOCKRING_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Length, BLOCKRING_POOL_TAG);
 }
 
 static FORCEINLINE VOID
@@ -299,10 +296,14 @@ BlockRingConnect(
         BlockRing->Order = 0;
     }
 
+    BlockRing->Mdl = __AllocatePages(1 << BlockRing->Order);
+
     status = STATUS_NO_MEMORY;
-    BlockRing->SharedRing = __AllocPages((SIZE_T)PAGE_SIZE << BlockRing->Order, &BlockRing->Mdl);
-    if (BlockRing->SharedRing == NULL)
+    if (BlockRing->Mdl == NULL)
         goto fail2;
+
+    BlockRing->SharedRing = MmGetSystemAddressForMdlSafe(BlockRing->Mdl,
+                                                         NormalPagePriority);
 
 #pragma warning(push)
 #pragma warning(disable: 4305)
@@ -330,7 +331,7 @@ fail3:
     }
 
     RtlZeroMemory(&BlockRing->FrontRing, sizeof(BlockRing->FrontRing));
-    __FreePages(BlockRing->SharedRing, BlockRing->Mdl);
+    __FreePages(BlockRing->Mdl);
     BlockRing->SharedRing = NULL;
     BlockRing->Mdl = NULL;
 
@@ -443,7 +444,7 @@ BlockRingDisconnect(
     }
 
     RtlZeroMemory(&BlockRing->FrontRing, sizeof(BlockRing->FrontRing));
-    __FreePages(BlockRing->SharedRing, BlockRing->Mdl);
+    __FreePages(BlockRing->Mdl);
     BlockRing->SharedRing = NULL;
     BlockRing->Mdl = NULL;
 
