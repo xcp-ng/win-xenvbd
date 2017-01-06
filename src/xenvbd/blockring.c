@@ -304,11 +304,11 @@ BlockRingConnect(
 
     BlockRing->SharedRing = MmGetSystemAddressForMdlSafe(BlockRing->Mdl,
                                                          NormalPagePriority);
+    ASSERT(BlockRing->SharedRing != NULL);
 
 #pragma warning(push)
 #pragma warning(disable: 4305)
 #pragma warning(disable: 4311)
-#pragma warning(disable: 28182)
     SHARED_RING_INIT(BlockRing->SharedRing);
     FRONT_RING_INIT(&BlockRing->FrontRing, BlockRing->SharedRing, PAGE_SIZE << BlockRing->Order);
 #pragma warning(pop)
