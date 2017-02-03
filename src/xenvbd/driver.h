@@ -57,6 +57,11 @@ typedef struct _XENVBD_PARAMETERS {
 
 extern XENVBD_PARAMETERS    DriverParameters;
 
+extern HANDLE
+DriverGetParametersKey(
+    VOID
+    );
+
 extern NTSTATUS
 DriverDispatchPnp(
     IN  PDEVICE_OBJECT  DeviceObject,

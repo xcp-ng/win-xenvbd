@@ -30,6 +30,7 @@
  */ 
 
 #include "frontend.h"
+#include "registry.h"
 #include "driver.h"
 #include "fdo.h"
 #include "pdoinquiry.h"
@@ -621,6 +622,7 @@ FrontendReadFeature(
 {
     NTSTATUS        status;
     PCHAR           Buffer;
+    ULONG           Override;
     BOOLEAN         Old = *Value;
 
     status = XENBUS_STORE(Read,
@@ -637,6 +639,15 @@ FrontendReadFeature(
                     Frontend->Store,
                     Buffer);
 
+    // check registry for disable-override
+    status = RegistryQueryDwordValue(DriverGetParametersKey(),
+                                    Name,
+                                    &Override);
+    if (NT_SUCCESS(status)) {
+        if (Override == 0)
+            *Value = FALSE;
+    }
+
     return Old != *Value;
 }
 
@@ -644,11 +655,13 @@ static FORCEINLINE BOOLEAN
 FrontendReadValue32(
     IN  PXENVBD_FRONTEND            Frontend,
     IN  PCHAR                       Name,
+    IN  BOOLEAN                     AllowOverride,
     IN  PULONG                      Value
     )
 {
     NTSTATUS        status;
     PCHAR           Buffer;
+    ULONG           Override;
     ULONG           Old = *Value;
 
     status = XENBUS_STORE(Read,
@@ -664,6 +677,16 @@ FrontendReadValue32(
     XENBUS_STORE(Free,
                     Frontend->Store,
                     Buffer);
+
+    // check registry for disable-override
+    if (AllowOverride) {
+        status = RegistryQueryDwordValue(DriverGetParametersKey(),
+                                        Name,
+                                        &Override);
+        if (NT_SUCCESS(status)) {
+            *Value = Override;
+        }
+    }
 
     return Old != *Value;
 }
@@ -727,12 +750,15 @@ __ReadDiskInfo(
 
     Changed |= FrontendReadValue32(Frontend,
                                   "info",
+                                  FALSE,
                                   &Frontend->DiskInfo.DiskInfo);
     Changed |= FrontendReadValue32(Frontend,
                                   "sector-size",
+                                  FALSE,
                                   &Frontend->DiskInfo.SectorSize);
     Changed |= FrontendReadValue32(Frontend,
                                   "physical-sector-size",
+                                  FALSE,
                                   &Frontend->DiskInfo.PhysSectorSize);
     Changed |= FrontendReadValue64(Frontend,
                                   "sectors",
@@ -780,6 +806,7 @@ FrontendReadFeatures(
                                    &Frontend->Caps.Removable);
     Changed |= FrontendReadValue32(Frontend,
                                    "feature-max-indirect-segments",
+                                   TRUE,
                                    &Frontend->Features.Indirect);
     Changed |= FrontendReadFeature(Frontend,
                                    "feature-persistent",
@@ -821,9 +848,11 @@ FrontendReadDiskInfo(
                                    &Frontend->DiskInfo.DiscardSecure);
     Changed |= FrontendReadValue32(Frontend,
                                    "discard-alignment",
+                                   TRUE,
                                    &Frontend->DiskInfo.DiscardAlignment);
     Changed |= FrontendReadValue32(Frontend,
                                    "discard-granularity",
+                                   TRUE,
                                    &Frontend->DiskInfo.DiscardGranularity);
 
     if (!Changed)
