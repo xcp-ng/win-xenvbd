@@ -1167,6 +1167,7 @@ PrepareReadWrite(
     ULONG           SectorsLeft = Cdb_TransferBlock(Srb);
     LIST_ENTRY      List;
     XENVBD_SG_LIST  SGList;
+    ULONG           DebugCount;
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
@@ -1183,6 +1184,7 @@ PrepareReadWrite(
         if (Request == NULL) 
             goto fail1;
         InsertTailList(&List, &Request->Entry);
+        InterlockedIncrement(&SrbExt->Count);
         
         Request->Srb    = Srb;
         MaxSegments = UseIndirect(Pdo, SectorsLeft);
@@ -1205,7 +1207,10 @@ PrepareReadWrite(
         SectorStart += SectorsDone;
     }
 
-    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    DebugCount = PdoQueueRequestList(Pdo, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+    }
     Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
@@ -1213,6 +1218,7 @@ fail3:
 fail2:
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
@@ -1228,6 +1234,7 @@ PrepareSyncCache(
     PXENVBD_REQUEST     Request;
     LIST_ENTRY          List;
     UCHAR               Operation;
+    ULONG               DebugCount;
     
     if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache)
         Operation = BLKIF_OP_FLUSH_DISKCACHE;
@@ -1241,17 +1248,22 @@ PrepareSyncCache(
     if (Request == NULL)
         goto fail1;
     InsertTailList(&List, &Request->Entry);
+    InterlockedIncrement(&SrbExt->Count);
 
     Request->Srb        = Srb;
     Request->Operation  = Operation;
     Request->FirstSector = Cdb_LogicalBlock(Srb);
 
-    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    DebugCount = PdoQueueRequestList(Pdo, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+    }
     Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
@@ -1268,6 +1280,7 @@ PrepareUnmap(
 	ULONG               Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
     ULONG               Index;
     LIST_ENTRY          List;
+    ULONG               DebugCount;
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
@@ -1280,6 +1293,7 @@ PrepareUnmap(
         if (Request == NULL)
             goto fail1;
         InsertTailList(&List, &Request->Entry);
+        InterlockedIncrement(&SrbExt->Count);
 
         Request->Srb            = Srb;
         Request->Operation      = BLKIF_OP_DISCARD;
@@ -1288,12 +1302,16 @@ PrepareUnmap(
         Request->Flags          = 0;
     }
 
-    SrbExt->Count = PdoQueueRequestList(Pdo, &List);
+    DebugCount = PdoQueueRequestList(Pdo, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+    }
     Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
     PdoCancelRequestList(Pdo, &List);
+    SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
 }
@@ -1427,6 +1445,13 @@ PdoSubmitPrepared(
     )
 {
     PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
+    if (PdoIsPaused(Pdo)) {
+        if (QueueCount(&Pdo->PreparedReqs))
+            Warning("Target[%d] : Paused, not submitting new requests (%u)\n",
+                    PdoGetTargetId(Pdo),
+                    QueueCount(&Pdo->PreparedReqs));
+        return FALSE;
+    }
 
     for (;;) {
         PXENVBD_REQUEST Request;
