@@ -109,21 +109,12 @@ NotifierDpc(
     )
 {
     PXENVBD_NOTIFIER    Notifier = Context;
-    PXENVBD_PDO         Pdo;
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(Arg1);
     UNREFERENCED_PARAMETER(Arg2);
 
     ASSERT(Notifier != NULL);
-    Pdo = FrontendGetPdo(Notifier->Frontend);
-
-    if (PdoIsPaused(Pdo)) {
-        Warning("Target[%d] : Paused, %d outstanding\n",
-                    PdoGetTargetId(Pdo), PdoOutstandingReqs(Pdo));
-        if (PdoOutstandingReqs(Pdo) == 0)
-            return;
-    }
 
     if (!Notifier->Connected)
         return;
