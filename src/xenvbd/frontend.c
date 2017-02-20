@@ -833,6 +833,9 @@ FrontendReadDiskInfo(
     )
 {
     BOOLEAN Changed = FALSE;
+    BOOLEAN Discard;
+    BOOLEAN DiscardFeature = FALSE;
+    BOOLEAN DiscardEnable = TRUE;
 
     Changed |= FrontendReadFeature(Frontend,
                                    "feature-barrier",
@@ -840,9 +843,17 @@ FrontendReadDiskInfo(
     Changed |= FrontendReadFeature(Frontend,
                                    "feature-flush-cache",
                                    &Frontend->DiskInfo.FlushCache);
-    Changed |= FrontendReadFeature(Frontend,
-                                   "feature-discard",
-                                   &Frontend->DiskInfo.Discard);
+
+    // discard related
+    FrontendReadFeature(Frontend,
+                        "feature-discard",
+                        &DiscardFeature);
+    FrontendReadFeature(Frontend,
+                        "discard-enable",
+                        &DiscardEnable);
+    Discard = DiscardFeature && DiscardEnable;
+    Changed |= (Discard != Frontend->DiskInfo.Discard);
+    Frontend->DiskInfo.Discard = Discard;
     Changed |= FrontendReadFeature(Frontend,
                                    "discard-secure",
                                    &Frontend->DiskInfo.DiscardSecure);
