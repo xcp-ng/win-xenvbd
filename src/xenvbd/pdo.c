@@ -1169,6 +1169,8 @@ PrepareReadWrite(
     XENVBD_SG_LIST  SGList;
     ULONG           DebugCount;
 
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+
     InitializeListHead(&List);
     SrbExt->Count = 0;
 
@@ -1211,7 +1213,6 @@ PrepareReadWrite(
     if (DebugCount != (ULONG)SrbExt->Count) {
         Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
     }
-    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail3:
@@ -1235,6 +1236,8 @@ PrepareSyncCache(
     LIST_ENTRY          List;
     UCHAR               Operation;
     ULONG               DebugCount;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     
     if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache)
         Operation = BLKIF_OP_FLUSH_DISKCACHE;
@@ -1258,7 +1261,6 @@ PrepareSyncCache(
     if (DebugCount != (ULONG)SrbExt->Count) {
         Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
     }
-    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
@@ -1281,6 +1283,8 @@ PrepareUnmap(
     ULONG               Index;
     LIST_ENTRY          List;
     ULONG               DebugCount;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
@@ -1306,7 +1310,6 @@ PrepareUnmap(
     if (DebugCount != (ULONG)SrbExt->Count) {
         Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
     }
-    Srb->SrbStatus = SRB_STATUS_PENDING;
     return TRUE;
 
 fail1:
