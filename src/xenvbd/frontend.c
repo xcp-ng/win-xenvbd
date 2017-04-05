@@ -32,7 +32,7 @@
 #include "frontend.h"
 #include "registry.h"
 #include "driver.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "pdoinquiry.h"
 #include "srbext.h"
 #include "debug.h"
@@ -1442,13 +1442,13 @@ FrontendD3ToD0(
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
     // acquire interfaces
-    Frontend->Store   = FdoAcquireStore(PdoGetFdo(Frontend->Pdo));
+    Frontend->Store   = AdapterAcquireStore(PdoGetAdapter(Frontend->Pdo));
 
     Status = STATUS_UNSUCCESSFUL;
     if (Frontend->Store == NULL)
         goto fail1;
 
-    Frontend->Suspend = FdoAcquireSuspend(PdoGetFdo(Frontend->Pdo));
+    Frontend->Suspend = AdapterAcquireSuspend(PdoGetAdapter(Frontend->Pdo));
 
     Status = STATUS_UNSUCCESSFUL;
     if (Frontend->Suspend == NULL)
@@ -1601,7 +1601,7 @@ FrontendCreate(
     Frontend->BackendId = DOMID_INVALID;
     
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    Frontend->FrontendPath = DriverFormat("device/%s/%s", FdoEnum(PdoGetFdo(Pdo)), DeviceId);
+    Frontend->FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(PdoGetAdapter(Pdo)), DeviceId);
     if (Frontend->FrontendPath == NULL) 
         goto fail2;
 

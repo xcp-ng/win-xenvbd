@@ -1,46 +1,40 @@
 /* Copyright (c) Citrix Systems Inc.
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, 
- * with or without modification, are permitted provided 
+ *
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted provided
  * that the following conditions are met:
- * 
- * *   Redistributions of source code must retain the above 
- *     copyright notice, this list of conditions and the 
+ *
+ * *   Redistributions of source code must retain the above
+ *     copyright notice, this list of conditions and the
  *     following disclaimer.
- * *   Redistributions in binary form must reproduce the above 
- *     copyright notice, this list of conditions and the 
- *     following disclaimer in the documentation and/or other 
+ * *   Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the
+ *     following disclaimer in the documentation and/or other
  *     materials provided with the distribution.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND 
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR 
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- */ 
+ */
 
 #define INITGUID 1
+#include <ntddk.h>
+#include <storport.h>
+#include <ntstrsafe.h>
+#include <stdlib.h>
 
-#include "fdo.h"
-#include "driver.h"
-#include "registry.h"
-#include "pdo.h"
-#include "srbext.h"
-#include "thread.h"
-#include "buffer.h"
-#include "debug.h"
-#include "assert.h"
-#include "util.h"
 #include <version.h>
 #include <xencdb.h>
 #include <names.h>
@@ -51,16 +45,24 @@
 #include <suspend_interface.h>
 #include <emulated_interface.h>
 
-#include <stdlib.h>
+#include "adapter.h"
+#include "driver.h"
+#include "registry.h"
+#include "pdo.h"
+#include "srbext.h"
+#include "thread.h"
+#include "buffer.h"
+
+#include "util.h"
+#include "debug.h"
+#include "assert.h"
 
 #define MAXNAMELEN  128
 
-#define FDO_SIGNATURE   'odfX'
+#define ADAPTER_SIGNATURE   'odfX'
 
-struct _XENVBD_FDO {
+struct _XENVBD_ADAPTER {
     ULONG                       Signature;
-    KEVENT                      RemoveEvent;
-    LONG                        ReferenceCount;
     PDEVICE_OBJECT              DeviceObject;
     PDEVICE_OBJECT              LowerDeviceObject;
     PDEVICE_OBJECT              PhysicalDeviceObject;
@@ -80,7 +82,7 @@ struct _XENVBD_FDO {
     XENBUS_SUSPEND_INTERFACE    Suspend;
     XENBUS_UNPLUG_INTERFACE     Unplug;
     XENFILT_EMULATED_INTERFACE  Emulated;
-    
+
     // Debug Callback
     PXENBUS_DEBUG_CALLBACK      DebugCallback;
     PXENBUS_SUSPEND_CALLBACK    SuspendCallback;
@@ -102,46 +104,46 @@ struct _XENVBD_FDO {
 
 //=============================================================================
 static FORCEINLINE BOOLEAN
-__FdoSetDevicePowerState(
-    __in PXENVBD_FDO                 Fdo,
+__AdapterSetDevicePowerState(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in DEVICE_POWER_STATE          State
     )
 {
     KIRQL       Irql;
     BOOLEAN     Changed = FALSE;
 
-    KeAcquireSpinLock(&Fdo->Lock, &Irql);
+    KeAcquireSpinLock(&Adapter->Lock, &Irql);
 
-    if (Fdo->DevicePower != State) {
-        Verbose("POWER %s to %s\n", PowerDeviceStateName(Fdo->DevicePower), PowerDeviceStateName(State));
+    if (Adapter->DevicePower != State) {
+        Verbose("POWER %s to %s\n", PowerDeviceStateName(Adapter->DevicePower), PowerDeviceStateName(State));
         Changed = TRUE;
-        Fdo->DevicePower = State;
+        Adapter->DevicePower = State;
     }
 
-    KeReleaseSpinLock(&Fdo->Lock, Irql);
+    KeReleaseSpinLock(&Adapter->Lock, Irql);
 
     return Changed;
 }
 
 static FORCEINLINE DEVICE_POWER_STATE
-__FdoGetDevicePowerState(
-    __in PXENVBD_FDO                Fdo
+__AdapterGetDevicePowerState(
+    __in PXENVBD_ADAPTER                Adapter
     )
 {
     KIRQL               Irql;
     DEVICE_POWER_STATE  State;
 
-    KeAcquireSpinLock(&Fdo->Lock, &Irql);
-    State = Fdo->DevicePower;
-    KeReleaseSpinLock(&Fdo->Lock, Irql);
+    KeAcquireSpinLock(&Adapter->Lock, &Irql);
+    State = Adapter->DevicePower;
+    KeReleaseSpinLock(&Adapter->Lock, Irql);
 
     return State;
 }
 
 __checkReturn
 static FORCEINLINE PXENVBD_PDO
-__FdoGetPdoAlways(
-    __in PXENVBD_FDO                 Fdo,
+__AdapterGetPdoAlways(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in ULONG                       TargetId,
     __in PCHAR                       Caller
     )
@@ -151,20 +153,20 @@ __FdoGetPdoAlways(
 
     ASSERT3U(TargetId, <, XENVBD_MAX_TARGETS);
 
-    KeAcquireSpinLock(&Fdo->TargetLock, &Irql);
-    Pdo = Fdo->Targets[TargetId];
+    KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
+    Pdo = Adapter->Targets[TargetId];
     if (Pdo) {
         __PdoReference(Pdo, Caller);
     }
-    KeReleaseSpinLock(&Fdo->TargetLock, Irql);
-    
+    KeReleaseSpinLock(&Adapter->TargetLock, Irql);
+
     return Pdo;
 }
 
 __checkReturn
 static FORCEINLINE PXENVBD_PDO
-___FdoGetPdo(
-    __in PXENVBD_FDO                 Fdo,
+___AdapterGetPdo(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in ULONG                       TargetId,
     __in PCHAR                       Caller
     )
@@ -174,60 +176,20 @@ ___FdoGetPdo(
 
     ASSERT3U(TargetId, <, XENVBD_MAX_TARGETS);
 
-    KeAcquireSpinLock(&Fdo->TargetLock, &Irql);
-    if (Fdo->Targets[TargetId] && 
-        __PdoReference(Fdo->Targets[TargetId], Caller) > 0) {
-        Pdo = Fdo->Targets[TargetId];
+    KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
+    if (Adapter->Targets[TargetId] &&
+        __PdoReference(Adapter->Targets[TargetId], Caller) > 0) {
+        Pdo = Adapter->Targets[TargetId];
     }
-    KeReleaseSpinLock(&Fdo->TargetLock, Irql);
-    
+    KeReleaseSpinLock(&Adapter->TargetLock, Irql);
+
     return Pdo;
 }
-#define __FdoGetPdo(f, t) ___FdoGetPdo(f, t, __FUNCTION__)
+#define __AdapterGetPdo(f, t) ___AdapterGetPdo(f, t, __FUNCTION__)
 
-// Reference Counting
-LONG
-__FdoReference(
-    __in PXENVBD_FDO                 Fdo,
-    __in PCHAR                       Caller
-    )
-{
-    LONG Result;
-    
-    ASSERT3P(Fdo, !=, NULL);
-    Result = InterlockedIncrement(&Fdo->ReferenceCount);
-    ASSERTREFCOUNT(Result, >, 0, Caller);
-
-    if (Result == 1) {
-        Result = InterlockedDecrement(&Fdo->ReferenceCount);
-        Error("%s: Attempting to take reference of removed FDO from %d\n", Caller, Result);
-        return 0;
-    } else {
-        ASSERTREFCOUNT(Result, >, 1, Caller);
-        return Result;
-    }
-}
-FORCEINLINE LONG
-__FdoDereference(
-    __in PXENVBD_FDO                 Fdo,
-    __in PCHAR                       Caller
-    )
-{
-    LONG    Result;
-    
-    ASSERT3P(Fdo, !=, NULL);
-    Result = InterlockedDecrement(&Fdo->ReferenceCount);
-    ASSERTREFCOUNT(Result, >=, 0, Caller);
-    
-    if (Result == 0) {
-        Verbose("Final ReferenceCount dropped, 0x%p able to be removed\n", Fdo);
-        KeSetEvent(&Fdo->RemoveEvent, IO_NO_INCREMENT, FALSE);
-    }
-    return Result;
-}
 BOOLEAN
-FdoLinkPdo(
-    __in PXENVBD_FDO                 Fdo,
+AdapterLinkPdo(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PXENVBD_PDO                 Pdo
     )
 {
@@ -236,13 +198,13 @@ FdoLinkPdo(
     BOOLEAN     Result = FALSE;
     ULONG       TargetId = PdoGetTargetId(Pdo);
 
-    KeAcquireSpinLock(&Fdo->TargetLock, &Irql);
-    Current = Fdo->Targets[TargetId];
-    if (Fdo->Targets[TargetId] == NULL) {
-        Fdo->Targets[TargetId] = Pdo;
+    KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
+    Current = Adapter->Targets[TargetId];
+    if (Adapter->Targets[TargetId] == NULL) {
+        Adapter->Targets[TargetId] = Pdo;
         Result = TRUE;
     }
-    KeReleaseSpinLock(&Fdo->TargetLock, Irql);
+    KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
     if (!Result) {
         Warning("Target[%d] : Current 0x%p, New 0x%p\n", TargetId, Current, Pdo);
@@ -250,8 +212,8 @@ FdoLinkPdo(
     return Result;
 }
 BOOLEAN
-FdoUnlinkPdo(
-    __in PXENVBD_FDO                 Fdo,
+AdapterUnlinkPdo(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PXENVBD_PDO                 Pdo
     )
 {
@@ -260,13 +222,13 @@ FdoUnlinkPdo(
     BOOLEAN     Result = FALSE;
     ULONG       TargetId = PdoGetTargetId(Pdo);
 
-    KeAcquireSpinLock(&Fdo->TargetLock, &Irql);
-    Current = Fdo->Targets[TargetId];
-    if (Fdo->Targets[TargetId] == Pdo) {
-        Fdo->Targets[TargetId] = NULL;
+    KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
+    Current = Adapter->Targets[TargetId];
+    if (Adapter->Targets[TargetId] == Pdo) {
+        Adapter->Targets[TargetId] = NULL;
         Result = TRUE;
     }
-    KeReleaseSpinLock(&Fdo->TargetLock, Irql);
+    KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
     if (!Result) {
         Warning("Target[%d] : Current 0x%p, Expected 0x%p\n", TargetId, Current, Pdo);
@@ -279,8 +241,8 @@ FdoUnlinkPdo(
 
 __drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
-FdoQueryInterface(
-    IN  PXENVBD_FDO     Fdo,
+AdapterQueryInterface(
+    IN  PXENVBD_ADAPTER     Adapter,
     IN  const GUID      *Guid,
     IN  ULONG           Version,
     OUT PINTERFACE      Interface,
@@ -300,7 +262,7 @@ FdoQueryInterface(
     RtlZeroMemory(&StatusBlock, sizeof(IO_STATUS_BLOCK));
 
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
-                                       Fdo->LowerDeviceObject,
+                                       Adapter->LowerDeviceObject,
                                        NULL,
                                        0,
                                        NULL,
@@ -318,10 +280,10 @@ FdoQueryInterface(
     StackLocation->Parameters.QueryInterface.Size = (USHORT)Size;
     StackLocation->Parameters.QueryInterface.Version = (USHORT)Version;
     StackLocation->Parameters.QueryInterface.Interface = Interface;
-    
+
     Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
 
-    status = IoCallDriver(Fdo->LowerDeviceObject, Irp);
+    status = IoCallDriver(Adapter->LowerDeviceObject, Irp);
     if (status == STATUS_PENDING) {
         (VOID) KeWaitForSingleObject(&Event,
                                      Executive,
@@ -351,13 +313,13 @@ fail1:
 }
 
 #define QUERY_INTERFACE(                                                            \
-    _Fdo,                                                                               \
+    _Adapter,                                                                               \
     _ProviderName,                                                                      \
     _InterfaceName,                                                                     \
     _Interface,                                                                         \
     _Size,                                                                              \
     _Optional)                                                                          \
-    FdoQueryInterface((_Fdo),                                                           \
+    AdapterQueryInterface((_Adapter),                                                           \
                       &GUID_ ## _ProviderName ## _ ## _InterfaceName ## _INTERFACE,     \
                       _ProviderName ## _ ## _InterfaceName ## _INTERFACE_VERSION_MAX,   \
                       (_Interface),                                                     \
@@ -368,63 +330,62 @@ fail1:
 // Debug
 
 static DECLSPEC_NOINLINE VOID
-FdoDebugCallback(
+AdapterDebugCallback(
     __in PVOID                       Context,
     __in BOOLEAN                     Crashing
     )
 {
-    PXENVBD_FDO     Fdo = Context;
+    PXENVBD_ADAPTER     Adapter = Context;
     ULONG           TargetId;
 
-    if (Fdo == NULL || Fdo->DebugCallback == NULL)
+    if (Adapter == NULL || Adapter->DebugCallback == NULL)
         return;
 
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: Version: %d.%d.%d.%d (%d/%d/%d)\n",
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: Version: %d.%d.%d.%d (%d/%d/%d)\n",
                  MAJOR_VERSION, MINOR_VERSION, MICRO_VERSION, BUILD_NUMBER,
-                 DAY, MONTH, YEAR); 
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: Fdo: 0x%p (ref-count %d) %s\n",
+                 DAY, MONTH, YEAR);
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: Adapter: 0x%p %s\n",
                  Context,
-                 Fdo->ReferenceCount,
                  Crashing ? "CRASHING" : "");
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: DevObj 0x%p LowerDevObj 0x%p PhysDevObj 0x%p\n",
-                 Fdo->DeviceObject,
-                 Fdo->LowerDeviceObject,
-                 Fdo->PhysicalDeviceObject);
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: DevicePowerState: %s\n",
-                 PowerDeviceStateName(Fdo->DevicePower));
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: Enumerator      : %s (0x%p)\n",
-                 FdoEnum(Fdo), Fdo->Enumerator.Buffer);
-    XENBUS_DEBUG(Printf, &Fdo->Debug,
-                 "FDO: Srbs            : %d / %d (%d Total)\n",
-                 Fdo->CurrentSrbs, Fdo->MaximumSrbs, Fdo->TotalSrbs);
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: DevObj 0x%p LowerDevObj 0x%p PhysDevObj 0x%p\n",
+                 Adapter->DeviceObject,
+                 Adapter->LowerDeviceObject,
+                 Adapter->PhysicalDeviceObject);
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: DevicePowerState: %s\n",
+                 PowerDeviceStateName(Adapter->DevicePower));
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: Enumerator      : %s (0x%p)\n",
+                 AdapterEnum(Adapter), Adapter->Enumerator.Buffer);
+    XENBUS_DEBUG(Printf, &Adapter->Debug,
+                 "ADAPTER: Srbs            : %d / %d (%d Total)\n",
+                 Adapter->CurrentSrbs, Adapter->MaximumSrbs, Adapter->TotalSrbs);
 
-    BufferDebugCallback(&Fdo->Debug);
-    
+    BufferDebugCallback(&Adapter->Debug);
+
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        // no need to use __FdoGetPdo (which is locked at DISPATCH) as called at HIGH_LEVEL
-        PXENVBD_PDO Pdo = Fdo->Targets[TargetId];
+        // no need to use __AdapterGetPdo (which is locked at DISPATCH) as called at HIGH_LEVEL
+        PXENVBD_PDO Pdo = Adapter->Targets[TargetId];
         if (Pdo == NULL)
             continue;
 
-        XENBUS_DEBUG(Printf, &Fdo->Debug,
-                     "FDO: ====> Target[%-3d]    : 0x%p\n",                  
+        XENBUS_DEBUG(Printf, &Adapter->Debug,
+                     "ADAPTER: ====> Target[%-3d]    : 0x%p\n",
                      TargetId, Pdo);
 
         // call Target's debug callback directly
-        PdoDebugCallback(Pdo, &Fdo->Debug);
+        PdoDebugCallback(Pdo, &Adapter->Debug);
 
-        XENBUS_DEBUG(Printf, &Fdo->Debug,
-                     "FDO: <==== Target[%-3d]    : 0x%p\n",                  
+        XENBUS_DEBUG(Printf, &Adapter->Debug,
+                     "ADAPTER: <==== Target[%-3d]    : 0x%p\n",
                      TargetId, Pdo);
     }
 
-    Fdo->MaximumSrbs = Fdo->CurrentSrbs;
-    Fdo->TotalSrbs = 0;
+    Adapter->MaximumSrbs = Adapter->CurrentSrbs;
+    Adapter->TotalSrbs = 0;
 }
 
 //=============================================================================
@@ -435,10 +396,10 @@ __ParseVbd(
     )
 {
     ULONG   DeviceId = strtoul(DeviceIdStr, NULL, 10);
-    
+
     ASSERT3U((DeviceId & ~((1 << 29) - 1)), ==, 0);
 
-    if (DeviceId & (1 << 28)) { 
+    if (DeviceId & (1 << 28)) {
         return (DeviceId & ((1 << 20) - 1)) >> 8;           /* xvd    */
     } else {
         switch (DeviceId >> 8) {
@@ -471,8 +432,8 @@ __DeviceType(
 }
 __checkReturn
 static FORCEINLINE BOOLEAN
-__FdoHiddenTarget(
-    __in PXENVBD_FDO                 Fdo,
+__AdapterHiddenTarget(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PCHAR                       DeviceId,
     __out PXENVBD_DEVICE_TYPE        DeviceType
     )
@@ -481,37 +442,37 @@ __FdoHiddenTarget(
     PCHAR       FrontendPath;
     PCHAR       Buffer;
     ULONG       Value;
-    
+
     *DeviceType = XENVBD_DEVICE_TYPE_UNKNOWN;
-    FrontendPath = DriverFormat("device/%s/%s", FdoEnum(Fdo), DeviceId);
+    FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(Adapter), DeviceId);
     if (!FrontendPath)
         goto fail;
 
     // Ejected?
-    Status = XENBUS_STORE(Read, &Fdo->Store, NULL, FrontendPath, "ejected", &Buffer);
+    Status = XENBUS_STORE(Read, &Adapter->Store, NULL, FrontendPath, "ejected", &Buffer);
     if (NT_SUCCESS(Status)) {
         Value = strtoul(Buffer, NULL, 10);
-        XENBUS_STORE(Free, &Fdo->Store, Buffer);
+        XENBUS_STORE(Free, &Adapter->Store, Buffer);
 
         if (Value)
             goto ignore;
     }
 
     // Not Disk?
-    Status = XENBUS_STORE(Read, &Fdo->Store, NULL, FrontendPath, "device-type", &Buffer);
+    Status = XENBUS_STORE(Read, &Adapter->Store, NULL, FrontendPath, "device-type", &Buffer);
     if (!NT_SUCCESS(Status))
         goto ignore;
     *DeviceType = __DeviceType(Buffer);
-    XENBUS_STORE(Free, &Fdo->Store, Buffer);
-    
+    XENBUS_STORE(Free, &Adapter->Store, Buffer);
+
     switch (*DeviceType) {
-    case XENVBD_DEVICE_TYPE_DISK:   
+    case XENVBD_DEVICE_TYPE_DISK:
         break;
-    case XENVBD_DEVICE_TYPE_CDROM:  
-        if (DriverParameters.PVCDRom)   
+    case XENVBD_DEVICE_TYPE_CDROM:
+        if (DriverParameters.PVCDRom)
             break;
         // intentional fall-through
-    default:                        
+    default:
         goto ignore;
     }
 
@@ -529,8 +490,8 @@ ignore:
 }
 __checkReturn
 static FORCEINLINE BOOLEAN
-__FdoIsPdoUnplugged(
-    __in PXENVBD_FDO                 Fdo,
+__AdapterIsPdoUnplugged(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PCHAR                       Enumerator,
     __in PCHAR                       Device,
     __in ULONG                       Target
@@ -538,33 +499,33 @@ __FdoIsPdoUnplugged(
 {
     // Only check targets that could be emulated
     if (Target > 3) {
-        Verbose("Target[%d] : (%s/%s) Emulated NOT_APPLICABLE (non-IDE device)\n", 
+        Verbose("Target[%d] : (%s/%s) Emulated NOT_APPLICABLE (non-IDE device)\n",
                             Target, Enumerator, Device);
         return TRUE;
     }
-     
+
     // Check presense of Emulated interface. Absence indicates emulated cannot be unplugged
-    if (Fdo->Emulated.Interface.Context == NULL) {
-        Warning("Target[%d] : (%s/%s) Emulated NOT_KNOWN (assumed PRESENT)\n", 
+    if (Adapter->Emulated.Interface.Context == NULL) {
+        Warning("Target[%d] : (%s/%s) Emulated NOT_KNOWN (assumed PRESENT)\n",
                             Target, Enumerator, Device);
         return FALSE;
     }
 
     // Ask XenFilt if Ctrlr(0), Target(Target), Lun(0) is present
-    if (XENFILT_EMULATED(IsDiskPresent, &Fdo->Emulated, 0, Target, 0)) {
-        Verbose("Target[%d] : (%s/%s) Emulated PRESENT\n", 
+    if (XENFILT_EMULATED(IsDiskPresent, &Adapter->Emulated, 0, Target, 0)) {
+        Verbose("Target[%d] : (%s/%s) Emulated PRESENT\n",
                             Target, Enumerator, Device);
         return FALSE;
     } else {
-        Verbose("Target[%d] : (%s/%s) Emulated NOT_PRESENT\n", 
+        Verbose("Target[%d] : (%s/%s) Emulated NOT_PRESENT\n",
                             Target, Enumerator, Device);
         return TRUE;
     }
 }
 
 static FORCEINLINE VOID
-__FdoEnumerate(
-    __in    PXENVBD_FDO     Fdo,
+__AdapterEnumerate(
+    __in    PXENVBD_ADAPTER     Adapter,
     __in    PANSI_STRING    Devices,
     __out   PBOOLEAN        NeedInvalidate,
     __out   PBOOLEAN        NeedReboot
@@ -581,7 +542,7 @@ __FdoEnumerate(
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
         BOOLEAN     Missing = TRUE;
 
-        Pdo = __FdoGetPdo(Fdo, TargetId);
+        Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo == NULL)
             continue;
 
@@ -622,25 +583,25 @@ __FdoEnumerate(
             continue;
         }
 
-        Pdo = __FdoGetPdo(Fdo, TargetId);
+        Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             PdoDereference(Pdo);
             continue;
         }
 
-        if (__FdoHiddenTarget(Fdo, Device->Buffer, &DeviceType)) {
+        if (__AdapterHiddenTarget(Adapter, Device->Buffer, &DeviceType)) {
             continue;
         }
 
-        if (!__FdoIsPdoUnplugged(Fdo,
-                                FdoEnum(Fdo),
+        if (!__AdapterIsPdoUnplugged(Adapter,
+                                AdapterEnum(Adapter),
                                 Device->Buffer,
                                 TargetId)) {
             *NeedReboot = TRUE;
             continue;
         }
 
-        if (PdoCreate(Fdo,
+        if (PdoCreate(Adapter,
                       Device->Buffer,
                       TargetId,
                       DeviceType)) {
@@ -650,7 +611,7 @@ __FdoEnumerate(
 }
 
 static FORCEINLINE PANSI_STRING
-__FdoMultiSzToAnsi(
+__AdapterMultiSzToAnsi(
     IN  PCHAR       Buffer
     )
 {
@@ -676,7 +637,7 @@ __FdoMultiSzToAnsi(
 
     Ansi = __AllocatePoolWithTag(NonPagedPool,
                                  sizeof (ANSI_STRING) * (Count + 1),
-                                 FDO_SIGNATURE);
+                                 ADAPTER_SIGNATURE);
 
     status = STATUS_NO_MEMORY;
     if (Ansi == NULL)
@@ -689,7 +650,7 @@ __FdoMultiSzToAnsi(
         Ansi[Index].MaximumLength = (USHORT)(Length + 1);
         Ansi[Index].Buffer = __AllocatePoolWithTag(NonPagedPool,
                                                    Ansi[Index].MaximumLength,
-                                                   FDO_SIGNATURE);
+                                                   ADAPTER_SIGNATURE);
 
         status = STATUS_NO_MEMORY;
         if (Ansi[Index].Buffer == NULL)
@@ -707,9 +668,9 @@ fail2:
     Error("fail2\n");
 
     while (--Index >= 0)
-            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+            __FreePoolWithTag(Ansi[Index].Buffer, ADAPTER_SIGNATURE);
 
-    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+    __FreePoolWithTag(Ansi, ADAPTER_SIGNATURE);
 
 fail1:
     Error("fail1 (%08x)\n", status);
@@ -718,7 +679,7 @@ fail1:
 }
 
 static FORCEINLINE PANSI_STRING
-__FdoMultiSzToUpcaseAnsi(
+__AdapterMultiSzToUpcaseAnsi(
     IN  PCHAR       Buffer
     )
 {
@@ -745,7 +706,7 @@ __FdoMultiSzToUpcaseAnsi(
 
     Ansi = __AllocatePoolWithTag(NonPagedPool,
                                  sizeof (ANSI_STRING) * (Count + 1),
-                                 FDO_SIGNATURE);
+                                 ADAPTER_SIGNATURE);
 
     status = STATUS_NO_MEMORY;
     if (Ansi == NULL)
@@ -758,7 +719,7 @@ __FdoMultiSzToUpcaseAnsi(
         Ansi[Index].MaximumLength = (USHORT)(Length + 1);
         Ansi[Index].Buffer = __AllocatePoolWithTag(NonPagedPool,
                                                    Ansi[Index].MaximumLength,
-                                                   FDO_SIGNATURE);
+                                                   ADAPTER_SIGNATURE);
 
         status = STATUS_NO_MEMORY;
         if (Ansi[Index].Buffer == NULL)
@@ -776,9 +737,9 @@ fail2:
     Error("fail2\n");
 
     while (--Index >= 0)
-            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+            __FreePoolWithTag(Ansi[Index].Buffer, ADAPTER_SIGNATURE);
 
-    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+    __FreePoolWithTag(Ansi, ADAPTER_SIGNATURE);
 
 fail1:
     Error("fail1 (%08x)\n", status);
@@ -787,21 +748,21 @@ fail1:
 }
 
 static FORCEINLINE VOID
-__FdoFreeAnsi(
+__AdapterFreeAnsi(
     IN  PANSI_STRING    Ansi
     )
 {
     ULONG               Index;
 
     for (Index = 0; Ansi[Index].Buffer != NULL; Index++)
-            __FreePoolWithTag(Ansi[Index].Buffer, FDO_SIGNATURE);
+            __FreePoolWithTag(Ansi[Index].Buffer, ADAPTER_SIGNATURE);
 
-    __FreePoolWithTag(Ansi, FDO_SIGNATURE);
+    __FreePoolWithTag(Ansi, ADAPTER_SIGNATURE);
 }
 
 static DECLSPEC_NOINLINE VOID
-FdoScanTargets(
-    __in    PXENVBD_FDO Fdo
+AdapterScanTargets(
+    __in    PXENVBD_ADAPTER Adapter
     )
 {
     NTSTATUS        Status;
@@ -810,21 +771,21 @@ FdoScanTargets(
     BOOLEAN         NeedInvalidate;
     BOOLEAN         NeedReboot;
 
-    Status = XENBUS_STORE(Directory, &Fdo->Store, NULL, "device", FdoEnum(Fdo), &Buffer);
+    Status = XENBUS_STORE(Directory, &Adapter->Store, NULL, "device", AdapterEnum(Adapter), &Buffer);
     if (!NT_SUCCESS(Status))
         return;
 
-    Devices = __FdoMultiSzToAnsi(Buffer);
-    XENBUS_STORE(Free, &Fdo->Store, Buffer);
+    Devices = __AdapterMultiSzToAnsi(Buffer);
+    XENBUS_STORE(Free, &Adapter->Store, Buffer);
 
     if (Devices == NULL)
         return;
 
-    __FdoEnumerate(Fdo, Devices, &NeedInvalidate, &NeedReboot);
-    __FdoFreeAnsi(Devices);
+    __AdapterEnumerate(Adapter, Devices, &NeedInvalidate, &NeedReboot);
+    __AdapterFreeAnsi(Devices);
 
     if (NeedInvalidate) {
-        StorPortNotification(BusChangeDetected, Fdo, 0);
+        StorPortNotification(BusChangeDetected, Adapter, 0);
     }
     if (NeedReboot) {
         DriverRequestReboot();
@@ -833,12 +794,12 @@ FdoScanTargets(
 
 __checkReturn
 static DECLSPEC_NOINLINE NTSTATUS
-FdoScan(
+AdapterScan(
     __in PXENVBD_THREAD              Thread,
     __in PVOID                       Context
     )
 {
-    PXENVBD_FDO     Fdo = Context;
+    PXENVBD_ADAPTER     Adapter = Context;
     PKEVENT         Event = ThreadGetEvent(Thread);
 
     for (;;) {
@@ -854,12 +815,12 @@ FdoScan(
         if (ThreadIsAlerted(Thread))
             break;
 
-        if (__FdoGetDevicePowerState(Fdo) == PowerDeviceD0)
-            FdoScanTargets(Fdo);
+        if (__AdapterGetDevicePowerState(Adapter) == PowerDeviceD0)
+            AdapterScanTargets(Adapter);
 
-        KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
+        KeSetEvent(&Adapter->ScanEvent, IO_NO_INCREMENT, FALSE);
     }
-    KeSetEvent(&Fdo->ScanEvent, IO_NO_INCREMENT, FALSE);
+    KeSetEvent(&Adapter->ScanEvent, IO_NO_INCREMENT, FALSE);
 
     return STATUS_SUCCESS;
 }
@@ -869,8 +830,8 @@ FdoScan(
 
 __drv_requiresIRQL(PASSIVE_LEVEL)
 static FORCEINLINE NTSTATUS
-__FdoQueryInterfaces(
-    __in PXENVBD_FDO             Fdo
+__AdapterQueryInterfaces(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     NTSTATUS        Status;
@@ -878,71 +839,71 @@ __FdoQueryInterfaces(
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
     // Get STORE Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              STORE,
-                             (PINTERFACE)&Fdo->Store,
-                             sizeof (Fdo->Store),
+                             (PINTERFACE)&Adapter->Store,
+                             sizeof (Adapter->Store),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
     // Get EVTCHN Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              EVTCHN,
-                             (PINTERFACE)&Fdo->Evtchn,
-                             sizeof (Fdo->Evtchn),
+                             (PINTERFACE)&Adapter->Evtchn,
+                             sizeof (Adapter->Evtchn),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail2;
 
     // Get GNTTAB Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              GNTTAB,
-                             (PINTERFACE)&Fdo->Gnttab,
-                             sizeof (Fdo->Gnttab),
+                             (PINTERFACE)&Adapter->Gnttab,
+                             sizeof (Adapter->Gnttab),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail3;
 
     // Get SUSPEND Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              SUSPEND,
-                             (PINTERFACE)&Fdo->Suspend,
-                             sizeof (Fdo->Suspend),
+                             (PINTERFACE)&Adapter->Suspend,
+                             sizeof (Adapter->Suspend),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail4;
 
     // Get DEBUG Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              DEBUG,
-                             (PINTERFACE)&Fdo->Debug,
-                             sizeof (Fdo->Debug),
+                             (PINTERFACE)&Adapter->Debug,
+                             sizeof (Adapter->Debug),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail5;
 
     // Get UNPLUG Interface
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENBUS,
                              UNPLUG,
-                             (PINTERFACE)&Fdo->Unplug,
-                             sizeof (Fdo->Unplug),
+                             (PINTERFACE)&Adapter->Unplug,
+                             sizeof (Adapter->Unplug),
                              FALSE);
     if (!NT_SUCCESS(Status))
         goto fail6;
 
     // Get EMULATED Interface (optional)
-    Status = QUERY_INTERFACE(Fdo,
+    Status = QUERY_INTERFACE(Adapter,
                              XENFILT,
                              EMULATED,
-                             (PINTERFACE)&Fdo->Emulated,
-                             sizeof (Fdo->Emulated),
+                             (PINTERFACE)&Adapter->Emulated,
+                             sizeof (Adapter->Emulated),
                              TRUE);
     if (!NT_SUCCESS(Status))
         goto fail7;
@@ -950,112 +911,112 @@ __FdoQueryInterfaces(
     return STATUS_SUCCESS;
 
 fail7:
-    RtlZeroMemory(&Fdo->Unplug,
+    RtlZeroMemory(&Adapter->Unplug,
                   sizeof (XENBUS_UNPLUG_INTERFACE));
 fail6:
-    RtlZeroMemory(&Fdo->Debug,
+    RtlZeroMemory(&Adapter->Debug,
                   sizeof (XENBUS_DEBUG_INTERFACE));
 fail5:
-    RtlZeroMemory(&Fdo->Suspend,
+    RtlZeroMemory(&Adapter->Suspend,
                   sizeof (XENBUS_SUSPEND_INTERFACE));
 fail4:
-    RtlZeroMemory(&Fdo->Gnttab,
+    RtlZeroMemory(&Adapter->Gnttab,
                   sizeof (XENBUS_GNTTAB_INTERFACE));
 fail3:
-    RtlZeroMemory(&Fdo->Evtchn,
+    RtlZeroMemory(&Adapter->Evtchn,
                   sizeof (XENBUS_EVTCHN_INTERFACE));
 fail2:
-    RtlZeroMemory(&Fdo->Store,
+    RtlZeroMemory(&Adapter->Store,
                   sizeof (XENBUS_STORE_INTERFACE));
 fail1:
     return Status;
 }
 static FORCEINLINE VOID
-__FdoZeroInterfaces(
-    __in PXENVBD_FDO             Fdo
+__AdapterZeroInterfaces(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
-    RtlZeroMemory(&Fdo->Emulated,
+    RtlZeroMemory(&Adapter->Emulated,
                   sizeof (XENFILT_EMULATED_INTERFACE));
-    RtlZeroMemory(&Fdo->Unplug,
+    RtlZeroMemory(&Adapter->Unplug,
                   sizeof (XENBUS_UNPLUG_INTERFACE));
-    RtlZeroMemory(&Fdo->Debug,
+    RtlZeroMemory(&Adapter->Debug,
                   sizeof (XENBUS_DEBUG_INTERFACE));
-    RtlZeroMemory(&Fdo->Suspend,
+    RtlZeroMemory(&Adapter->Suspend,
                   sizeof (XENBUS_SUSPEND_INTERFACE));
-    RtlZeroMemory(&Fdo->Gnttab,
+    RtlZeroMemory(&Adapter->Gnttab,
                   sizeof (XENBUS_GNTTAB_INTERFACE));
-    RtlZeroMemory(&Fdo->Evtchn,
+    RtlZeroMemory(&Adapter->Evtchn,
                   sizeof (XENBUS_EVTCHN_INTERFACE));
-    RtlZeroMemory(&Fdo->Store,
+    RtlZeroMemory(&Adapter->Store,
                   sizeof (XENBUS_STORE_INTERFACE));
 }
 static FORCEINLINE NTSTATUS
-__FdoAcquire(
-    __in PXENVBD_FDO    Fdo
+__AdapterAcquire(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    if (Fdo->Emulated.Interface.Context) {
-        status = XENFILT_EMULATED(Acquire, &Fdo->Emulated);
+    if (Adapter->Emulated.Interface.Context) {
+        status = XENFILT_EMULATED(Acquire, &Adapter->Emulated);
         if (!NT_SUCCESS(status))
             goto fail1;
     }
 
-    status = XENBUS_SUSPEND(Acquire, &Fdo->Suspend);
+    status = XENBUS_SUSPEND(Acquire, &Adapter->Suspend);
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = XENBUS_DEBUG(Acquire, &Fdo->Debug);
+    status = XENBUS_DEBUG(Acquire, &Adapter->Debug);
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    status = XENBUS_GNTTAB(Acquire, &Fdo->Gnttab);
+    status = XENBUS_GNTTAB(Acquire, &Adapter->Gnttab);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    status = XENBUS_EVTCHN(Acquire, &Fdo->Evtchn);
+    status = XENBUS_EVTCHN(Acquire, &Adapter->Evtchn);
     if (!NT_SUCCESS(status))
         goto fail5;
 
-    status = XENBUS_STORE(Acquire, &Fdo->Store);
+    status = XENBUS_STORE(Acquire, &Adapter->Store);
     if (!NT_SUCCESS(status))
         goto fail6;
 
     return STATUS_SUCCESS;
 
 fail6:
-    XENBUS_EVTCHN(Release, &Fdo->Evtchn);
+    XENBUS_EVTCHN(Release, &Adapter->Evtchn);
 fail5:
-    XENBUS_GNTTAB(Release, &Fdo->Gnttab);
+    XENBUS_GNTTAB(Release, &Adapter->Gnttab);
 fail4:
-    XENBUS_DEBUG(Release, &Fdo->Debug);
+    XENBUS_DEBUG(Release, &Adapter->Debug);
 fail3:
-    XENBUS_SUSPEND(Release, &Fdo->Suspend);
+    XENBUS_SUSPEND(Release, &Adapter->Suspend);
 fail2:
-    if (Fdo->Emulated.Interface.Context)
-        XENFILT_EMULATED(Release, &Fdo->Emulated);
+    if (Adapter->Emulated.Interface.Context)
+        XENFILT_EMULATED(Release, &Adapter->Emulated);
 fail1:
     return status;
 }
 static FORCEINLINE VOID
-__FdoRelease(
-    __in PXENVBD_FDO             Fdo
+__AdapterRelease(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
-    XENBUS_STORE(Release, &Fdo->Store);
-    XENBUS_EVTCHN(Release, &Fdo->Evtchn);
-    XENBUS_GNTTAB(Release, &Fdo->Gnttab);
-    XENBUS_DEBUG(Release, &Fdo->Debug);
-    XENBUS_SUSPEND(Release, &Fdo->Suspend);
-    if (Fdo->Emulated.Interface.Context)
-        XENFILT_EMULATED(Release, &Fdo->Emulated);
+    XENBUS_STORE(Release, &Adapter->Store);
+    XENBUS_EVTCHN(Release, &Adapter->Evtchn);
+    XENBUS_GNTTAB(Release, &Adapter->Gnttab);
+    XENBUS_DEBUG(Release, &Adapter->Debug);
+    XENBUS_SUSPEND(Release, &Adapter->Suspend);
+    if (Adapter->Emulated.Interface.Context)
+        XENFILT_EMULATED(Release, &Adapter->Emulated);
 }
 
 static FORCEINLINE BOOLEAN
-__FdoMatchDistribution(
-    IN  PXENVBD_FDO Fdo,
+__AdapterMatchDistribution(
+    IN  PXENVBD_ADAPTER Adapter,
     IN  PCHAR       Buffer
     )
 {
@@ -1067,7 +1028,7 @@ __FdoMatchDistribution(
     ULONG           Index;
     NTSTATUS        status;
 
-    UNREFERENCED_PARAMETER(Fdo);
+    UNREFERENCED_PARAMETER(Adapter);
 
     status = STATUS_INVALID_PARAMETER;
 
@@ -1114,8 +1075,8 @@ fail1:
 }
 
 static VOID
-FdoClearDistribution(
-    IN  PXENVBD_FDO Fdo
+AdapterClearDistribution(
+    IN  PXENVBD_ADAPTER Adapter
     )
 {
     PCHAR           Buffer;
@@ -1126,16 +1087,16 @@ FdoClearDistribution(
     Trace("====>\n");
 
     status = XENBUS_STORE(Directory,
-                          &Fdo->Store,
+                          &Adapter->Store,
                           NULL,
                           NULL,
                           "drivers",
                           &Buffer);
     if (NT_SUCCESS(status)) {
-        Distributions = __FdoMultiSzToUpcaseAnsi(Buffer);
+        Distributions = __AdapterMultiSzToUpcaseAnsi(Buffer);
 
         XENBUS_STORE(Free,
-                     &Fdo->Store,
+                     &Adapter->Store,
                      Buffer);
     } else {
         Distributions = NULL;
@@ -1148,7 +1109,7 @@ FdoClearDistribution(
         PANSI_STRING    Distribution = &Distributions[Index];
 
         status = XENBUS_STORE(Read,
-                              &Fdo->Store,
+                              &Adapter->Store,
                               NULL,
                               "drivers",
                               Distribution->Buffer,
@@ -1156,19 +1117,19 @@ FdoClearDistribution(
         if (!NT_SUCCESS(status))
             continue;
 
-        if (__FdoMatchDistribution(Fdo, Buffer))
+        if (__AdapterMatchDistribution(Adapter, Buffer))
             (VOID) XENBUS_STORE(Remove,
-                                &Fdo->Store,
+                                &Adapter->Store,
                                 NULL,
                                 "drivers",
                                 Distribution->Buffer);
 
         XENBUS_STORE(Free,
-                     &Fdo->Store,
+                     &Adapter->Store,
                      Buffer);
     }
 
-    __FdoFreeAnsi(Distributions);
+    __AdapterFreeAnsi(Distributions);
 
 done:
     Trace("<====\n");
@@ -1177,8 +1138,8 @@ done:
 #define MAXIMUM_INDEX   255
 
 static NTSTATUS
-FdoSetDistribution(
-    IN  PXENVBD_FDO Fdo
+AdapterSetDistribution(
+    IN  PXENVBD_ADAPTER Adapter
     )
 {
     ULONG           Index;
@@ -1200,7 +1161,7 @@ FdoSetDistribution(
         ASSERT(NT_SUCCESS(status));
 
         status = XENBUS_STORE(Read,
-                              &Fdo->Store,
+                              &Adapter->Store,
                               NULL,
                               "drivers",
                               Distribution,
@@ -1213,7 +1174,7 @@ FdoSetDistribution(
         }
 
         XENBUS_STORE(Free,
-                     &Fdo->Store,
+                     &Adapter->Store,
                      Buffer);
 
         Index++;
@@ -1242,7 +1203,7 @@ update:
 #endif
 
     (VOID) XENBUS_STORE(Printf,
-                        &Fdo->Store,
+                        &Adapter->Store,
                         NULL,
                         "drivers",
                         Distribution,
@@ -1270,28 +1231,28 @@ fail1:
 }
 
 static FORCEINLINE NTSTATUS
-__FdoD3ToD0(
-    __in PXENVBD_FDO    Fdo
+__AdapterD3ToD0(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            Status;
 
     Trace("=====>\n");
 
-    (VOID) FdoSetDistribution(Fdo);
+    (VOID) AdapterSetDistribution(Adapter);
 
-    ASSERT3P(Fdo->ScanWatch, ==, NULL);
+    ASSERT3P(Adapter->ScanWatch, ==, NULL);
     Status = XENBUS_STORE(WatchAdd,
-                          &Fdo->Store,
+                          &Adapter->Store,
                           "device",
-                          FdoEnum(Fdo),
-                          ThreadGetEvent(Fdo->ScanThread),
-                          &Fdo->ScanWatch);
+                          AdapterEnum(Adapter),
+                          ThreadGetEvent(Adapter->ScanThread),
+                          &Adapter->ScanWatch);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
     (VOID) XENBUS_STORE(Printf,
-                        &Fdo->Store,
+                        &Adapter->Store,
                         NULL,
                         "feature/hotplug",
                         "vbd",
@@ -1308,80 +1269,80 @@ fail1:
 }
 
 static FORCEINLINE VOID
-__FdoD0ToD3(
-    __in PXENVBD_FDO    Fdo
+__AdapterD0ToD3(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     Trace("=====>\n");
 
     (VOID) XENBUS_STORE(Remove,
-                        &Fdo->Store,
+                        &Adapter->Store,
                         NULL,
                         "feature/hotplug",
                         "vbd");
 
     (VOID) XENBUS_STORE(WatchRemove,
-                        &Fdo->Store,
-                        Fdo->ScanWatch);
-    Fdo->ScanWatch = NULL;
+                        &Adapter->Store,
+                        Adapter->ScanWatch);
+    Adapter->ScanWatch = NULL;
 
-    FdoClearDistribution(Fdo);
+    AdapterClearDistribution(Adapter);
 
     Trace("<=====\n");
 }
 
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static VOID
-FdoSuspendLateCallback(
+AdapterSuspendLateCallback(
     __in PVOID                   Argument
     )
 {
-    PXENVBD_FDO     Fdo = Argument;
+    PXENVBD_ADAPTER     Adapter = Argument;
     NTSTATUS        Status;
 
     Verbose("%s (%s)\n",
          MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
          DAY_STR "/" MONTH_STR "/" YEAR_STR);
 
-    __FdoD0ToD3(Fdo);
+    __AdapterD0ToD3(Adapter);
 
-    Status = __FdoD3ToD0(Fdo);
+    Status = __AdapterD3ToD0(Adapter);
     ASSERT(NT_SUCCESS(Status));
 }
 
 static NTSTATUS
-FdoD3ToD0(
-    __in PXENVBD_FDO             Fdo
+AdapterD3ToD0(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     NTSTATUS    Status;
     ULONG       TargetId;
 
-    if (!__FdoSetDevicePowerState(Fdo, PowerDeviceD0))
+    if (!__AdapterSetDevicePowerState(Adapter, PowerDeviceD0))
         return STATUS_SUCCESS;
 
     Trace("=====> (%d)\n", KeGetCurrentIrql());
     Verbose("D3->D0\n");
 
     // Get Interfaces
-    Status = __FdoAcquire(Fdo);
+    Status = __AdapterAcquire(Adapter);
     if (!NT_SUCCESS(Status))
         goto fail1;
-    
+
     // register debug callback
-    ASSERT3P(Fdo->DebugCallback, ==, NULL);
-    Status = XENBUS_DEBUG(Register, 
-                          &Fdo->Debug, 
-                          __MODULE__, 
-                          FdoDebugCallback, 
-                          Fdo, 
-                          &Fdo->DebugCallback);
+    ASSERT3P(Adapter->DebugCallback, ==, NULL);
+    Status = XENBUS_DEBUG(Register,
+                          &Adapter->Debug,
+                          __MODULE__,
+                          AdapterDebugCallback,
+                          Adapter,
+                          &Adapter->DebugCallback);
     if (!NT_SUCCESS(Status))
         goto fail2;
 
     // Power UP any PDOs
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
+        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             Status = PdoD3ToD0(Pdo);
             PdoDereference(Pdo);
@@ -1391,18 +1352,18 @@ FdoD3ToD0(
         }
     }
 
-    Status = __FdoD3ToD0(Fdo);
+    Status = __AdapterD3ToD0(Adapter);
     if (!NT_SUCCESS(Status))
         goto fail4;
 
     // register suspend callback to re-register the watch
-    ASSERT3P(Fdo->SuspendCallback, ==, NULL);
+    ASSERT3P(Adapter->SuspendCallback, ==, NULL);
     Status = XENBUS_SUSPEND(Register,
-                            &Fdo->Suspend,
+                            &Adapter->Suspend,
                             SUSPEND_CALLBACK_LATE,
-                            FdoSuspendLateCallback,
-                            Fdo,
-                            &Fdo->SuspendCallback);
+                            AdapterSuspendLateCallback,
+                            Adapter,
+                            &Adapter->SuspendCallback);
     if (!NT_SUCCESS(Status))
         goto fail5;
 
@@ -1412,7 +1373,7 @@ FdoD3ToD0(
 fail5:
     Error("Fail5\n");
 
-    __FdoD0ToD3(Fdo);
+    __AdapterD0ToD3(Adapter);
 
 fail4:
     Error("Fail4\n");
@@ -1421,50 +1382,50 @@ fail3:
     Error("Fail3\n");
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
+        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             PdoD0ToD3(Pdo);
             PdoDereference(Pdo);
         }
     }
 
-    XENBUS_DEBUG(Deregister, &Fdo->Debug, Fdo->DebugCallback);
-    Fdo->DebugCallback = NULL;
+    XENBUS_DEBUG(Deregister, &Adapter->Debug, Adapter->DebugCallback);
+    Adapter->DebugCallback = NULL;
 
 fail2:
     Error("Fail2\n");
 
-    __FdoRelease(Fdo);
-   
+    __AdapterRelease(Adapter);
+
 fail1:
     Error("Fail1 (%08x)\n", Status);
 
-    __FdoSetDevicePowerState(Fdo, PowerDeviceD3);
+    __AdapterSetDevicePowerState(Adapter, PowerDeviceD3);
     return Status;
 }
 
 static VOID
-FdoD0ToD3(
-    __in PXENVBD_FDO             Fdo
+AdapterD0ToD3(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     ULONG       TargetId;
 
-    if (!__FdoSetDevicePowerState(Fdo, PowerDeviceD3))
+    if (!__AdapterSetDevicePowerState(Adapter, PowerDeviceD3))
         return;
 
     Trace("=====> (%d)\n", KeGetCurrentIrql());
     Verbose("D0->D3\n");
 
     // remove suspend callback
-    XENBUS_SUSPEND(Deregister, &Fdo->Suspend, Fdo->SuspendCallback);
-    Fdo->SuspendCallback = NULL;
+    XENBUS_SUSPEND(Deregister, &Adapter->Suspend, Adapter->SuspendCallback);
+    Adapter->SuspendCallback = NULL;
 
-    __FdoD0ToD3(Fdo);
+    __AdapterD0ToD3(Adapter);
 
     // Power DOWN any PDOs
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
+        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             PdoD0ToD3(Pdo);
             PdoDereference(Pdo);
@@ -1472,25 +1433,25 @@ FdoD0ToD3(
     }
 
     // free debug callback
-    if (Fdo->DebugCallback != NULL) {
-        XENBUS_DEBUG(Deregister, &Fdo->Debug, Fdo->DebugCallback);
-        Fdo->DebugCallback = NULL;
+    if (Adapter->DebugCallback != NULL) {
+        XENBUS_DEBUG(Deregister, &Adapter->Debug, Adapter->DebugCallback);
+        Adapter->DebugCallback = NULL;
     }
 
     // Release Interfaces
-    __FdoRelease(Fdo);
+    __AdapterRelease(Adapter);
 
     Trace("<===== (%d)\n", KeGetCurrentIrql());
 }
 
 __checkReturn
 static DECLSPEC_NOINLINE NTSTATUS
-FdoDevicePower(
+AdapterDevicePower(
     __in PXENVBD_THREAD             Thread,
     __in PVOID                      Context
     )
 {
-    PXENVBD_FDO     Fdo = Context;
+    PXENVBD_ADAPTER     Adapter = Context;
 
     for (;;) {
         PIRP                Irp;
@@ -1503,10 +1464,10 @@ FdoDevicePower(
             break;
 
         // must have a pended DevicePowerIrp
-        ASSERT3P(Fdo->DevicePowerIrp, !=, NULL);
+        ASSERT3P(Adapter->DevicePowerIrp, !=, NULL);
 
-        Irp = Fdo->DevicePowerIrp;
-        Fdo->DevicePowerIrp = NULL;
+        Irp = Adapter->DevicePowerIrp;
+        Adapter->DevicePowerIrp = NULL;
 
         Stack = IoGetCurrentIrpStackLocation(Irp);
         DeviceState = Stack->Parameters.Power.State.DeviceState;
@@ -1516,13 +1477,13 @@ FdoDevicePower(
         case IRP_MN_SET_POWER:
             switch (DeviceState) {
             case PowerDeviceD0:
-                Verbose("FDO:PowerDeviceD0\n");
-                FdoD3ToD0(Fdo);
+                Verbose("ADAPTER:PowerDeviceD0\n");
+                AdapterD3ToD0(Adapter);
                 break;
 
             case PowerDeviceD3:
-                Verbose("FDO:PowerDeviceD3 (%s)\n", PowerActionName(Action));
-                FdoD0ToD3(Fdo);
+                Verbose("ADAPTER:PowerDeviceD3 (%s)\n", PowerActionName(Action));
+                AdapterD0ToD3(Adapter);
                 break;
 
             default:
@@ -1533,8 +1494,7 @@ FdoDevicePower(
         default:
             break;
         }
-        FdoDereference(Fdo);
-        Status = DriverDispatchPower(Fdo->DeviceObject, Irp);
+        Status = DriverDispatchPower(Adapter->DeviceObject, Irp);
         if (!NT_SUCCESS(Status)) {
             Warning("StorPort failed PowerIRP with %08x\n", Status);
         }
@@ -1546,30 +1506,28 @@ FdoDevicePower(
 __checkReturn
 __drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
-__FdoInitialize(
-    __in PXENVBD_FDO             Fdo
+__AdapterInitialize(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     ULONG       StorStatus;
     NTSTATUS    Status;
 
     Trace("=====> (%d)\n", KeGetCurrentIrql());
-    
+
     ASSERT3U(KeGetCurrentIrql(), <=, DISPATCH_LEVEL);
     // initialize the memory
-    Fdo->DevicePower = PowerDeviceD3;
-    KeInitializeSpinLock(&Fdo->TargetLock);
-    KeInitializeSpinLock(&Fdo->Lock);
-    KeInitializeEvent(&Fdo->RemoveEvent, SynchronizationEvent, FALSE);
-    KeInitializeEvent(&Fdo->ScanEvent, SynchronizationEvent, FALSE);
+    Adapter->DevicePower = PowerDeviceD3;
+    KeInitializeSpinLock(&Adapter->TargetLock);
+    KeInitializeSpinLock(&Adapter->Lock);
+    KeInitializeEvent(&Adapter->ScanEvent, SynchronizationEvent, FALSE);
 
-    Fdo->ReferenceCount = 1;
-    Fdo->Signature = FDO_SIGNATURE;
+    Adapter->Signature = ADAPTER_SIGNATURE;
 
-    StorStatus = StorPortGetDeviceObjects(Fdo,
-                                          &Fdo->DeviceObject,
-                                          &Fdo->PhysicalDeviceObject,
-                                          &Fdo->LowerDeviceObject);
+    StorStatus = StorPortGetDeviceObjects(Adapter,
+                                          &Adapter->DeviceObject,
+                                          &Adapter->PhysicalDeviceObject,
+                                          &Adapter->LowerDeviceObject);
     Status = STATUS_UNSUCCESSFUL;
     if (StorStatus != STOR_STATUS_SUCCESS) {
         Error("StorPortGetDeviceObjects() (%x:%s)\n", StorStatus, StorStatusName(StorStatus));
@@ -1577,141 +1535,133 @@ __FdoInitialize(
     }
 
     // get interfaces
-    Status = __FdoQueryInterfaces(Fdo);
+    Status = __AdapterQueryInterfaces(Adapter);
     if (!NT_SUCCESS(Status))
         goto fail2;
 
     // start enum thread
-    Status = ThreadCreate(FdoScan, Fdo, &Fdo->ScanThread);
+    Status = ThreadCreate(AdapterScan, Adapter, &Adapter->ScanThread);
     if (!NT_SUCCESS(Status))
         goto fail3;
 
-    Status = ThreadCreate(FdoDevicePower, Fdo, &Fdo->DevicePowerThread);
+    Status = ThreadCreate(AdapterDevicePower, Adapter, &Adapter->DevicePowerThread);
     if (!NT_SUCCESS(Status))
         goto fail4;
 
     // query enumerator
     // fix this up to query from device location(?)
-    //RtlInitAnsiString(&Fdo->Enumerator, "vbd");
+    //RtlInitAnsiString(&Adapter->Enumerator, "vbd");
 
     // link fdo
-    DriverLinkFdo(Fdo);
+    DriverLinkAdapter(Adapter);
 
     Trace("<===== (%d)\n", KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
 fail4:
     Error("fail4\n");
-    ThreadAlert(Fdo->ScanThread);
-    ThreadJoin(Fdo->ScanThread);
-    Fdo->ScanThread = NULL;
+    ThreadAlert(Adapter->ScanThread);
+    ThreadJoin(Adapter->ScanThread);
+    Adapter->ScanThread = NULL;
 fail3:
     Error("fail3\n");
-    __FdoZeroInterfaces(Fdo);
+    __AdapterZeroInterfaces(Adapter);
 fail2:
     Error("fail2\n");
-    Fdo->DeviceObject = NULL;
-    Fdo->PhysicalDeviceObject = NULL;
-    Fdo->LowerDeviceObject = NULL;
+    Adapter->DeviceObject = NULL;
+    Adapter->PhysicalDeviceObject = NULL;
+    Adapter->LowerDeviceObject = NULL;
 fail1:
     Error("fail1 (%08x)\n", Status);
     return Status;
 }
 __drv_maxIRQL(PASSIVE_LEVEL)
 static VOID
-__FdoTerminate(
-    __in PXENVBD_FDO             Fdo
+__AdapterTerminate(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     ULONG   TargetId;
 
     Trace("=====> (%d)\n", KeGetCurrentIrql());
 
-    DriverUnlinkFdo(Fdo);
-    ASSERT3U(Fdo->DevicePower, ==, PowerDeviceD3);
-    FdoDereference(Fdo);
-
-    // should wait until ReferenceCount == 0
-    Verbose("Terminating, %d Refs\n", Fdo->ReferenceCount);
-    ASSERT3S(Fdo->ReferenceCount, >=, 0);
-    KeWaitForSingleObject(&Fdo->RemoveEvent, Executive, KernelMode, FALSE, NULL);
-    ASSERT3S(Fdo->ReferenceCount, ==, 0);
+    DriverUnlinkAdapter(Adapter);
+    ASSERT3U(Adapter->DevicePower, ==, PowerDeviceD3);
 
     // stop device power thread
-    ThreadAlert(Fdo->DevicePowerThread);
-    ThreadJoin(Fdo->DevicePowerThread);
-    Fdo->DevicePowerThread = NULL;
+    ThreadAlert(Adapter->DevicePowerThread);
+    ThreadJoin(Adapter->DevicePowerThread);
+    Adapter->DevicePowerThread = NULL;
 
     // stop enum thread
-    ThreadAlert(Fdo->ScanThread);
-    ThreadJoin(Fdo->ScanThread);
-    Fdo->ScanThread = NULL;
+    ThreadAlert(Adapter->ScanThread);
+    ThreadJoin(Adapter->ScanThread);
+    Adapter->ScanThread = NULL;
 
     // clear device objects
-    Fdo->DeviceObject = NULL;
-    Fdo->PhysicalDeviceObject = NULL;
-    Fdo->LowerDeviceObject = NULL;
-    
+    Adapter->DeviceObject = NULL;
+    Adapter->PhysicalDeviceObject = NULL;
+    Adapter->LowerDeviceObject = NULL;
+
     // delete targets
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdoAlways(Fdo, TargetId, __FUNCTION__);
+        PXENVBD_PDO Pdo = __AdapterGetPdoAlways(Adapter, TargetId, __FUNCTION__);
         if (Pdo) {
-            // Pdo may not be in Deleted state yet, force it as Fdo is terminating
+            // Pdo may not be in Deleted state yet, force it as Adapter is terminating
             if (PdoGetDevicePnpState(Pdo) != Deleted)
                 PdoSetDevicePnpState(Pdo, Deleted);
             // update missing (for debug output more than anything else
-            PdoSetMissing(Pdo, "FdoTerminate");
-            // drop ref-count acquired in __FdoGetPdo *before* destroying Pdo
+            PdoSetMissing(Pdo, "AdapterTerminate");
+            // drop ref-count acquired in __AdapterGetPdo *before* destroying Pdo
             PdoDereference(Pdo);
             PdoDestroy(Pdo);
         }
     }
 
     // cleanup memory
-    ASSERT3U(Fdo->DevicePower, ==, PowerDeviceD3);
-    ASSERT3P(Fdo->DebugCallback, ==, NULL);
-    ASSERT3P(Fdo->SuspendCallback, ==, NULL);
+    ASSERT3U(Adapter->DevicePower, ==, PowerDeviceD3);
+    ASSERT3P(Adapter->DebugCallback, ==, NULL);
+    ASSERT3P(Adapter->SuspendCallback, ==, NULL);
 
-    Fdo->Signature = 0;
-    Fdo->DevicePower = 0;
-    Fdo->CurrentSrbs = Fdo->MaximumSrbs = Fdo->TotalSrbs = 0;
-    RtlZeroMemory(&Fdo->Enumerator, sizeof(ANSI_STRING));
-    RtlZeroMemory(&Fdo->TargetLock, sizeof(KSPIN_LOCK));
-    RtlZeroMemory(&Fdo->Lock, sizeof(KSPIN_LOCK));
-    RtlZeroMemory(&Fdo->ScanEvent, sizeof(KEVENT));
-    RtlZeroMemory(&Fdo->RemoveEvent, sizeof(KEVENT));
-    __FdoZeroInterfaces(Fdo);
+    Adapter->Signature = 0;
+    Adapter->DevicePower = 0;
+    Adapter->CurrentSrbs = Adapter->MaximumSrbs = Adapter->TotalSrbs = 0;
+    RtlZeroMemory(&Adapter->Enumerator, sizeof(ANSI_STRING));
+    RtlZeroMemory(&Adapter->TargetLock, sizeof(KSPIN_LOCK));
+    RtlZeroMemory(&Adapter->Lock, sizeof(KSPIN_LOCK));
+    RtlZeroMemory(&Adapter->ScanEvent, sizeof(KEVENT));
+    __AdapterZeroInterfaces(Adapter);
 
-    ASSERT(IsZeroMemory(Fdo, sizeof(XENVBD_FDO)));
+    ASSERT(IsZeroMemory(Adapter, sizeof(XENVBD_ADAPTER)));
     Trace("<===== (%d)\n", KeGetCurrentIrql());
 }
 //=============================================================================
 // Query Methods
 __checkReturn
 FORCEINLINE PDEVICE_OBJECT
-FdoGetDeviceObject(
-    __in PXENVBD_FDO                 Fdo
+AdapterGetDeviceObject(
+    __in PXENVBD_ADAPTER                 Adapter
     )
 {
-    if (Fdo)
-        return Fdo->DeviceObject;
+    if (Adapter)
+        return Adapter->DeviceObject;
     return NULL;
 }
 
 FORCEINLINE ULONG
-FdoSizeofXenvbdFdo(
+AdapterSizeofXenvbdAdapter(
     )
 {
-    return (ULONG)sizeof(XENVBD_FDO);
+    return (ULONG)sizeof(XENVBD_ADAPTER);
 }
 
 FORCEINLINE PCHAR
-FdoEnum(
-    __in PXENVBD_FDO                 Fdo
+AdapterEnum(
+    __in PXENVBD_ADAPTER                 Adapter
     )
 {
-    if (Fdo->Enumerator.Buffer)
-        return Fdo->Enumerator.Buffer;
+    if (Adapter->Enumerator.Buffer)
+        return Adapter->Enumerator.Buffer;
     else
         return "vbd";
 }
@@ -1719,8 +1669,8 @@ FdoEnum(
 //=============================================================================
 // SRB Methods
 FORCEINLINE VOID
-FdoStartSrb(
-    __in PXENVBD_FDO                 Fdo,
+AdapterStartSrb(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PSCSI_REQUEST_BLOCK         Srb
     )
 {
@@ -1728,37 +1678,37 @@ FdoStartSrb(
 
     UNREFERENCED_PARAMETER(Srb);
 
-    Value = InterlockedIncrement(&Fdo->CurrentSrbs);
-    if (Value > Fdo->MaximumSrbs)
-        Fdo->MaximumSrbs = Value;
-    InterlockedIncrement(&Fdo->TotalSrbs);
+    Value = InterlockedIncrement(&Adapter->CurrentSrbs);
+    if (Value > Adapter->MaximumSrbs)
+        Adapter->MaximumSrbs = Value;
+    InterlockedIncrement(&Adapter->TotalSrbs);
 }
 
 FORCEINLINE VOID
-FdoCompleteSrb(
-    __in PXENVBD_FDO                 Fdo,
+AdapterCompleteSrb(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PSCSI_REQUEST_BLOCK         Srb
     )
 {
     ASSERT3U(Srb->SrbStatus, !=, SRB_STATUS_PENDING);
 
-    InterlockedDecrement(&Fdo->CurrentSrbs);
+    InterlockedDecrement(&Adapter->CurrentSrbs);
 
-    StorPortNotification(RequestComplete, Fdo, Srb);
+    StorPortNotification(RequestComplete, Adapter, Srb);
 }
 
 //=============================================================================
 // StorPort Methods
 BOOLEAN
-FdoResetBus(
-    __in PXENVBD_FDO                 Fdo
+AdapterResetBus(
+    __in PXENVBD_ADAPTER                 Adapter
     )
 {
     ULONG           TargetId;
 
     Verbose("====>\n");
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
+        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             PdoReset(Pdo);
             PdoDereference(Pdo);
@@ -1770,28 +1720,28 @@ FdoResetBus(
 }
 
 static VOID
-FdoUnplugRequest(
-    IN  PXENVBD_FDO Fdo,
+AdapterUnplugRequest(
+    IN  PXENVBD_ADAPTER Adapter,
     IN  BOOLEAN     Make
     )
 {
     NTSTATUS        status;
 
-    status = XENBUS_UNPLUG(Acquire, &Fdo->Unplug);
+    status = XENBUS_UNPLUG(Acquire, &Adapter->Unplug);
     if (!NT_SUCCESS(status))
         return;
 
     XENBUS_UNPLUG(Request,
-                  &Fdo->Unplug,
+                  &Adapter->Unplug,
                   XENBUS_UNPLUG_DEVICE_TYPE_DISKS,
                   Make);
 
-    XENBUS_UNPLUG(Release, &Fdo->Unplug);
+    XENBUS_UNPLUG(Release, &Adapter->Unplug);
 }
 
 ULONG
-FdoFindAdapter(
-    __in PXENVBD_FDO                 Fdo,
+AdapterFindAdapter(
+    __in PXENVBD_ADAPTER                 Adapter,
     __inout PPORT_CONFIGURATION_INFORMATION  ConfigInfo
     )
 {
@@ -1816,35 +1766,35 @@ FdoFindAdapter(
     }
 
     // gets called on resume from hibernate, so only setup if not already done
-    if (Fdo->Signature == FDO_SIGNATURE) {
-        Verbose("FDO already initalized (0x%p)\n", Fdo);
+    if (Adapter->Signature == ADAPTER_SIGNATURE) {
+        Verbose("ADAPTER already initalized (0x%p)\n", Adapter);
         return SP_RETURN_FOUND;
     }
 
     // We need to do this to avoid an assertion in a checked kernel
-    (VOID) StorPortGetUncachedExtension(Fdo, ConfigInfo, PAGE_SIZE);
+    (VOID) StorPortGetUncachedExtension(Adapter, ConfigInfo, PAGE_SIZE);
 
-    if (!NT_SUCCESS(__FdoInitialize(Fdo)))
+    if (!NT_SUCCESS(__AdapterInitialize(Adapter)))
         return SP_RETURN_ERROR;
 
-    FdoUnplugRequest(Fdo, TRUE);
+    AdapterUnplugRequest(Adapter, TRUE);
 
-    if (!NT_SUCCESS(FdoD3ToD0(Fdo)))
+    if (!NT_SUCCESS(AdapterD3ToD0(Adapter)))
         return SP_RETURN_ERROR;
 
     return SP_RETURN_FOUND;
 }
 
 static FORCEINLINE VOID
-__FdoSrbPnp(
-    __in PXENVBD_FDO                 Fdo,
+__AdapterSrbPnp(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PSCSI_PNP_REQUEST_BLOCK     Srb
     )
 {
     if (!(Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)) {
         PXENVBD_PDO     Pdo;
 
-        Pdo = __FdoGetPdo(Fdo, Srb->TargetId);
+        Pdo = __AdapterGetPdo(Adapter, Srb->TargetId);
         if (Pdo) {
             PdoSrbPnp(Pdo, Srb);
             PdoDereference(Pdo);
@@ -1852,9 +1802,9 @@ __FdoSrbPnp(
     }
 }
 
-BOOLEAN 
-FdoBuildIo(
-    __in PXENVBD_FDO                 Fdo,
+BOOLEAN
+AdapterBuildIo(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PSCSI_REQUEST_BLOCK         Srb
     )
 {
@@ -1865,12 +1815,12 @@ FdoBuildIo(
     case SRB_FUNCTION_RESET_DEVICE:
     case SRB_FUNCTION_FLUSH:
     case SRB_FUNCTION_SHUTDOWN:
-        FdoStartSrb(Fdo, Srb);
+        AdapterStartSrb(Adapter, Srb);
         return TRUE;
 
         // dont pass to StartIo
     case SRB_FUNCTION_PNP:
-        __FdoSrbPnp(Fdo, (PSCSI_PNP_REQUEST_BLOCK)Srb);
+        __AdapterSrbPnp(Adapter, (PSCSI_PNP_REQUEST_BLOCK)Srb);
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
     case SRB_FUNCTION_ABORT_COMMAND:
@@ -1878,41 +1828,41 @@ FdoBuildIo(
         break;
     case SRB_FUNCTION_RESET_BUS:
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        FdoResetBus(Fdo);
+        AdapterResetBus(Adapter);
         break;
-        
+
     default:
         break;
     }
-    
-    StorPortNotification(RequestComplete, Fdo, Srb);
-    return FALSE;
-}   
 
-BOOLEAN 
-FdoStartIo(
-    __in PXENVBD_FDO                 Fdo,
+    StorPortNotification(RequestComplete, Adapter, Srb);
+    return FALSE;
+}
+
+BOOLEAN
+AdapterStartIo(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PSCSI_REQUEST_BLOCK         Srb
     )
 {
     PXENVBD_PDO Pdo;
     BOOLEAN     CompleteSrb = TRUE;
 
-    Pdo = __FdoGetPdo(Fdo, Srb->TargetId);
+    Pdo = __AdapterGetPdo(Adapter, Srb->TargetId);
     if (Pdo) {
         CompleteSrb = PdoStartIo(Pdo, Srb);
         PdoDereference(Pdo);
     }
 
     if (CompleteSrb) {
-        FdoCompleteSrb(Fdo, Srb);
+        AdapterCompleteSrb(Adapter, Srb);
     }
     return TRUE;
 }
 
 static PXENVBD_PDO
-FdoGetPdoFromDeviceObject(
-    __in PXENVBD_FDO                 Fdo,
+AdapterGetPdoFromDeviceObject(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PDEVICE_OBJECT              DeviceObject
     )
 {
@@ -1921,7 +1871,7 @@ FdoGetPdoFromDeviceObject(
     ASSERT3P(DeviceObject, !=, NULL);
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __FdoGetPdo(Fdo, TargetId);
+        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
         if (Pdo) {
             if (PdoGetDeviceObject(Pdo) == DeviceObject)
                 return Pdo;
@@ -1933,8 +1883,8 @@ FdoGetPdoFromDeviceObject(
 }
 
 static PXENVBD_PDO
-FdoMapDeviceObjectToPdo(
-    __in PXENVBD_FDO                Fdo,
+AdapterMapDeviceObjectToPdo(
+    __in PXENVBD_ADAPTER                Adapter,
     __in PDEVICE_OBJECT             DeviceObject
     )
 {
@@ -1949,7 +1899,7 @@ FdoMapDeviceObjectToPdo(
     DECLARE_UNICODE_STRING_SIZE(UniStr, 4);
 
     KeInitializeEvent(&Complete, NotificationEvent, FALSE);
-    
+
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &Complete, &StatusBlock);
     if (Irp == NULL)
         goto fail1;
@@ -1989,7 +1939,7 @@ FdoMapDeviceObjectToPdo(
     if (!NT_SUCCESS(Status))
         goto fail4;
 
-    Pdo = __FdoGetPdo(Fdo, TargetId);
+    Pdo = __AdapterGetPdo(Adapter, TargetId);
     if (Pdo == NULL)
         goto fail5;
 
@@ -2009,8 +1959,8 @@ fail1:
 
 __checkReturn
 NTSTATUS
-FdoForwardPnp(
-    __in PXENVBD_FDO                Fdo,
+AdapterForwardPnp(
+    __in PXENVBD_ADAPTER                Adapter,
     __in PDEVICE_OBJECT             DeviceObject,
     __in PIRP                       Irp
     )
@@ -2018,70 +1968,63 @@ FdoForwardPnp(
     PIO_STACK_LOCATION  Stack;
     PXENVBD_PDO         Pdo;
 
-    ASSERT3P(DeviceObject, !=, Fdo->DeviceObject);
+    ASSERT3P(DeviceObject, !=, Adapter->DeviceObject);
 
-    Pdo = FdoGetPdoFromDeviceObject(Fdo, DeviceObject);
+    Pdo = AdapterGetPdoFromDeviceObject(Adapter, DeviceObject);
     if (Pdo != NULL) {
-        FdoDereference(Fdo);
         return PdoDispatchPnp(Pdo, DeviceObject, Irp);
     }
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
     if (Stack->MinorFunction == IRP_MN_QUERY_ID &&
         Stack->Parameters.QueryId.IdType == BusQueryDeviceID) {
-        Pdo = FdoMapDeviceObjectToPdo(Fdo, DeviceObject);
+        Pdo = AdapterMapDeviceObjectToPdo(Adapter, DeviceObject);
         if (Pdo != NULL) {
-            FdoDereference(Fdo);
             return PdoDispatchPnp(Pdo, DeviceObject, Irp);
         }
     }
 
-    FdoDereference(Fdo);
     return DriverDispatchPnp(DeviceObject, Irp);
 }
 
 __checkReturn
 NTSTATUS
-FdoDispatchPnp(
-    __in PXENVBD_FDO                 Fdo,
+AdapterDispatchPnp(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PDEVICE_OBJECT              DeviceObject,
     __in PIRP                        Irp
     )
 {
     PIO_STACK_LOCATION  Stack;
 
-    ASSERT3P(DeviceObject, ==, Fdo->DeviceObject);
+    ASSERT3P(DeviceObject, ==, Adapter->DeviceObject);
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
 
     switch (Stack->MinorFunction) {
     case IRP_MN_REMOVE_DEVICE:
-        Verbose("FDO:IRP_MN_REMOVE_DEVICE\n");
-        FdoD0ToD3(Fdo);
-        FdoUnplugRequest(Fdo, FALSE);
-        // drop ref-count acquired in DriverGetFdo *before* destroying Fdo
-        FdoDereference(Fdo);
-        __FdoTerminate(Fdo);
+        Verbose("ADAPTER:IRP_MN_REMOVE_DEVICE\n");
+        AdapterD0ToD3(Adapter);
+        AdapterUnplugRequest(Adapter, FALSE);
+        __AdapterTerminate(Adapter);
         break;
 
     case IRP_MN_QUERY_DEVICE_RELATIONS:
         if (Stack->Parameters.QueryDeviceRelations.Type == BusRelations) {
-            KeClearEvent(&Fdo->ScanEvent);
-            ThreadWake(Fdo->ScanThread);
+            KeClearEvent(&Adapter->ScanEvent);
+            ThreadWake(Adapter->ScanThread);
 
             Trace("waiting for scan thread\n");
 
-            (VOID) KeWaitForSingleObject(&Fdo->ScanEvent,
+            (VOID) KeWaitForSingleObject(&Adapter->ScanEvent,
                                          Executive,
                                          KernelMode,
                                          FALSE,
                                          NULL);
         }
-        FdoDereference(Fdo);
         break;
 
     default:
-        FdoDereference(Fdo);
         break;
     }
 
@@ -2090,8 +2033,8 @@ FdoDispatchPnp(
 
 __checkReturn
 NTSTATUS
-FdoDispatchPower(
-    __in PXENVBD_FDO                 Fdo,
+AdapterDispatchPower(
+    __in PXENVBD_ADAPTER                 Adapter,
     __in PDEVICE_OBJECT              DeviceObject,
     __in PIRP                        Irp
     )
@@ -2100,34 +2043,32 @@ FdoDispatchPower(
     POWER_STATE_TYPE    PowerType;
     NTSTATUS            status;
 
-    ASSERT3P(DeviceObject, ==, Fdo->DeviceObject);
+    ASSERT3P(DeviceObject, ==, Adapter->DeviceObject);
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
     PowerType = Stack->Parameters.Power.Type;
 
     switch (PowerType) {
     case DevicePowerState:
-        if (Fdo->DevicePowerThread == NULL) {
+        if (Adapter->DevicePowerThread == NULL) {
             Verbose("DevicePower IRP before DevicePowerThread ready\n");
-            FdoDereference(Fdo);
             status = DriverDispatchPower(DeviceObject, Irp);
             break;
         }
 
         IoMarkIrpPending(Irp);
 
-        ASSERT3P(Fdo->DevicePowerIrp, ==, NULL);
-        ASSERT3P(DeviceObject, ==, Fdo->DeviceObject);
+        ASSERT3P(Adapter->DevicePowerIrp, ==, NULL);
+        ASSERT3P(DeviceObject, ==, Adapter->DeviceObject);
 
-        Fdo->DevicePowerIrp = Irp;
-        ThreadWake(Fdo->DevicePowerThread);
-        
+        Adapter->DevicePowerIrp = Irp;
+        ThreadWake(Adapter->DevicePowerThread);
+
         status = STATUS_PENDING;
         break;
 
     case SystemPowerState:
     default:
-        FdoDereference(Fdo);
         status = DriverDispatchPower(DeviceObject, Irp);
         break;
     }
@@ -2136,71 +2077,71 @@ FdoDispatchPower(
 }
 
 PXENBUS_STORE_INTERFACE
-FdoAcquireStore(
-    __in PXENVBD_FDO    Fdo
+AdapterAcquireStore(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    status = XENBUS_STORE(Acquire, &Fdo->Store);
+    status = XENBUS_STORE(Acquire, &Adapter->Store);
     if (!NT_SUCCESS(status))
         return NULL;
 
-    return &Fdo->Store;
+    return &Adapter->Store;
 }
 
 PXENBUS_EVTCHN_INTERFACE
-FdoAcquireEvtchn(
-    __in PXENVBD_FDO    Fdo
+AdapterAcquireEvtchn(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    status = XENBUS_EVTCHN(Acquire, &Fdo->Evtchn);
+    status = XENBUS_EVTCHN(Acquire, &Adapter->Evtchn);
     if (!NT_SUCCESS(status))
         return NULL;
 
-    return &Fdo->Evtchn;
+    return &Adapter->Evtchn;
 }
 
 PXENBUS_GNTTAB_INTERFACE
-FdoAcquireGnttab(
-    __in PXENVBD_FDO    Fdo
+AdapterAcquireGnttab(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    status = XENBUS_GNTTAB(Acquire, &Fdo->Gnttab);
+    status = XENBUS_GNTTAB(Acquire, &Adapter->Gnttab);
     if (!NT_SUCCESS(status))
         return NULL;
 
-    return &Fdo->Gnttab;
+    return &Adapter->Gnttab;
 }
 
 PXENBUS_DEBUG_INTERFACE
-FdoAcquireDebug(
-    __in PXENVBD_FDO    Fdo
+AdapterAcquireDebug(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    status = XENBUS_DEBUG(Acquire, &Fdo->Debug);
+    status = XENBUS_DEBUG(Acquire, &Adapter->Debug);
     if (!NT_SUCCESS(status))
         return NULL;
 
-    return &Fdo->Debug;
+    return &Adapter->Debug;
 }
 
 PXENBUS_SUSPEND_INTERFACE
-FdoAcquireSuspend(
-    __in PXENVBD_FDO    Fdo    
+AdapterAcquireSuspend(
+    __in PXENVBD_ADAPTER    Adapter
     )
 {
     NTSTATUS            status;
 
-    status = XENBUS_SUSPEND(Acquire, &Fdo->Suspend);
+    status = XENBUS_SUSPEND(Acquire, &Adapter->Suspend);
     if (!NT_SUCCESS(status))
         return NULL;
 
-    return &Fdo->Suspend;
+    return &Adapter->Suspend;
 }

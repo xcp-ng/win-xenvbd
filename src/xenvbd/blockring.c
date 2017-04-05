@@ -32,7 +32,7 @@
 #include "blockring.h"
 #include "frontend.h"
 #include "pdo.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "util.h"
 #include "debug.h"
 #include "srbext.h"
@@ -277,12 +277,12 @@ BlockRingConnect(
     NTSTATUS        status;
     PCHAR           Value;
     ULONG           Index, RingPages;
-    PXENVBD_FDO     Fdo = PdoGetFdo(FrontendGetPdo(BlockRing->Frontend));
+    PXENVBD_ADAPTER     Adapter = PdoGetAdapter(FrontendGetPdo(BlockRing->Frontend));
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
     ASSERT(BlockRing->Connected == FALSE);
 
-    BlockRing->StoreInterface = FdoAcquireStore(Fdo);
+    BlockRing->StoreInterface = AdapterAcquireStore(Adapter);
 
     status = STATUS_UNSUCCESSFUL;
     if (BlockRing->StoreInterface == NULL)

@@ -31,7 +31,7 @@
 
 #include "frontend.h"
 #include "pdo.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "util.h"
 #include "debug.h"
 #include "thread.h"
@@ -139,13 +139,13 @@ GranterConnect(
     IN  USHORT                      BackendDomain
     )
 {
-    PXENVBD_FDO Fdo = PdoGetFdo(FrontendGetPdo(Granter->Frontend));
+    PXENVBD_ADAPTER Adapter = PdoGetAdapter(FrontendGetPdo(Granter->Frontend));
     CHAR        Name[MAXNAMELEN];
     NTSTATUS    status;
 
     ASSERT(Granter->Connected == FALSE);
 
-    Granter->GnttabInterface = FdoAcquireGnttab(Fdo);
+    Granter->GnttabInterface = AdapterAcquireGnttab(Adapter);
 
     status = STATUS_UNSUCCESSFUL;
     if (Granter->GnttabInterface == NULL)

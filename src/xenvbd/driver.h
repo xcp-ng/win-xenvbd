@@ -32,7 +32,6 @@
 #ifndef _XENVBD_XENVBD_H
 #define _XENVBD_XENVBD_H
 
-#include "fdo.h"
 #include <xen.h>
 
 // Global Constants
@@ -57,6 +56,8 @@ typedef struct _XENVBD_PARAMETERS {
 
 extern XENVBD_PARAMETERS    DriverParameters;
 
+#include "adapter.h"
+
 extern HANDLE
 DriverGetParametersKey(
     VOID
@@ -76,13 +77,13 @@ DriverDispatchPower(
 
 // Fdo Device Extension management
 extern VOID
-DriverLinkFdo(
-    __in PXENVBD_FDO             Fdo
+DriverLinkAdapter(
+    IN  PXENVBD_ADAPTER Adapter
     );
 
 extern VOID
-DriverUnlinkFdo(
-    __in PXENVBD_FDO             Fdo
+DriverUnlinkAdapter(
+    IN  PXENVBD_ADAPTER Adapter
     );
 
 extern VOID

@@ -37,7 +37,7 @@ typedef struct _XENVBD_PDO XENVBD_PDO, *PXENVBD_PDO;
 #include <ntddk.h>
 #include <ntstrsafe.h>
 #include <xenvbd-storport.h>
-#include "fdo.h"
+#include "adapter.h"
 #include "srbext.h"
 #include "types.h"
 #include <debug_interface.h>
@@ -52,7 +52,7 @@ PdoDebugCallback(
 __checkReturn
 extern BOOLEAN
 PdoCreate(
-    __in PXENVBD_FDO             Fdo,
+    __in PXENVBD_ADAPTER             Adapter,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
     __in XENVBD_DEVICE_TYPE      DeviceType
@@ -158,8 +158,8 @@ PdoOutstandingReqs(
     );
 
 __checkReturn
-extern PXENVBD_FDO
-PdoGetFdo( 
+extern PXENVBD_ADAPTER
+PdoGetAdapter(
     __in PXENVBD_PDO             Pdo
     );
 

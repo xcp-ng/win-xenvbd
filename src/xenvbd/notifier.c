@@ -32,7 +32,7 @@
 #include "notifier.h"
 #include "frontend.h"
 #include "pdo.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "util.h"
 #include "debug.h"
 #include <evtchn_interface.h>
@@ -162,18 +162,18 @@ NotifierConnect(
     IN  USHORT                      BackendDomain
     )
 {
-    PXENVBD_FDO Fdo = PdoGetFdo(FrontendGetPdo(Notifier->Frontend));
+    PXENVBD_ADAPTER Adapter = PdoGetAdapter(FrontendGetPdo(Notifier->Frontend));
     NTSTATUS    status;
 
     ASSERT(Notifier->Connected == FALSE);
 
-    Notifier->StoreInterface = FdoAcquireStore(Fdo);
+    Notifier->StoreInterface = AdapterAcquireStore(Adapter);
 
     status = STATUS_UNSUCCESSFUL;
     if (Notifier->StoreInterface == NULL)
         goto fail1;
 
-    Notifier->EvtchnInterface = FdoAcquireEvtchn(Fdo);
+    Notifier->EvtchnInterface = AdapterAcquireEvtchn(Adapter);
 
     status = STATUS_UNSUCCESSFUL;
     if (Notifier->EvtchnInterface == NULL)

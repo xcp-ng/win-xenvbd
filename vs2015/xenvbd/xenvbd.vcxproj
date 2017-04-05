@@ -67,7 +67,7 @@
     <ClCompile Include="../../src/xenvbd/buffer.c" />
     <ClCompile Include="../../src/xenvbd/driver.c" />
     <ClCompile Include="../../src/xenvbd/registry.c" />
-    <ClCompile Include="../../src/xenvbd/fdo.c" />
+    <ClCompile Include="../../src/xenvbd/adapter.c" />
     <ClCompile Include="../../src/xenvbd/frontend.c" />
     <ClCompile Include="../../src/xenvbd/pdo.c" />
     <ClCompile Include="../../src/xenvbd/pdoinquiry.c" />

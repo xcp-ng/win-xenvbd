@@ -30,7 +30,7 @@
  */ 
 
 #include "driver.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "pdo.h"
 #include "registry.h"
 #include "srbext.h"
@@ -48,7 +48,7 @@ typedef struct _XENVBD_DRIVER {
     PDRIVER_DISPATCH    StorPortDispatchPnp;
     PDRIVER_DISPATCH    StorPortDispatchPower;
     PDRIVER_UNLOAD      StorPortDriverUnload;
-    PXENVBD_FDO         Fdo;
+    PXENVBD_ADAPTER         Adapter;
     KSPIN_LOCK          Lock;
 } XENVBD_DRIVER;
 
@@ -117,51 +117,50 @@ DriverDispatchPower(
 }
 
 VOID
-DriverLinkFdo(
-    __in PXENVBD_FDO             Fdo
+DriverLinkAdapter(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     KIRQL       Irql;
 
     KeAcquireSpinLock(&Driver.Lock, &Irql);
-    Driver.Fdo = Fdo;
+    Driver.Adapter = Adapter;
     KeReleaseSpinLock(&Driver.Lock, Irql);
 }
 
 VOID
-DriverUnlinkFdo(
-    __in PXENVBD_FDO             Fdo
+DriverUnlinkAdapter(
+    __in PXENVBD_ADAPTER             Adapter
     )
 {
     KIRQL       Irql;
 
-    UNREFERENCED_PARAMETER(Fdo);
+    UNREFERENCED_PARAMETER(Adapter);
 
     KeAcquireSpinLock(&Driver.Lock, &Irql);
-    Driver.Fdo = NULL;
+    Driver.Adapter = NULL;
     KeReleaseSpinLock(&Driver.Lock, Irql);
 }
 
 static FORCEINLINE BOOLEAN
-__DriverGetFdo(
+__DriverGetAdapter(
     IN  PDEVICE_OBJECT      DeviceObject,
-    OUT PXENVBD_FDO         *Fdo
+    OUT PXENVBD_ADAPTER         *Adapter
     )
 {
     KIRQL       Irql;
-    BOOLEAN     IsFdo = FALSE;
+    BOOLEAN     IsAdapter = FALSE;
 
     KeAcquireSpinLock(&Driver.Lock, &Irql);
-    *Fdo = Driver.Fdo;
-    if (*Fdo) {
-        FdoReference(*Fdo);
-        if (FdoGetDeviceObject(*Fdo) == DeviceObject) {
-            IsFdo = TRUE;
+    *Adapter = Driver.Adapter;
+    if (*Adapter) {
+        if (AdapterGetDeviceObject(*Adapter) == DeviceObject) {
+            IsAdapter = TRUE;
         }
     }
     KeReleaseSpinLock(&Driver.Lock, Irql);
 
-    return IsFdo;
+    return IsAdapter;
 }
 
 #define MAXNAMELEN  256
@@ -365,7 +364,7 @@ HwResetBus(
 {
     UNREFERENCED_PARAMETER(PathId);
 
-    return FdoResetBus((PXENVBD_FDO)HwDeviceExtension);
+    return AdapterResetBus((PXENVBD_ADAPTER)HwDeviceExtension);
 }
 
 HW_FIND_ADAPTER     HwFindAdapter;
@@ -385,7 +384,7 @@ HwFindAdapter(
     UNREFERENCED_PARAMETER(ArgumentString);
     UNREFERENCED_PARAMETER(Again);
 
-    return FdoFindAdapter((PXENVBD_FDO)HwDeviceExtension, ConfigInfo);
+    return AdapterFindAdapter((PXENVBD_ADAPTER)HwDeviceExtension, ConfigInfo);
 }
 
 static FORCEINLINE BOOLEAN
@@ -417,7 +416,7 @@ HwBuildIo(
     if (__FailStorageRequest(HwDeviceExtension, Srb))
         return FALSE; // dont pass to HwStartIo
 
-    return FdoBuildIo((PXENVBD_FDO)HwDeviceExtension, Srb);
+    return AdapterBuildIo((PXENVBD_ADAPTER)HwDeviceExtension, Srb);
 }
 
 HW_STARTIO          HwStartIo;
@@ -431,7 +430,7 @@ HwStartIo(
     if (__FailStorageRequest(HwDeviceExtension, Srb))
         return TRUE; // acknowledge the srb
 
-    return FdoStartIo((PXENVBD_FDO)HwDeviceExtension, Srb);
+    return AdapterStartIo((PXENVBD_ADAPTER)HwDeviceExtension, Srb);
 }
 
 __drv_dispatchType(IRP_MJ_PNP)
@@ -443,13 +442,13 @@ DispatchPnp(
     IN PIRP             Irp
     )
 {
-    PXENVBD_FDO         Fdo;
+    PXENVBD_ADAPTER         Adapter;
 
-    if (__DriverGetFdo(DeviceObject, &Fdo))
-        return FdoDispatchPnp(Fdo, DeviceObject, Irp);
+    if (__DriverGetAdapter(DeviceObject, &Adapter))
+        return AdapterDispatchPnp(Adapter, DeviceObject, Irp);
 
-    if (Fdo != NULL)
-        return FdoForwardPnp(Fdo, DeviceObject, Irp);
+    if (Adapter != NULL)
+        return AdapterForwardPnp(Adapter, DeviceObject, Irp);
 
     return DriverDispatchPnp(DeviceObject, Irp);
 }
@@ -463,13 +462,10 @@ DispatchPower(
     IN PIRP             Irp
     )
 {
-    PXENVBD_FDO         Fdo;
+    PXENVBD_ADAPTER         Adapter;
 
-    if (__DriverGetFdo(DeviceObject, &Fdo))
-        return FdoDispatchPower(Fdo, DeviceObject, Irp);
-
-    if (Fdo != NULL)
-        FdoDereference(Fdo);
+    if (__DriverGetAdapter(DeviceObject, &Adapter))
+        return AdapterDispatchPower(Adapter, DeviceObject, Irp);
 
     return DriverDispatchPower(DeviceObject, Irp);
 }
@@ -540,7 +536,7 @@ DriverEntry(
     ServiceKey = NULL;
 
     KeInitializeSpinLock(&Driver.Lock);
-    Driver.Fdo = NULL;
+    Driver.Adapter = NULL;
     BufferInitialize();
 
     __DriverParseOption("XENVBD:SYNTH_INQ=",
@@ -560,7 +556,7 @@ DriverEntry(
     InitData.HwResetBus                 =   HwResetBus;
     InitData.HwDmaStarted               =   NULL;
     InitData.HwAdapterState             =   NULL;
-    InitData.DeviceExtensionSize        =   FdoSizeofXenvbdFdo();
+    InitData.DeviceExtensionSize        =   AdapterSizeofXenvbdAdapter();
     InitData.SpecificLuExtensionSize    =   sizeof (ULONG); // not actually used
     InitData.SrbExtensionSize           =   sizeof(XENVBD_SRBEXT);
     InitData.NumberOfAccessRanges       =   2;

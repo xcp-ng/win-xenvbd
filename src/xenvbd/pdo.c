@@ -31,7 +31,7 @@
 
 #include "pdo.h"
 #include "driver.h"
-#include "fdo.h"
+#include "adapter.h"
 #include "frontend.h"
 #include "queue.h"
 #include "srbext.h"
@@ -73,7 +73,7 @@ typedef struct _XENVBD_LOOKASIDE {
 
 struct _XENVBD_PDO {
     ULONG                       Signature;
-    PXENVBD_FDO                 Fdo;
+    PXENVBD_ADAPTER                 Adapter;
     PDEVICE_OBJECT              DeviceObject;
     KEVENT                      RemoveEvent;
     LONG                        ReferenceCount;
@@ -268,8 +268,8 @@ PdoDebugCallback(
         return;
 
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: Fdo 0x%p DeviceObject 0x%p\n",
-                 Pdo->Fdo,
+                 "PDO: Adapter 0x%p DeviceObject 0x%p\n",
+                 Pdo->Adapter,
                  Pdo->DeviceObject);
     XENBUS_DEBUG(Printf, DebugInterface,
                  "PDO: ReferenceCount %d\n",
@@ -537,12 +537,12 @@ PdoOutstandingReqs(
 }
 
 __checkReturn
-FORCEINLINE PXENVBD_FDO
-PdoGetFdo( 
+FORCEINLINE PXENVBD_ADAPTER
+PdoGetAdapter(
     __in PXENVBD_PDO             Pdo
     )
 {
-    return Pdo->Fdo;
+    return Pdo->Adapter;
 }
 
 FORCEINLINE ULONG
@@ -1177,7 +1177,7 @@ PrepareReadWrite(
     SrbExt->Count = 0;
 
     RtlZeroMemory(&SGList, sizeof(SGList));
-    SGList.SGList = StorPortGetScatterGatherList(PdoGetFdo(Pdo), Srb);
+    SGList.SGList = StorPortGetScatterGatherList(PdoGetAdapter(Pdo), Srb);
 
     while (SectorsLeft > 0) {
         ULONG           MaxSegments;
@@ -1370,7 +1370,7 @@ __PdoPauseDataPath(
         Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", PdoGetTargetId(Pdo), SrbExt->Srb);
         SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
         SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
-        FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+        AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
     }
 
     // Fail PreparedReqs
@@ -1390,7 +1390,7 @@ __PdoPauseDataPath(
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+            AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
         }
     }
 }
@@ -1502,7 +1502,7 @@ PdoCompleteShutdown(
             break;
         SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
         SrbExt->Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+        AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
     }
 }
 
@@ -1599,7 +1599,7 @@ PdoCompleteResponse(
             Srb->ScsiStatus = 0x40; // SCSI_ABORTED
         }
 
-        FdoCompleteSrb(PdoGetFdo(Pdo), Srb);
+        AdapterCompleteSrb(PdoGetAdapter(Pdo), Srb);
     }
 }
 
@@ -2092,7 +2092,7 @@ __PdoExecuteScsi(
         break;
 
     case SCSIOP_INQUIRY:
-        if (!StorPortSetDeviceQueueDepth(PdoGetFdo(Pdo),
+        if (!StorPortSetDeviceQueueDepth(PdoGetAdapter(Pdo),
                                          0,
                                          (UCHAR)PdoGetTargetId(Pdo),
                                          0,
@@ -2255,7 +2255,7 @@ __PdoCleanupSubmittedReqs(
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            FdoCompleteSrb(PdoGetFdo(Pdo), SrbExt->Srb);
+            AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
         }
     }
 }
@@ -2403,13 +2403,13 @@ __PdoRemoveDevice(
     case SurpriseRemovePending:
         PdoSetMissing(Pdo, "Surprise Remove");
         PdoSetDevicePnpState(Pdo, Deleted);
-        StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
+        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
         break;
 
     default:
         PdoSetMissing(Pdo, "Removed");
         PdoSetDevicePnpState(Pdo, Deleted);
-        StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
+        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
         break;
     }
 }
@@ -2421,7 +2421,7 @@ __PdoEject(
 {
     PdoSetMissing(Pdo, "Ejected");
     PdoSetDevicePnpState(Pdo, Deleted);
-    StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
+    StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
 }
 
 __checkReturn
@@ -2516,7 +2516,7 @@ PdoIssueDeviceEject(
         IoRequestDeviceEject(Pdo->DeviceObject);
     } else {
         Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n", PdoGetTargetId(Pdo));
-        StorPortNotification(BusChangeDetected, PdoGetFdo(Pdo), 0);
+        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
     }
 }
 
@@ -2588,7 +2588,7 @@ PdoD0ToD3(
 __checkReturn
 BOOLEAN
 PdoCreate(
-    __in PXENVBD_FDO             Fdo,
+    __in PXENVBD_ADAPTER             Adapter,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
     __in XENVBD_DEVICE_TYPE      DeviceType
@@ -2607,7 +2607,7 @@ PdoCreate(
 
     Verbose("Target[%d] : Creating\n", TargetId);
     Pdo->Signature      = PDO_SIGNATURE;
-    Pdo->Fdo            = Fdo;
+    Pdo->Adapter            = Adapter;
     Pdo->DeviceObject   = NULL; // filled in later
     KeInitializeEvent(&Pdo->RemoveEvent, SynchronizationEvent, FALSE);
     Pdo->ReferenceCount = 1;
@@ -2633,7 +2633,7 @@ PdoCreate(
     if (!NT_SUCCESS(Status))
         goto fail3;
 
-    if (!FdoLinkPdo(Fdo, Pdo))
+    if (!AdapterLinkPdo(Adapter, Pdo))
         goto fail4;
 
     Verbose("Target[%d] : Created (%s)\n", TargetId, Pdo);
@@ -2674,8 +2674,8 @@ PdoDestroy(
     Verbose("Target[%d] : Destroying\n", TargetId);
 
     ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
-    if (!FdoUnlinkPdo(PdoGetFdo(Pdo), Pdo)) {
-        Error("Target[%d] : PDO 0x%p not linked to FDO 0x%p\n", TargetId, Pdo, PdoGetFdo(Pdo));
+    if (!AdapterUnlinkPdo(PdoGetAdapter(Pdo), Pdo)) {
+        Error("Target[%d] : PDO 0x%p not linked to ADAPTER 0x%p\n", TargetId, Pdo, PdoGetAdapter(Pdo));
     }
 
     PdoD0ToD3(Pdo);
