@@ -96,6 +96,10 @@ extern ULONG
 FrontendGetTargetId(
     __in  PXENVBD_FRONTEND      Frontend
     );
+extern ULONG
+FrontendGetDeviceId(
+    __in  PXENVBD_FRONTEND      Frontend
+    );
 extern PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend

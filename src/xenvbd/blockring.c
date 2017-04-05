@@ -49,7 +49,7 @@ struct _XENVBD_BLOCKRING {
     BOOLEAN                         Connected;
     BOOLEAN                         Enabled;
 
-    PXENBUS_STORE_INTERFACE         StoreInterface;
+    XENBUS_STORE_INTERFACE          StoreInterface;
 
     KSPIN_LOCK                      Lock;
     PMDL                            Mdl;
@@ -284,10 +284,10 @@ BlockRingConnect(
 
     ASSERT(BlockRing->Connected == FALSE);
 
-    BlockRing->StoreInterface = AdapterAcquireStore(Adapter);
+    AdapterGetStoreInterface(Adapter, &BlockRing->StoreInterface);
 
-    status = STATUS_UNSUCCESSFUL;
-    if (BlockRing->StoreInterface == NULL)
+    status = XENBUS_STORE(Acquire, &BlockRing->StoreInterface);
+    if (!NT_SUCCESS(status))
         goto fail1;
 
     status = FrontendStoreReadBackend(BlockRing->Frontend, "max-ring-page-order", &Value);
@@ -355,7 +355,7 @@ BlockRingStoreWrite(
 
     if (BlockRing->Order == 0) {
         status = XENBUS_STORE(Printf, 
-                              BlockRing->StoreInterface, 
+                              &BlockRing->StoreInterface,
                               Transaction, 
                               FrontendPath,
                               "ring-ref", 
@@ -367,7 +367,7 @@ BlockRingStoreWrite(
         ULONG   Index, RingPages;
 
         status = XENBUS_STORE(Printf, 
-                              BlockRing->StoreInterface, 
+                              &BlockRing->StoreInterface,
                               Transaction, 
                               FrontendPath, 
                               "ring-page-order", 
@@ -383,7 +383,7 @@ BlockRingStoreWrite(
             if (!NT_SUCCESS(status))
                 return status;
             status = XENBUS_STORE(Printf, 
-                                  BlockRing->StoreInterface, 
+                                  &BlockRing->StoreInterface,
                                   Transaction, 
                                   FrontendPath,
                                   Name, 
@@ -395,7 +395,7 @@ BlockRingStoreWrite(
     }
 
     status = XENBUS_STORE(Printf, 
-                          BlockRing->StoreInterface, 
+                          &BlockRing->StoreInterface,
                           Transaction, 
                           FrontendPath,
                           "protocol", 
@@ -453,8 +453,8 @@ BlockRingDisconnect(
 
     BlockRing->Order = 0;
 
-    XENBUS_STORE(Release, BlockRing->StoreInterface);
-    BlockRing->StoreInterface = NULL;
+    XENBUS_STORE(Release, &BlockRing->StoreInterface);
+    RtlZeroMemory(&BlockRing->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
 
     BlockRing->Connected = FALSE;
 }

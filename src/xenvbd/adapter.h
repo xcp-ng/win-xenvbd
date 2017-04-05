@@ -37,126 +37,57 @@
 typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 
 #include <storport.h>
-#include "target.h"
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <gnttab_interface.h>
 #include <debug_interface.h>
 #include <suspend_interface.h>
-#include <unplug_interface.h>
 
-// Link TARGETs
+#define ADAPTER_GET_INTERFACE(_name, _type)     \
+extern VOID                                     \
+AdapterGet ## _name ## Interface(               \
+    IN  PXENVBD_ADAPTER Adapter,                \
+    OUT _type           _name ## Interface      \
+    );
+
+ADAPTER_GET_INTERFACE(Store, PXENBUS_STORE_INTERFACE)
+ADAPTER_GET_INTERFACE(Debug, PXENBUS_DEBUG_INTERFACE)
+ADAPTER_GET_INTERFACE(Evtchn, PXENBUS_EVTCHN_INTERFACE)
+ADAPTER_GET_INTERFACE(Gnttab, PXENBUS_GNTTAB_INTERFACE)
+ADAPTER_GET_INTERFACE(Suspend, PXENBUS_SUSPEND_INTERFACE)
+
+#undef ADAPTER_GET_INTERFACE
+
 extern BOOLEAN
-AdapterLinkTarget(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_TARGET                 Target
-    );
-
-extern BOOLEAN
-AdapterUnlinkTarget(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_TARGET                 Target
-    );
-// Query Methods
-__checkReturn
-extern PDEVICE_OBJECT
-AdapterGetDeviceObject(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern ULONG
-AdapterSizeofXenvbdAdapter(
-    );
-
-extern PCHAR
-AdapterEnum(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-// SRB Methods
-extern VOID
-AdapterStartSrb(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PSCSI_REQUEST_BLOCK         Srb
+AdapterIsTargetEmulated(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  ULONG           TargetId
     );
 
 extern VOID
 AdapterCompleteSrb(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PSCSI_REQUEST_BLOCK         Srb
+    IN  PXENVBD_ADAPTER     Adapter,
+    IN  PSCSI_REQUEST_BLOCK Srb
     );
 
-// StorPort Methods
-extern BOOLEAN
-AdapterResetBus(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern ULONG
-AdapterFindAdapter(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __inout PPORT_CONFIGURATION_INFORMATION  ConfigInfo
-    );
-
-extern BOOLEAN
-AdapterBuildIo(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PSCSI_REQUEST_BLOCK         Srb
-    );
-
-extern BOOLEAN
-AdapterStartIo(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PSCSI_REQUEST_BLOCK         Srb
-    );
-
-__checkReturn
-extern NTSTATUS
-AdapterForwardPnp(
-    __in PXENVBD_ADAPTER                Adapter,
-    __in PDEVICE_OBJECT             DeviceObject,
-    __in PIRP                       Irp
-    );
-
-__checkReturn
 extern NTSTATUS
 AdapterDispatchPnp(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PDEVICE_OBJECT              DeviceObject,
-    __in PIRP                        Irp
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
     );
 
-__checkReturn
 extern NTSTATUS
 AdapterDispatchPower(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PDEVICE_OBJECT              DeviceObject,
-    __in PIRP                        Irp
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
     );
 
-extern PXENBUS_STORE_INTERFACE
-AdapterAcquireStore(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern PXENBUS_EVTCHN_INTERFACE
-AdapterAcquireEvtchn(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern PXENBUS_GNTTAB_INTERFACE
-AdapterAcquireGnttab(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern PXENBUS_DEBUG_INTERFACE
-AdapterAcquireDebug(
-    __in PXENVBD_ADAPTER                 Adapter
-    );
-
-extern PXENBUS_SUSPEND_INTERFACE
-AdapterAcquireSuspend(
-    __in PXENVBD_ADAPTER                 Adapter
+extern NTSTATUS
+AdapterDriverEntry(
+    IN  PUNICODE_STRING RegistryPath,
+    IN  PDRIVER_OBJECT  DriverObject
     );
 
 #endif // _XENVBD_ADAPTER_H

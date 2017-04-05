@@ -211,7 +211,6 @@ fail1:
 
 static FORCEINLINE BOOLEAN
 __HandlePageStd(
-    __in XENVBD_DEVICE_TYPE         DeviceType,
     __in PSCSI_REQUEST_BLOCK        Srb
     )
 {
@@ -221,35 +220,15 @@ __HandlePageStd(
     if (Length < INQUIRYDATABUFFERSIZE)
         return FALSE;
 
-    switch (DeviceType) {
-    case XENVBD_DEVICE_TYPE_DISK:
-        Data->DeviceType            = DIRECT_ACCESS_DEVICE;
-        Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
-        Data->Versions              = 4;
-        Data->ResponseDataFormat    = 2;
-        Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
-        Data->CommandQueue          = 1;
-        RtlCopyMemory(Data->VendorId,               "XENSRC  ", 8);
-        RtlCopyMemory(Data->ProductId,              "PVDISK          ", 16);
-        RtlCopyMemory(Data->ProductRevisionLevel,   "2.0 ", 4);
-        break;
-    case XENVBD_DEVICE_TYPE_CDROM:
-        Data->DeviceType            = READ_ONLY_DIRECT_ACCESS_DEVICE;
-        Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
-        Data->RemovableMedia        = TRUE;
-        Data->Versions              = 2;
-        Data->ResponseDataFormat    = 2;
-        Data->Wide32Bit             = TRUE;
-        Data->Synchronous           = TRUE;
-        Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
-        RtlCopyMemory(Data->VendorId,               "XENSRC  ", 8);
-        RtlCopyMemory(Data->ProductId,              "PVCDROM         ", 16);
-        RtlCopyMemory(Data->ProductRevisionLevel,   "2.0 ", 4);
-        break;
-    default:
-        return FALSE;
-        break;
-    }
+    Data->DeviceType            = DIRECT_ACCESS_DEVICE;
+    Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
+    Data->Versions              = 4;
+    Data->ResponseDataFormat    = 2;
+    Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
+    Data->CommandQueue          = 1;
+    RtlCopyMemory(Data->VendorId,               "XENSRC  ", 8);
+    RtlCopyMemory(Data->ProductId,              "PVDISK          ", 16);
+    RtlCopyMemory(Data->ProductRevisionLevel,   "2.0 ", 4);
 
     Srb->DataTransferLength = INQUIRYDATABUFFERSIZE;
     return TRUE;
@@ -518,8 +497,7 @@ VOID
 PdoInquiry(
     __in ULONG                   TargetId,
     __in PVOID                   Inquiry,
-    __in PSCSI_REQUEST_BLOCK     Srb,
-    __in XENVBD_DEVICE_TYPE      DeviceType
+    __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     BOOLEAN         Success;
@@ -536,7 +514,7 @@ PdoInquiry(
         }
     } else {
         switch (PageCode) {
-        case 0x00:  Success = __HandlePageStd(DeviceType, Srb);         break;
+        case 0x00:  Success = __HandlePageStd(Srb);                     break;
         default:    Success = FALSE;                                    break;
         }
     }

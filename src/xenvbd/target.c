@@ -47,6 +47,7 @@
 #include <gnttab_interface.h>
 #include <debug_interface.h>
 #include <suspend_interface.h>
+#include <stdlib.h>
 
 #define XENVBD_MAX_QUEUE_DEPTH          (254)
 
@@ -77,8 +78,6 @@ struct _XENVBD_TARGET {
     ULONG                       Signature;
     PXENVBD_ADAPTER                 Adapter;
     PDEVICE_OBJECT              DeviceObject;
-    KEVENT                      RemoveEvent;
-    LONG                        ReferenceCount;
     DEVICE_PNP_STATE            DevicePnpState;
     DEVICE_PNP_STATE            PrevPnpState;
     DEVICE_POWER_STATE          DevicePowerState;
@@ -86,7 +85,6 @@ struct _XENVBD_TARGET {
 
     // Frontend (Ring, includes XenBus interfaces)
     PXENVBD_FRONTEND            Frontend;
-    XENVBD_DEVICE_TYPE          DeviceType;
 
     // State
     LONG                        Paused;
@@ -274,9 +272,6 @@ TargetDebugCallback(
                  Target->Adapter,
                  Target->DeviceObject);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: ReferenceCount %d\n",
-                 Target->ReferenceCount);
-    XENBUS_DEBUG(Printf, DebugInterface,
                  "TARGET: DevicePnpState %s (%s)\n",
                  __PnpStateName(Target->DevicePnpState),
                  __PnpStateName(Target->PrevPnpState));
@@ -438,49 +433,6 @@ __TargetRestoreDevicePnpState(
 }
 
 //=============================================================================
-// Reference Counting
-FORCEINLINE LONG
-__TargetReference(
-    __in PXENVBD_TARGET             Target,
-    __in PCHAR                   Caller
-    )
-{
-    LONG Result;
-
-    ASSERT3P(Target, !=, NULL);
-    Result = InterlockedIncrement(&Target->ReferenceCount);
-    ASSERTREFCOUNT(Result, >, 0, Caller);
-
-    if (Result == 1) {
-        Result = InterlockedDecrement(&Target->ReferenceCount);
-        Error("Target[%d] : %s: Attempting to take reference of removed TARGET from %d\n", TargetGetTargetId(Target), Caller, Result);
-        return 0;
-    } else {
-        ASSERTREFCOUNT(Result, >, 1, Caller);
-        return Result;
-    }
-}
-
-FORCEINLINE LONG
-__TargetDereference(
-    __in PXENVBD_TARGET             Target,
-    __in PCHAR                   Caller
-    )
-{
-    LONG    Result;
-
-    ASSERT3P(Target, !=, NULL);
-    Result = InterlockedDecrement(&Target->ReferenceCount);
-    ASSERTREFCOUNT(Result, >=, 0, Caller);
-
-    if (Result == 0) {
-        Verbose("Final ReferenceCount dropped, Target[%d] able to be removed\n", TargetGetTargetId(Target));
-        KeSetEvent(&Target->RemoveEvent, IO_NO_INCREMENT, FALSE);
-    }
-    return Result;
-}
-
-//=============================================================================
 // Query Methods
 FORCEINLINE ULONG
 TargetGetTargetId(
@@ -489,6 +441,15 @@ TargetGetTargetId(
 {
     ASSERT3P(Target, !=, NULL);
     return FrontendGetTargetId(Target->Frontend);
+}
+
+ULONG
+TargetGetDeviceId(
+    __in PXENVBD_TARGET             Target
+    )
+{
+    ASSERT3P(Target, !=, NULL);
+    return FrontendGetDeviceId(Target->Frontend);
 }
 
 __checkReturn
@@ -834,8 +795,6 @@ __TargetPriority(
 
     return HighPagePriority;
 }
-
-#define __min(_x, _y) ((_x) < (_y)) ? (_x) : (_y)
 
 static FORCEINLINE VOID
 SGListGet(
@@ -2101,7 +2060,7 @@ __TargetExecuteScsi(
                                          XENVBD_MAX_QUEUE_DEPTH))
             Verbose("Target[%d] : Failed to set queue depth\n",
                     TargetGetTargetId(Target));
-        PdoInquiry(TargetGetTargetId(Target), FrontendGetInquiry(Target->Frontend), Srb, Target->DeviceType);
+        PdoInquiry(TargetGetTargetId(Target), FrontendGetInquiry(Target->Frontend), Srb);
         break;
     case SCSIOP_MODE_SENSE:
         TargetModeSense(Target, Srb);
@@ -2485,7 +2444,6 @@ TargetDispatchPnp(
     default:
         break;
     }
-    TargetDereference(Target);
     return DriverDispatchPnp(DeviceObject, Irp);
 }
 
@@ -2587,17 +2545,51 @@ TargetD0ToD3(
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }
 
+static FORCEINLINE ULONG
+__ParseVbd(
+    IN  PCHAR   DeviceIdStr
+    )
+{
+    ULONG   DeviceId = strtoul(DeviceIdStr, NULL, 10);
+
+    ASSERT3U((DeviceId & ~((1 << 29) - 1)), ==, 0);
+
+    if (DeviceId & (1 << 28))
+        return (DeviceId & ((1 << 20) - 1)) >> 8;       /* xvd    */
+
+    switch (DeviceId >> 8) {
+    case 202:   return (DeviceId & 0xF0) >> 4;          /* xvd    */
+    case 8:     return (DeviceId & 0xF0) >> 4;          /* sd     */
+    case 3:     return (DeviceId & 0xC0) >> 6;          /* hda..b */
+    case 22:    return ((DeviceId & 0xC0) >> 6) + 2;    /* hdc..d */
+    case 33:    return ((DeviceId & 0xC0) >> 6) + 4;    /* hde..f */
+    case 34:    return ((DeviceId & 0xC0) >> 6) + 6;    /* hdg..h */
+    case 56:    return ((DeviceId & 0xC0) >> 6) + 8;    /* hdi..j */
+    case 57:    return ((DeviceId & 0xC0) >> 6) + 10;   /* hdk..l */
+    case 88:    return ((DeviceId & 0xC0) >> 6) + 12;   /* hdm..n */
+    case 89:    return ((DeviceId & 0xC0) >> 6) + 14;   /* hdo..p */
+    default:    return 0xFFFFFFFF;                      /* ERROR  */
+    }
+}
+
 __checkReturn
-BOOLEAN
+NTSTATUS
 TargetCreate(
     __in PXENVBD_ADAPTER             Adapter,
     __in __nullterminated PCHAR  DeviceId,
-    __in ULONG                   TargetId,
-    __in XENVBD_DEVICE_TYPE      DeviceType
+    OUT PXENVBD_TARGET*         _Target
     )
 {
     NTSTATUS    Status;
     PXENVBD_TARGET Target;
+    ULONG           TargetId;
+
+    TargetId = __ParseVbd(DeviceId);
+    if (TargetId >= XENVBD_MAX_TARGETS)
+        return STATUS_RETRY;
+
+    if (AdapterIsTargetEmulated(Adapter, TargetId))
+        return STATUS_RETRY;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -2611,12 +2603,9 @@ TargetCreate(
     Target->Signature      = TARGET_SIGNATURE;
     Target->Adapter            = Adapter;
     Target->DeviceObject   = NULL; // filled in later
-    KeInitializeEvent(&Target->RemoveEvent, SynchronizationEvent, FALSE);
-    Target->ReferenceCount = 1;
     Target->Paused         = 1; // Paused until D3->D0 transition
     Target->DevicePnpState = Present;
     Target->DevicePowerState = PowerDeviceD3;
-    Target->DeviceType     = DeviceType;
 
     KeInitializeSpinLock(&Target->Lock);
     QueueInit(&Target->FreshSrbs);
@@ -2635,16 +2624,11 @@ TargetCreate(
     if (!NT_SUCCESS(Status))
         goto fail3;
 
-    if (!AdapterLinkTarget(Adapter, Target))
-        goto fail4;
+    *_Target = Target;
 
     Verbose("Target[%d] : Created (%s)\n", TargetId, Target);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-    return TRUE;
-
-fail4:
-    Error("Fail4\n");
-    TargetD0ToD3(Target);
+    return STATUS_SUCCESS;
 
 fail3:
     Error("Fail3\n");
@@ -2660,7 +2644,7 @@ fail2:
 
 fail1:
     Error("Fail1 (%08x)\n", Status);
-    return FALSE;
+    return Status;
 }
 
 VOID
@@ -2669,26 +2653,20 @@ TargetDestroy(
     )
 {
     const ULONG         TargetId = TargetGetTargetId(Target);
-    PVOID               Objects[4];
+    PVOID               Objects[3];
     PKWAIT_BLOCK        WaitBlock;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : Destroying\n", TargetId);
 
     ASSERT3U(Target->Signature, ==, TARGET_SIGNATURE);
-    if (!AdapterUnlinkTarget(TargetGetAdapter(Target), Target)) {
-        Error("Target[%d] : TARGET 0x%p not linked to ADAPTER 0x%p\n", TargetId, Target, TargetGetAdapter(Target));
-    }
 
     TargetD0ToD3(Target);
-    TargetDereference(Target); // drop initial ref count
 
-    // Wait for ReferenceCount == 0 and RequestListUsed == 0
-    Verbose("Target[%d] : ReferenceCount %d, RequestListUsed %d\n", TargetId, Target->ReferenceCount, Target->RequestList.Used);
-    Objects[0] = &Target->RemoveEvent;
-    Objects[1] = &Target->RequestList.Empty;
-    Objects[2] = &Target->SegmentList.Empty;
-    Objects[3] = &Target->IndirectList.Empty;
+    Verbose("Target[%d] : RequestListUsed %d\n", TargetId, Target->RequestList.Used);
+    Objects[0] = &Target->RequestList.Empty;
+    Objects[1] = &Target->SegmentList.Empty;
+    Objects[2] = &Target->IndirectList.Empty;
 
     WaitBlock = (PKWAIT_BLOCK)__TargetAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
     if (WaitBlock == NULL) {
@@ -2715,7 +2693,6 @@ TargetDestroy(
         __TargetFree(WaitBlock);
     }
 
-    ASSERT3S(Target->ReferenceCount, ==, 0);
     ASSERT3U(TargetGetDevicePnpState(Target), ==, Deleted);
 
     FrontendDestroy(Target->Frontend);

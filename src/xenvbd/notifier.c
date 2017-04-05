@@ -42,8 +42,8 @@ struct _XENVBD_NOTIFIER {
     BOOLEAN                         Connected;
     BOOLEAN                         Enabled;
 
-    PXENBUS_STORE_INTERFACE         StoreInterface;
-    PXENBUS_EVTCHN_INTERFACE        EvtchnInterface;
+    XENBUS_STORE_INTERFACE          StoreInterface;
+    XENBUS_EVTCHN_INTERFACE         EvtchnInterface;
 
     PXENBUS_EVTCHN_CHANNEL          Channel;
     ULONG                           Port;
@@ -119,7 +119,7 @@ NotifierDpc(
     FrontendNotifyResponses(Notifier->Frontend);
 
     XENBUS_EVTCHN(Unmask,
-                  Notifier->EvtchnInterface,
+                  &Notifier->EvtchnInterface,
                   Notifier->Channel,
                   FALSE);
 }
@@ -167,20 +167,19 @@ NotifierConnect(
 
     ASSERT(Notifier->Connected == FALSE);
 
-    Notifier->StoreInterface = AdapterAcquireStore(Adapter);
+    AdapterGetStoreInterface(Adapter, &Notifier->StoreInterface);
+    AdapterGetEvtchnInterface(Adapter, &Notifier->EvtchnInterface);
 
-    status = STATUS_UNSUCCESSFUL;
-    if (Notifier->StoreInterface == NULL)
+    status = XENBUS_STORE(Acquire, &Notifier->StoreInterface);
+    if (!NT_SUCCESS(status))
         goto fail1;
 
-    Notifier->EvtchnInterface = AdapterAcquireEvtchn(Adapter);
-
-    status = STATUS_UNSUCCESSFUL;
-    if (Notifier->EvtchnInterface == NULL)
+    status = XENBUS_EVTCHN(Acquire, &Notifier->EvtchnInterface);
+    if (!NT_SUCCESS(status))
         goto fail2;
 
     Notifier->Channel = XENBUS_EVTCHN(Open, 
-                                      Notifier->EvtchnInterface, 
+                                      &Notifier->EvtchnInterface,
                                       XENBUS_EVTCHN_TYPE_UNBOUND, 
                                       NotifierInterrupt,
                                       Notifier, 
@@ -192,11 +191,11 @@ NotifierConnect(
         goto fail3;
 
     Notifier->Port = XENBUS_EVTCHN(GetPort,
-                                   Notifier->EvtchnInterface,
+                                   &Notifier->EvtchnInterface,
                                    Notifier->Channel);
 
     XENBUS_EVTCHN(Unmask,
-                  Notifier->EvtchnInterface,
+                  &Notifier->EvtchnInterface,
                   Notifier->Channel,
                   FALSE);
 
@@ -204,12 +203,12 @@ NotifierConnect(
     return STATUS_SUCCESS;
 
 fail3:
-    XENBUS_EVTCHN(Release, Notifier->EvtchnInterface);
-    Notifier->EvtchnInterface = NULL;
+    XENBUS_EVTCHN(Release, &Notifier->EvtchnInterface);
+    RtlZeroMemory(&Notifier->EvtchnInterface, sizeof(XENBUS_EVTCHN_INTERFACE));
 
 fail2:
-    XENBUS_STORE(Release, Notifier->StoreInterface);
-    Notifier->StoreInterface = NULL;
+    XENBUS_STORE(Release, &Notifier->StoreInterface);
+    RtlZeroMemory(&Notifier->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
 
 fail1:
     return status;
@@ -223,7 +222,7 @@ NotifierStoreWrite(
     )
 {
     return XENBUS_STORE(Printf, 
-                        Notifier->StoreInterface, 
+                        &Notifier->StoreInterface,
                         Transaction, 
                         FrontendPath, 
                         "event-channel", 
@@ -239,7 +238,7 @@ NotifierEnable(
     ASSERT(Notifier->Enabled == FALSE);
 
     XENBUS_EVTCHN(Trigger,
-                  Notifier->EvtchnInterface,
+                  &Notifier->EvtchnInterface,
                   Notifier->Channel);
 
     Notifier->Enabled = TRUE;
@@ -263,16 +262,16 @@ NotifierDisconnect(
     ASSERT(Notifier->Connected == TRUE);
 
     XENBUS_EVTCHN(Close,
-                  Notifier->EvtchnInterface,
+                  &Notifier->EvtchnInterface,
                   Notifier->Channel);
     Notifier->Channel = NULL;
     Notifier->Port = 0;
 
-    XENBUS_EVTCHN(Release, Notifier->EvtchnInterface);
-    Notifier->EvtchnInterface = NULL;
+    XENBUS_EVTCHN(Release, &Notifier->EvtchnInterface);
+    RtlZeroMemory(&Notifier->EvtchnInterface, sizeof(XENBUS_EVTCHN_INTERFACE));
 
-    XENBUS_STORE(Release, Notifier->StoreInterface);
-    Notifier->StoreInterface = NULL;
+    XENBUS_STORE(Release, &Notifier->StoreInterface);
+    RtlZeroMemory(&Notifier->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
 
     Notifier->NumInts = Notifier->NumDpcs = 0;
 
@@ -318,7 +317,7 @@ NotifierTrigger(
 {
     if (Notifier->Enabled)
         XENBUS_EVTCHN(Trigger,
-                      Notifier->EvtchnInterface,
+                      &Notifier->EvtchnInterface,
                       Notifier->Channel);
 }
 
@@ -329,7 +328,7 @@ NotifierSend(
 {
     if (Notifier->Enabled)
         XENBUS_EVTCHN(Send,
-                      Notifier->EvtchnInterface,
+                      &Notifier->EvtchnInterface,
                       Notifier->Channel);
 }
 

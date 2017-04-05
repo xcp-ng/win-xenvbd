@@ -50,12 +50,11 @@ TargetDebugCallback(
 
 // Creation/Deletion
 __checkReturn
-extern BOOLEAN
+extern NTSTATUS
 TargetCreate(
     __in PXENVBD_ADAPTER             Adapter,
     __in __nullterminated PCHAR  DeviceId,
-    __in ULONG                   TargetId,
-    __in XENVBD_DEVICE_TYPE      DeviceType
+    OUT PXENVBD_TARGET*         _Target
     );
 
 extern VOID
@@ -110,26 +109,14 @@ TargetGetDevicePnpState(
     __in PXENVBD_TARGET             Target
     );
 
-// Reference Counting
-extern LONG
-__TargetReference(
-    __in PXENVBD_TARGET             Target,
-    __in PCHAR                   Caller
-    );
-
-#define TargetReference(_x_) __TargetReference(_x_, __FUNCTION__)
-
-extern LONG
-__TargetDereference(
-    __in PXENVBD_TARGET             Target,
-    __in PCHAR                   Caller
-    );
-
-#define TargetDereference(_x_) __TargetDereference(_x_, __FUNCTION__)
-
 // Query Methods
 extern ULONG
 TargetGetTargetId(
+    __in PXENVBD_TARGET             Target
+    );
+
+extern ULONG
+TargetGetDeviceId(
     __in PXENVBD_TARGET             Target
     );
 

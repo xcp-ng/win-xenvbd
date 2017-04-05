@@ -57,8 +57,7 @@ extern VOID
 PdoInquiry(
     __in ULONG                   TargetId,
     __in PVOID                   Inquiry,
-    __in PSCSI_REQUEST_BLOCK     Srb,
-    __in XENVBD_DEVICE_TYPE      DeviceType
+    __in PSCSI_REQUEST_BLOCK     Srb
     );
 
 #endif // _XENVBD_PDO_INQUIRY_H

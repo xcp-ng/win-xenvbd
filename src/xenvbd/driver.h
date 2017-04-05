@@ -39,6 +39,11 @@
 #define XENVBD_MAX_TRANSFER_LENGTH      (XENVBD_MAX_PAGES_PER_SRB * PAGE_SIZE)
 #define XENVBD_MAX_PHYSICAL_BREAKS      (XENVBD_MAX_PAGES_PER_SRB - 1)
 
+extern VOID
+DriverSetAdapter(
+    IN  PVOID   Adapter
+    );
+
 extern HANDLE
 DriverGetParametersKey(
     VOID

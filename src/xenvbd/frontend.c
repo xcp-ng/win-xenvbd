@@ -66,8 +66,8 @@ struct _XENVBD_FRONTEND {
     PVOID                       Inquiry;
 
     // Interfaces to XenBus
-    PXENBUS_STORE_INTERFACE     Store;
-    PXENBUS_SUSPEND_INTERFACE   Suspend;
+    XENBUS_STORE_INTERFACE      StoreInterface;
+    XENBUS_SUSPEND_INTERFACE    SuspendInterface;
 
     PXENBUS_SUSPEND_CALLBACK    SuspendLateCallback;
 
@@ -181,6 +181,13 @@ FrontendGetTargetId(
 {
     return Frontend->TargetId;
 }
+ULONG
+FrontendGetDeviceId(
+    __in  PXENVBD_FRONTEND      Frontend
+    )
+{
+     return Frontend->DeviceId;
+}
 PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend
@@ -225,7 +232,7 @@ FrontendStoreWriteFrontend(
     )
 {
     return XENBUS_STORE(Printf,
-                        Frontend->Store,
+                        &Frontend->StoreInterface,
                         NULL,
                         Frontend->FrontendPath,
                         Name,
@@ -241,24 +248,20 @@ FrontendStoreReadBackend(
     NTSTATUS    Status;
 
     Status = STATUS_INVALID_PARAMETER;
-    if (Frontend->Store == NULL) 
+    if (Frontend->BackendPath == NULL)
         goto fail1;
 
-    if (Frontend->BackendPath == NULL)
-        goto fail2;
-
     Status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
                           Name,
                           Value);
     if (!NT_SUCCESS(Status))
-        goto fail3;
+        goto fail2;
 
     return STATUS_SUCCESS;
 
-fail3:
 fail2:
 fail1:
     return Status;
@@ -270,7 +273,7 @@ FrontendStoreFree(
     )
 {
     XENBUS_STORE(Free,
-                 Frontend->Store,
+                 &Frontend->StoreInterface,
                  Value);
 }
 __drv_maxIRQL(DISPATCH_LEVEL)
@@ -282,7 +285,7 @@ FrontendWriteUsage(
     NTSTATUS    Status;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->TargetPath, 
                           "paging",
@@ -292,7 +295,7 @@ FrontendWriteUsage(
         goto out;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->TargetPath, 
                           "hibernation",
@@ -302,7 +305,7 @@ FrontendWriteUsage(
         goto out;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->TargetPath, 
                           "dump",
@@ -343,7 +346,7 @@ __UpdateBackendPath(
     ULONG       Length;
 
     Status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->FrontendPath, 
                           "backend-id",
@@ -351,14 +354,14 @@ __UpdateBackendPath(
     if (NT_SUCCESS(Status)) {
         Frontend->BackendId = (USHORT)strtoul(Value, NULL, 10);
         XENBUS_STORE(Free,
-                     Frontend->Store,
+                     &Frontend->StoreInterface,
                      Value);
     } else {
         Frontend->BackendId = 0;
     }
 
     Status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->FrontendPath,
                           "backend",
@@ -379,7 +382,7 @@ __UpdateBackendPath(
         }
 
         XENBUS_STORE(Free,
-                     Frontend->Store,
+                     &Frontend->StoreInterface,
                      Value);
     } else {
         Warning("Failed to read \'backend\' from \'%s\' (%08x)\n", 
@@ -401,7 +404,7 @@ __ReadState(
     PCHAR           Buffer;
 
     Status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           Transaction,
                           Path, 
                           "state",
@@ -411,7 +414,7 @@ __ReadState(
 
     *State = (XenbusState)strtoul(Buffer, NULL, 10);
     XENBUS_STORE(Free,
-                 Frontend->Store,
+                 &Frontend->StoreInterface,
                  Buffer);
 
     return STATUS_SUCCESS;
@@ -442,7 +445,7 @@ __WaitState(
 
     ASSERT3P(Frontend->BackendPath, !=, NULL);
     Status = XENBUS_STORE(WatchAdd,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           Frontend->BackendPath,
                           "state", 
                           &Event,
@@ -458,7 +461,7 @@ __WaitState(
         if (KeWaitForSingleObject(&Event, Executive, KernelMode, 
                                     FALSE, &Timeout) == STATUS_TIMEOUT) {
             XENBUS_STORE(Poll,
-                         Frontend->Store);
+                         &Frontend->StoreInterface);
 
             KeQuerySystemTime(&CurrentTime);
             if ((CurrentTime.QuadPart - StartTime.QuadPart) > 10000) {
@@ -477,7 +480,7 @@ __WaitState(
     }
 
     XENBUS_STORE(WatchRemove,
-                 Frontend->Store,
+                 &Frontend->StoreInterface,
                  Watch);
 
     Trace("Target[%d] : BACKEND_STATE  -> %s\n",
@@ -490,7 +493,7 @@ fail2:
     Error("Fail2\n");
 
     XENBUS_STORE(WatchRemove,
-                 Frontend->Store,
+                 &Frontend->StoreInterface,
                  Watch);
 fail1:
     Error("Fail1 (%08x)\n", Status);
@@ -507,7 +510,7 @@ ___SetState(
     NTSTATUS    Status;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->FrontendPath,
                           "state",
@@ -535,8 +538,6 @@ __CheckBackendForEject(
     ULONG           Attempt;
     NTSTATUS        Status;
 
-    if (Frontend->Store == NULL)
-        return;
     if (Frontend->FrontendPath == NULL)
         return;
     if (Frontend->BackendPath == NULL)
@@ -552,7 +553,7 @@ __CheckBackendForEject(
         PCHAR                       Buffer;
 
         Status = XENBUS_STORE(TransactionStart,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               &Transaction);
         if (!NT_SUCCESS(Status))
             break;
@@ -572,7 +573,7 @@ __CheckBackendForEject(
             goto abort;
 
         Status = XENBUS_STORE(Read,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               Frontend->BackendPath, 
                               "online",
@@ -582,11 +583,11 @@ __CheckBackendForEject(
 
         Online = (BOOLEAN)strtol(Buffer, NULL, 2);
         XENBUS_STORE(Free,
-                     Frontend->Store,
+                     &Frontend->StoreInterface,
                      Buffer);
 
         Status = XENBUS_STORE(TransactionEnd,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               TRUE);
         if (Status != STATUS_RETRY || ++Attempt > 10)
@@ -596,7 +597,7 @@ __CheckBackendForEject(
 
 abort:
         (VOID) XENBUS_STORE(TransactionEnd,
-                            Frontend->Store,
+                            &Frontend->StoreInterface,
                             Transaction,
                             FALSE);
         break;
@@ -626,7 +627,7 @@ FrontendReadFeature(
     BOOLEAN         Old = *Value;
 
     status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
                           Name,
@@ -636,7 +637,7 @@ FrontendReadFeature(
 
     *Value = !!(strtoul(Buffer, NULL, 10));
     XENBUS_STORE(Free,
-                    Frontend->Store,
+                    &Frontend->StoreInterface,
                     Buffer);
 
     // check registry for disable-override
@@ -665,7 +666,7 @@ FrontendReadValue32(
     ULONG           Old = *Value;
 
     status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
                           Name,
@@ -675,7 +676,7 @@ FrontendReadValue32(
 
     *Value = strtoul(Buffer, NULL, 10);
     XENBUS_STORE(Free,
-                    Frontend->Store,
+                    &Frontend->StoreInterface,
                     Buffer);
 
     // check registry for disable-override
@@ -703,7 +704,7 @@ FrontendReadValue64(
     ULONG64         Old = *Value;
 
     status = XENBUS_STORE(Read,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
                           Name,
@@ -713,7 +714,7 @@ FrontendReadValue64(
 
     *Value = _strtoui64(Buffer, NULL, 10);
     XENBUS_STORE(Free,
-                    Frontend->Store,
+                    &Frontend->StoreInterface,
                     Buffer);
 
     return Old != *Value;
@@ -896,7 +897,7 @@ FrontendClose(
     // unwatch backend (null check for initial close operation)
     if (Frontend->BackendWatch)
         XENBUS_STORE(WatchRemove,
-                     Frontend->Store,
+                     &Frontend->StoreInterface,
                      Frontend->BackendWatch);
     Frontend->BackendWatch = NULL;
     
@@ -964,7 +965,7 @@ FrontendPrepare(
 
     // watch backend (4 paths needed)
     Status = XENBUS_STORE(WatchAdd,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
                           ThreadGetEvent(Frontend->BackendThread),
@@ -978,7 +979,7 @@ FrontendPrepare(
         goto fail3;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->TargetPath, 
                           "frontend",
@@ -988,7 +989,7 @@ FrontendPrepare(
         goto fail4;
 
     Status = XENBUS_STORE(Printf,
-                          Frontend->Store,
+                          &Frontend->StoreInterface,
                           NULL,
                           Frontend->TargetPath, 
                           "device",
@@ -1042,7 +1043,7 @@ fail4:
 fail3:
     Error("Fail3\n");
     (VOID) XENBUS_STORE(WatchRemove,
-                        Frontend->Store,
+                        &Frontend->StoreInterface,
                         Frontend->BackendWatch);
     Frontend->BackendWatch = NULL;
 fail2:
@@ -1078,7 +1079,7 @@ FrontendConnect(
         PXENBUS_STORE_TRANSACTION   Transaction;
         
         Status = XENBUS_STORE(TransactionStart,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               &Transaction);
         if (!NT_SUCCESS(Status))
             break;
@@ -1096,7 +1097,7 @@ FrontendConnect(
             goto abort;
 
         Status = XENBUS_STORE(Printf,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               Frontend->FrontendPath,
                               "target-id",
@@ -1106,7 +1107,7 @@ FrontendConnect(
             goto abort;
 
         Status = XENBUS_STORE(Printf,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               Frontend->FrontendPath,
                               "feature-surprise-remove",
@@ -1116,7 +1117,7 @@ FrontendConnect(
             goto abort;
 
         Status = XENBUS_STORE(Printf,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               Frontend->FrontendPath,
                               "feature-online-resize",
@@ -1126,7 +1127,7 @@ FrontendConnect(
             goto abort;
 
         Status = XENBUS_STORE(TransactionEnd,
-                              Frontend->Store,
+                              &Frontend->StoreInterface,
                               Transaction,
                               TRUE);
         if (Status == STATUS_RETRY)
@@ -1136,7 +1137,7 @@ FrontendConnect(
 
 abort:
         (VOID) XENBUS_STORE(TransactionEnd,
-                            Frontend->Store,
+                            &Frontend->StoreInterface,
                             Transaction,
                             FALSE);
         break;
@@ -1436,28 +1437,28 @@ FrontendD3ToD0(
     __in  PXENVBD_FRONTEND        Frontend
     )
 {
+    PXENVBD_ADAPTER Adapter = TargetGetAdapter(Frontend->Target);
     NTSTATUS    Status;
     KIRQL       Irql;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
     // acquire interfaces
-    Frontend->Store   = AdapterAcquireStore(TargetGetAdapter(Frontend->Target));
+    AdapterGetStoreInterface(Adapter, &Frontend->StoreInterface);
+    AdapterGetSuspendInterface(Adapter, &Frontend->SuspendInterface);
 
-    Status = STATUS_UNSUCCESSFUL;
-    if (Frontend->Store == NULL)
+    Status = XENBUS_STORE(Acquire, &Frontend->StoreInterface);
+    if (!NT_SUCCESS(Status))
         goto fail1;
 
-    Frontend->Suspend = AdapterAcquireSuspend(TargetGetAdapter(Frontend->Target));
-
-    Status = STATUS_UNSUCCESSFUL;
-    if (Frontend->Suspend == NULL)
+    Status = XENBUS_SUSPEND(Acquire, &Frontend->SuspendInterface);
+    if (!NT_SUCCESS(Status))
         goto fail2;
 
     // register suspend callback
     ASSERT3P(Frontend->SuspendLateCallback, ==, NULL);
     Status = XENBUS_SUSPEND(Register,
-                            Frontend->Suspend,
+                            &Frontend->SuspendInterface,
                             SUSPEND_CALLBACK_LATE,
                             FrontendSuspendLateCallback,
                             Frontend,
@@ -1474,14 +1475,14 @@ FrontendD3ToD0(
 fail3:
     Error("Fail3\n");
 
-    XENBUS_SUSPEND(Release, Frontend->Suspend);
-    Frontend->Suspend = NULL;
+    XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
+    RtlZeroMemory(&Frontend->SuspendInterface, sizeof(XENBUS_SUSPEND_INTERFACE));
 
 fail2:
     Error("Fail2\n");
 
-    XENBUS_STORE(Release, Frontend->Store);
-    Frontend->Store = NULL;
+    XENBUS_STORE(Release, &Frontend->StoreInterface);
+    RtlZeroMemory(&Frontend->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
 
 fail1:
     Error("Fail1 (%08x)\n", Status);
@@ -1506,7 +1507,7 @@ FrontendD0ToD3(
     // deregister suspend callback
     if (Frontend->SuspendLateCallback != NULL) {
         XENBUS_SUSPEND(Deregister,
-                       Frontend->Suspend,
+                       &Frontend->SuspendInterface,
                        Frontend->SuspendLateCallback);
         Frontend->SuspendLateCallback = NULL;
     }
@@ -1517,11 +1518,11 @@ FrontendD0ToD3(
     }
 
     // release interfaces
-    XENBUS_SUSPEND(Release, Frontend->Suspend);
-    Frontend->Suspend = NULL;
+    XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
+    RtlZeroMemory(&Frontend->SuspendInterface, sizeof(XENBUS_SUSPEND_INTERFACE));
     
-    XENBUS_STORE(Release, Frontend->Store);
-    Frontend->Store = NULL;
+    XENBUS_STORE(Release, &Frontend->StoreInterface);
+    RtlZeroMemory(&Frontend->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
 }
