@@ -50,12 +50,12 @@
 
 struct _XENVBD_FRONTEND {
     // Frontend
-    PXENVBD_TARGET                 Target;
+    PXENVBD_TARGET              Target;
     ULONG                       TargetId;
     ULONG                       DeviceId;
-    PCHAR                       FrontendPath;
+    CHAR                        FrontendPath[sizeof("device/vbd/XXXXXXXX")];
     PCHAR                       BackendPath;
-    PCHAR                       TargetPath;
+    CHAR                        TargetPath[sizeof("data/scsi/target/XXXX")];
     USHORT                      BackendId;
     XENVBD_STATE                State;
     KSPIN_LOCK                  StateLock;
@@ -1572,23 +1572,22 @@ FrontendBackend(
 
 }
 
-__checkReturn
 NTSTATUS
 FrontendCreate(
-    __in  PXENVBD_TARGET             Target,
-    __in  PCHAR                   DeviceId, 
-    __in  ULONG                   TargetId, 
-    __out PXENVBD_FRONTEND*       _Frontend
+    IN  PXENVBD_TARGET          Target,
+    IN  PCHAR                   DeviceId,
+    IN  ULONG                   TargetId,
+    OUT PXENVBD_FRONTEND*       _Frontend
     )
 {
-    NTSTATUS            Status;
+    NTSTATUS            status;
     PXENVBD_FRONTEND    Frontend;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
     Frontend = __FrontendAlloc(sizeof(XENVBD_FRONTEND));
 
-    Status = STATUS_NO_MEMORY;
+    status = STATUS_NO_MEMORY;
     if (Frontend == NULL)
         goto fail1;
 
@@ -1600,29 +1599,34 @@ FrontendCreate(
     Frontend->DiskInfo.SectorSize = 512; // default sector size
     Frontend->BackendId = DOMID_INVALID;
     
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-    Frontend->FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(TargetGetAdapter(Target)), DeviceId);
-    if (Frontend->FrontendPath == NULL) 
+    status = RtlStringCbPrintfA(Frontend->FrontendPath,
+                                sizeof(Frontend->FrontendPath),
+                                "device/vbd/%u",
+                                Frontend->DeviceId);
+    if (!NT_SUCCESS(status))
         goto fail2;
 
-    Frontend->TargetPath = DriverFormat("data/scsi/target/%d", TargetId);
-    if (Frontend->TargetPath == NULL)
+    status = RtlStringCbPrintfA(Frontend->TargetPath,
+                                sizeof(Frontend->TargetPath),
+                                "data/scsi/target/%u",
+                                TargetId);
+    if (!NT_SUCCESS(status))
         goto fail3;
 
-    Status = NotifierCreate(Frontend, &Frontend->Notifier);
-    if (!NT_SUCCESS(Status))
+    status = NotifierCreate(Frontend, &Frontend->Notifier);
+    if (!NT_SUCCESS(status))
         goto fail4;
 
-    Status = BlockRingCreate(Frontend, Frontend->DeviceId, &Frontend->BlockRing);
-    if (!NT_SUCCESS(Status))
+    status = BlockRingCreate(Frontend, Frontend->DeviceId, &Frontend->BlockRing);
+    if (!NT_SUCCESS(status))
         goto fail5;
 
-    Status = GranterCreate(Frontend, &Frontend->Granter);
-    if (!NT_SUCCESS(Status))
+    status = GranterCreate(Frontend, &Frontend->Granter);
+    if (!NT_SUCCESS(status))
         goto fail6;
 
-    Status = ThreadCreate(FrontendBackend, Frontend, &Frontend->BackendThread);
-    if (!NT_SUCCESS(Status))
+    status = ThreadCreate(FrontendBackend, Frontend, &Frontend->BackendThread);
+    if (!NT_SUCCESS(status))
         goto fail7;
 
     // kernel objects
@@ -1646,19 +1650,15 @@ fail5:
     Frontend->Notifier = NULL;
 fail4:
     Error("fail4\n");
-    DriverFormatFree(Frontend->TargetPath);
-    Frontend->TargetPath = NULL;
 fail3:
     Error("fail3\n");
-    DriverFormatFree(Frontend->FrontendPath);
-    Frontend->FrontendPath = NULL;
 fail2:
     Error("Fail2\n");
     __FrontendFree(Frontend);
 fail1:
-    Error("Fail1 (%08x)\n", Status);
+    Error("Fail1 (%08x)\n", status);
     *_Frontend = NULL;
-    return Status;
+    return status;
 }
 
 VOID
@@ -1685,12 +1685,6 @@ FrontendDestroy(
 
     NotifierDestroy(Frontend->Notifier);
     Frontend->Notifier = NULL;
-
-    DriverFormatFree(Frontend->TargetPath);
-    Frontend->TargetPath = NULL;
-
-    DriverFormatFree(Frontend->FrontendPath);
-    Frontend->FrontendPath = NULL;
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->Inquiry, ==, NULL);

@@ -286,8 +286,7 @@ __HandlePage80(
     ULONG   Length = Srb->DataTransferLength;
 
 	RtlZeroMemory(Data, Length);
-	if (DriverParameters.SynthesizeInquiry ||
-        Inquiry == NULL || 
+	if (Inquiry == NULL ||
         Inquiry->Page80.Data == NULL || 
         Inquiry->Page80.Length == 0) {
         // generate the serial number page
@@ -329,8 +328,7 @@ __HandlePage83(
     ULONG   Length = Srb->DataTransferLength;
 
     RtlZeroMemory(Data, Length);
-    if (DriverParameters.SynthesizeInquiry ||
-        Inquiry == NULL || 
+    if (Inquiry == NULL ||
         Inquiry->Page83.Data == NULL || 
         Inquiry->Page83.Length == 0) {
         // generate the id page data

@@ -29,58 +29,35 @@
  * SUCH DAMAGE.
  */ 
 
-#include "driver.h"
-#include "adapter.h"
-#include "target.h"
-#include "registry.h"
-#include "srbext.h"
-#include "buffer.h"
-#include "debug.h"
-#include "assert.h"
-#include "util.h"
+#include <ntddk.h>
+#include <storport.h>
+#include <ntstrsafe.h>
+
 #include <version.h>
 #include <names.h>
 #include <xencrsh_interface.h>
-#include <xenvbd-ntstrsafe.h>
+
+#include "driver.h"
+#include "adapter.h"
+#include "registry.h"
+#include "srbext.h"
+#include "buffer.h"
+
+#include "util.h"
+#include "debug.h"
+#include "assert.h"
 
 typedef struct _XENVBD_DRIVER {
+    PXENVBD_ADAPTER     Adapter;
     HANDLE              ParametersKey;
     PDRIVER_DISPATCH    StorPortDispatchPnp;
     PDRIVER_DISPATCH    StorPortDispatchPower;
     PDRIVER_UNLOAD      StorPortDriverUnload;
-    PXENVBD_ADAPTER         Adapter;
-    KSPIN_LOCK          Lock;
 } XENVBD_DRIVER;
 
 static XENVBD_DRIVER Driver;
 
-XENVBD_PARAMETERS   DriverParameters;
-
 #define XENVBD_POOL_TAG     'dbvX'
-
-static DECLSPEC_NOINLINE VOID
-__DriverParseOption(
-    IN  const CHAR  *Key,
-    OUT PBOOLEAN    Flag
-    )
-{
-    PANSI_STRING    Option;
-    PCHAR           Value;
-    NTSTATUS        status;
-
-    *Flag = FALSE;
-
-    status = RegistryQuerySystemStartOption(Key, &Option);
-    if (!NT_SUCCESS(status))
-        return;
-
-    Value = Option->Buffer + strlen(Key);
-
-    if (strcmp(Value, "ON") == 0)
-        *Flag = TRUE;
-
-    RegistryFreeSzValue(Option);
-}
 
 static FORCEINLINE HANDLE
 __DriverGetParametersKey(
@@ -114,53 +91,6 @@ DriverDispatchPower(
     )
 {
     return Driver.StorPortDispatchPower(DeviceObject, Irp);
-}
-
-VOID
-DriverLinkAdapter(
-    IN  PXENVBD_ADAPTER Adapter
-    )
-{
-    KIRQL       Irql;
-
-    KeAcquireSpinLock(&Driver.Lock, &Irql);
-    Driver.Adapter = Adapter;
-    KeReleaseSpinLock(&Driver.Lock, Irql);
-}
-
-VOID
-DriverUnlinkAdapter(
-    IN  PXENVBD_ADAPTER Adapter
-    )
-{
-    KIRQL       Irql;
-
-    UNREFERENCED_PARAMETER(Adapter);
-
-    KeAcquireSpinLock(&Driver.Lock, &Irql);
-    Driver.Adapter = NULL;
-    KeReleaseSpinLock(&Driver.Lock, Irql);
-}
-
-static FORCEINLINE BOOLEAN
-__DriverGetAdapter(
-    IN  PDEVICE_OBJECT      DeviceObject,
-    OUT PXENVBD_ADAPTER         *Adapter
-    )
-{
-    KIRQL       Irql;
-    BOOLEAN     IsAdapter = FALSE;
-
-    KeAcquireSpinLock(&Driver.Lock, &Irql);
-    *Adapter = Driver.Adapter;
-    if (*Adapter) {
-        if (AdapterGetDeviceObject(*Adapter) == DeviceObject) {
-            IsAdapter = TRUE;
-        }
-    }
-    KeReleaseSpinLock(&Driver.Lock, Irql);
-
-    return IsAdapter;
 }
 
 #define MAXNAMELEN  256
@@ -238,88 +168,25 @@ fail1:
     Error("fail1 (%08x)\n", status);
 }
 
-__checkReturn
-__drv_allocatesMem(mem)
-static FORCEINLINE PCHAR
-#pragma warning(suppress: 28195)
-__DriverFormatV(
-    __in PCHAR       Fmt,
-    __in va_list     Args
-    )
-{
-    NTSTATUS    Status;
-    PCHAR       Str;
-    ULONG       Size = 32;
-
-    for (;;) {
-        Str = (PCHAR)__AllocatePoolWithTag(NonPagedPool, Size,
-                                           XENVBD_POOL_TAG);
-        if (!Str) {
-            return NULL;
-        }
-
-        Status = RtlStringCchVPrintfA(Str, Size - 1, Fmt, Args);
-
-        if (Status == STATUS_SUCCESS) {
-            Str[Size - 1] = '\0';
-            return Str;
-        } 
-        
-        __FreePoolWithTag(Str, XENVBD_POOL_TAG);
-        if (Status == STATUS_BUFFER_OVERFLOW) {
-            Size *= 2;
-        } else {
-            return NULL;
-        }
-    }
-}
-
-__checkReturn
-__drv_allocatesMem(mem)
-PCHAR
-DriverFormat(
-    __in PCHAR       Format,
-    ...
-    )
-{
-    va_list Args;
-    PCHAR   Str;
-
-    va_start(Args, Format);
-    Str = __DriverFormatV(Format, Args);
-    va_end(Args);
-    return Str;
-}
-
-VOID
-#pragma warning(suppress: 28197)
-DriverFormatFree(
-    __in __drv_freesMem(mem) PCHAR  Buffer
-    )
-{
-    if (Buffer)
-        __FreePoolWithTag(Buffer, XENVBD_POOL_TAG);
-}
-
-HW_INITIALIZE       HwInitialize;
+HW_INITIALIZE   HwInitialize;
 
 BOOLEAN 
 HwInitialize(
-    __in PVOID   HwDeviceExtension
+    IN  PVOID   DevExt
     )
 {
-    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(DevExt);
     return TRUE;
 }
 
-HW_INTERRUPT        HwInterrupt;
+HW_INTERRUPT    HwInterrupt;
 
 BOOLEAN 
 HwInterrupt(
-    __in PVOID   HwDeviceExtension
+    IN  PVOID   DevExt
     )
 {
-    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(DevExt);
     return TRUE;
 }
 
@@ -327,21 +194,19 @@ HW_ADAPTER_CONTROL  HwAdapterControl;
 
 SCSI_ADAPTER_CONTROL_STATUS
 HwAdapterControl(
-    __in PVOID                       HwDeviceExtension,
-    __in SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    __in PVOID                       Parameters
+    IN  PVOID                       DevExt,
+    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType,
+    IN  PVOID                       Parameters
     )
 {
     PSCSI_SUPPORTED_CONTROL_TYPE_LIST   List;
-    ULONG                               Index;
 
-    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(DevExt);
 
     switch (ControlType) {
     case ScsiQuerySupportedControlTypes:
         List = Parameters;
-        for (Index = 0; Index < List->MaxControlType; ++Index)
-            List->SupportedTypeList[Index] = TRUE;
+        List->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
         break;
 
     case ScsiStopAdapter:
@@ -358,47 +223,52 @@ HW_RESET_BUS        HwResetBus;
 
 BOOLEAN
 HwResetBus(
-    __in PVOID   HwDeviceExtension,
-    __in ULONG   PathId
+    IN  PVOID   DevExt,
+    IN  ULONG   PathId
     )
 {
     UNREFERENCED_PARAMETER(PathId);
 
-    return AdapterResetBus((PXENVBD_ADAPTER)HwDeviceExtension);
+    return AdapterResetBus(DevExt);
 }
 
 HW_FIND_ADAPTER     HwFindAdapter;
 
 ULONG
 HwFindAdapter(
-    IN PVOID                               HwDeviceExtension,
-    IN PVOID                               Context,
-    IN PVOID                               BusInformation,
-    IN PCHAR                               ArgumentString,
-    IN OUT PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-    OUT PBOOLEAN                           Again
+    IN  PVOID                               DevExt,
+    IN  PVOID                               Context,
+    IN  PVOID                               BusInformation,
+    IN  PCHAR                               ArgumentString,
+    IN OUT PPORT_CONFIGURATION_INFORMATION  ConfigInfo,
+    OUT PBOOLEAN                            Again
     )
 {
+    ULONG                                   Return;
+
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(BusInformation);
     UNREFERENCED_PARAMETER(ArgumentString);
     UNREFERENCED_PARAMETER(Again);
 
-    return AdapterFindAdapter((PXENVBD_ADAPTER)HwDeviceExtension, ConfigInfo);
+    Return = AdapterFindAdapter(DevExt, ConfigInfo);
+    if (Return == SP_RETURN_FOUND)
+        Driver.Adapter = DevExt;
+    return Return;
 }
 
 static FORCEINLINE BOOLEAN
 __FailStorageRequest(
-    __in PVOID               HwDeviceExtension,
-    __in PSCSI_REQUEST_BLOCK Srb
+    IN  PVOID               DevExt,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
     if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
         // Win8 and above storport request. not supported
         // complete the request (with fail code)
         Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
-        StorPortNotification(RequestComplete, HwDeviceExtension, Srb);
-        Error("(0x%p) STORAGE_REQUEST_BLOCK not supported\n", HwDeviceExtension);
+        StorPortNotification(RequestComplete, DevExt, Srb);
+        Error("(0x%p) STORAGE_REQUEST_BLOCK not supported\n", DevExt);
         return TRUE;
     }
 
@@ -409,28 +279,28 @@ HW_BUILDIO          HwBuildIo;
 
 BOOLEAN 
 HwBuildIo(
-    __in PVOID               HwDeviceExtension,
-    __in PSCSI_REQUEST_BLOCK Srb
+    IN  PVOID               DevExt,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    if (__FailStorageRequest(HwDeviceExtension, Srb))
+    if (__FailStorageRequest(DevExt, Srb))
         return FALSE; // dont pass to HwStartIo
 
-    return AdapterBuildIo((PXENVBD_ADAPTER)HwDeviceExtension, Srb);
+    return AdapterBuildIo(DevExt, Srb);
 }
 
 HW_STARTIO          HwStartIo;
 
 BOOLEAN 
 HwStartIo(
-    __in PVOID               HwDeviceExtension,
-    __in PSCSI_REQUEST_BLOCK Srb
+    IN  PVOID               DevExt,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    if (__FailStorageRequest(HwDeviceExtension, Srb))
+    if (__FailStorageRequest(DevExt, Srb))
         return TRUE; // acknowledge the srb
 
-    return AdapterStartIo((PXENVBD_ADAPTER)HwDeviceExtension, Srb);
+    return AdapterStartIo(DevExt, Srb);
 }
 
 __drv_dispatchType(IRP_MJ_PNP)
@@ -442,15 +312,13 @@ DispatchPnp(
     IN PIRP             Irp
     )
 {
-    PXENVBD_ADAPTER         Adapter;
+    if (Driver.Adapter == NULL)
+        return DriverDispatchPnp(DeviceObject, Irp);
 
-    if (__DriverGetAdapter(DeviceObject, &Adapter))
-        return AdapterDispatchPnp(Adapter, DeviceObject, Irp);
+    if (AdapterGetDeviceObject(Driver.Adapter) == DeviceObject)
+        return AdapterDispatchPnp(Driver.Adapter, DeviceObject, Irp);
 
-    if (Adapter != NULL)
-        return AdapterForwardPnp(Adapter, DeviceObject, Irp);
-
-    return DriverDispatchPnp(DeviceObject, Irp);
+    return AdapterForwardPnp(Driver.Adapter, DeviceObject, Irp);
 }
 
 __drv_dispatchType(IRP_MJ_POWER)
@@ -462,40 +330,52 @@ DispatchPower(
     IN PIRP             Irp
     )
 {
-    PXENVBD_ADAPTER         Adapter;
+    if (Driver.Adapter == NULL)
+        return DriverDispatchPower(DeviceObject, Irp);
 
-    if (__DriverGetAdapter(DeviceObject, &Adapter))
-        return AdapterDispatchPower(Adapter, DeviceObject, Irp);
+    if (AdapterGetDeviceObject(Driver.Adapter) == DeviceObject)
+        return AdapterDispatchPower(Driver.Adapter, DeviceObject, Irp);
 
     return DriverDispatchPower(DeviceObject, Irp);
 }
 
-DRIVER_UNLOAD               DriverUnload;
+DRIVER_UNLOAD           DriverUnload;
 
 VOID
 DriverUnload(
-    IN PDRIVER_OBJECT  _DriverObject
+    IN  PDRIVER_OBJECT  DriverObject
     )
 {
-    Trace("===> (Irql=%d)\n", KeGetCurrentIrql());
-    Verbose("%s (%s)\n",
-         MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
-         DAY_STR "/" MONTH_STR "/" YEAR_STR);
+    Verbose("%u.%u.%u.%u (%02u/%02u/%04u)\n",
+         MAJOR_VERSION,
+         MINOR_VERSION,
+         MICRO_VERSION,
+         BUILD_NUMBER,
+         DAY,
+         MONTH,
+         YEAR);
 
-    Driver.StorPortDriverUnload(_DriverObject);
+    Driver.Adapter = NULL;
+
+    Driver.StorPortDriverUnload(DriverObject);
+    Driver.StorPortDriverUnload = NULL;
+    Driver.StorPortDispatchPnp = NULL;
+    Driver.StorPortDispatchPower = NULL;
+
     BufferTerminate();
-    RegistryCloseKey(Driver.ParametersKey);
-    RegistryTeardown();
 
-    Trace("<=== (Irql=%d)\n", KeGetCurrentIrql());
+    RegistryCloseKey(Driver.ParametersKey);
+    Driver.ParametersKey = NULL;
+
+    RegistryTeardown();
 }
 
 DRIVER_INITIALIZE           DriverEntry;
 
 NTSTATUS
 DriverEntry(
-    IN PDRIVER_OBJECT       _DriverObject,
-    IN PUNICODE_STRING      RegistryPath
+    IN  PDRIVER_OBJECT      DriverObject,
+    IN  PUNICODE_STRING     RegistryPath
     )
 {
     HW_INITIALIZATION_DATA  InitData;
@@ -505,15 +385,19 @@ DriverEntry(
 
     // RegistryPath == NULL if crashing!
     if (RegistryPath == NULL) {
-        return XencrshEntryPoint(_DriverObject);
+        return XencrshEntryPoint(DriverObject);
     }
 
     ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
     
-    Trace("===> (Irql=%d)\n", KeGetCurrentIrql());
-    Verbose("%s (%s)\n",
-         MAJOR_VERSION_STR "." MINOR_VERSION_STR "." MICRO_VERSION_STR "." BUILD_NUMBER_STR,
-         DAY_STR "/" MONTH_STR "/" YEAR_STR);
+    Verbose("%u.%u.%u.%u (%02u/%02u/%04u)\n",
+         MAJOR_VERSION,
+         MINOR_VERSION,
+         MICRO_VERSION,
+         BUILD_NUMBER,
+         DAY,
+         MONTH,
+         YEAR);
 
     status = RegistryInitialize(RegistryPath);
     if (!NT_SUCCESS(status))
@@ -531,73 +415,65 @@ DriverEntry(
         goto fail3;
 
     Driver.ParametersKey = ParametersKey;
-
-    RegistryCloseKey(ServiceKey);
-    ServiceKey = NULL;
-
-    KeInitializeSpinLock(&Driver.Lock);
     Driver.Adapter = NULL;
     BufferInitialize();
 
-    __DriverParseOption("XENVBD:SYNTH_INQ=",
-                        &DriverParameters.SynthesizeInquiry);
-    __DriverParseOption("XENVBD:PVCDROM=",
-                        &DriverParameters.PVCDRom);
-
     RtlZeroMemory(&InitData, sizeof(InitData));
-
-    InitData.HwInitializationDataSize   =   sizeof(InitData);
-    InitData.AdapterInterfaceType       =   Internal;
-    InitData.HwInitialize               =   HwInitialize;
-    InitData.HwStartIo                  =   HwStartIo;
-    InitData.HwInterrupt                =   HwInterrupt;
+    InitData.HwInitializationDataSize   = sizeof(InitData);
+    InitData.AdapterInterfaceType       = Internal;
+    InitData.HwInitialize               = HwInitialize;
+    InitData.HwStartIo                  = HwStartIo;
+    InitData.HwInterrupt                = HwInterrupt;
 #pragma warning(suppress : 4152)
-    InitData.HwFindAdapter              =   HwFindAdapter;
-    InitData.HwResetBus                 =   HwResetBus;
-    InitData.HwDmaStarted               =   NULL;
-    InitData.HwAdapterState             =   NULL;
-    InitData.DeviceExtensionSize        =   AdapterSizeofXenvbdAdapter();
-    InitData.SpecificLuExtensionSize    =   sizeof (ULONG); // not actually used
-    InitData.SrbExtensionSize           =   sizeof(XENVBD_SRBEXT);
-    InitData.NumberOfAccessRanges       =   2;
-    InitData.MapBuffers                 =   STOR_MAP_NON_READ_WRITE_BUFFERS;
-    InitData.NeedPhysicalAddresses      =   TRUE;
-    InitData.TaggedQueuing              =   TRUE;
-    InitData.AutoRequestSense           =   TRUE;
-    InitData.MultipleRequestPerLu       =   TRUE;
-    InitData.HwAdapterControl           =   HwAdapterControl;
-    InitData.HwBuildIo                  =   HwBuildIo;
+    InitData.HwFindAdapter              = HwFindAdapter;
+    InitData.HwResetBus                 = HwResetBus;
+    InitData.HwDmaStarted               = NULL;
+    InitData.HwAdapterState             = NULL;
+    InitData.DeviceExtensionSize        = AdapterSizeofXenvbdAdapter();
+    InitData.SpecificLuExtensionSize    = sizeof(ULONG); // not actually used
+    InitData.SrbExtensionSize           = sizeof(XENVBD_SRBEXT);
+    InitData.NumberOfAccessRanges       = 2;
+    InitData.MapBuffers                 = STOR_MAP_NON_READ_WRITE_BUFFERS;
+    InitData.NeedPhysicalAddresses      = TRUE;
+    InitData.TaggedQueuing              = TRUE;
+    InitData.AutoRequestSense           = TRUE;
+    InitData.MultipleRequestPerLu       = TRUE;
+    InitData.HwAdapterControl           = HwAdapterControl;
+    InitData.HwBuildIo                  = HwBuildIo;
 
-    status = StorPortInitialize(_DriverObject,
+    status = StorPortInitialize(DriverObject,
                                 RegistryPath,
                                 &InitData,
                                 NULL);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    Driver.StorPortDispatchPnp     = _DriverObject->MajorFunction[IRP_MJ_PNP];
-    Driver.StorPortDispatchPower   = _DriverObject->MajorFunction[IRP_MJ_POWER];
-    Driver.StorPortDriverUnload    = _DriverObject->DriverUnload;
+    Driver.StorPortDispatchPnp   = DriverObject->MajorFunction[IRP_MJ_PNP];
+    Driver.StorPortDispatchPower = DriverObject->MajorFunction[IRP_MJ_POWER];
+    Driver.StorPortDriverUnload  = DriverObject->DriverUnload;
 
-    _DriverObject->MajorFunction[IRP_MJ_PNP]    = DispatchPnp;
-    _DriverObject->MajorFunction[IRP_MJ_POWER]  = DispatchPower;
-    _DriverObject->DriverUnload                 = DriverUnload;
+    DriverObject->MajorFunction[IRP_MJ_PNP]   = DispatchPnp;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = DispatchPower;
+    DriverObject->DriverUnload                = DriverUnload;
 
-    Trace("<=== (%08x) (Irql=%d)\n", STATUS_SUCCESS, KeGetCurrentIrql());
+    RegistryCloseKey(ServiceKey);
+    ServiceKey = NULL;
+
     return STATUS_SUCCESS;
 
 fail4:
     Error("fail4\n");
 
     BufferTerminate();
+
     RegistryCloseKey(Driver.ParametersKey);
     Driver.ParametersKey = NULL;
 
 fail3:
     Error("fail3\n");
 
-    if (ServiceKey)
-        RegistryCloseKey(ServiceKey);
+    RegistryCloseKey(ServiceKey);
+    ServiceKey = NULL;
 
 fail2:
     Error("fail2\n");

@@ -48,6 +48,8 @@
 #include <debug_interface.h>
 #include <suspend_interface.h>
 
+#define XENVBD_MAX_QUEUE_DEPTH          (254)
+
 typedef struct _XENVBD_SG_LIST {
     // SGList from SRB
     PSTOR_SCATTER_GATHER_LIST   SGList;

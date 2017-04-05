@@ -41,6 +41,8 @@
 #include <xenvbd-ntstrsafe.h>
 
 #define TAG_HEADER                  'gaTX'
+#define XENVBD_MAX_RING_PAGE_ORDER  (4)
+#define XENVBD_MAX_RING_PAGES       (1 << XENVBD_MAX_RING_PAGE_ORDER)
 
 struct _XENVBD_BLOCKRING {
     PXENVBD_FRONTEND                Frontend;

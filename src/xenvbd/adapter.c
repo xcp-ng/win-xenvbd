@@ -430,27 +430,30 @@ __DeviceType(
         return XENVBD_DEVICE_TYPE_CDROM;
     return XENVBD_DEVICE_TYPE_UNKNOWN;
 }
-__checkReturn
+
 static FORCEINLINE BOOLEAN
 __AdapterHiddenTarget(
-    __in PXENVBD_ADAPTER                 Adapter,
-    __in PCHAR                       DeviceId,
-    __out PXENVBD_DEVICE_TYPE        DeviceType
+    IN  PXENVBD_ADAPTER     Adapter,
+    IN  PCHAR               DeviceId,
+    OUT PXENVBD_DEVICE_TYPE DeviceType
     )
 {
-    NTSTATUS    Status;
-    PCHAR       FrontendPath;
+    NTSTATUS    status;
     PCHAR       Buffer;
+    CHAR        Path[sizeof("device/vbd/XXXXXXXX")];
     ULONG       Value;
 
     *DeviceType = XENVBD_DEVICE_TYPE_UNKNOWN;
-    FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(Adapter), DeviceId);
-    if (!FrontendPath)
+    status = RtlStringCbPrintfA(Path,
+                                sizeof(Path),
+                                "device/vbd/%s",
+                                DeviceId);
+    if (!NT_SUCCESS(status))
         goto fail;
 
     // Ejected?
-    Status = XENBUS_STORE(Read, &Adapter->Store, NULL, FrontendPath, "ejected", &Buffer);
-    if (NT_SUCCESS(Status)) {
+    status = XENBUS_STORE(Read, &Adapter->Store, NULL, Path, "ejected", &Buffer);
+    if (NT_SUCCESS(status)) {
         Value = strtoul(Buffer, NULL, 10);
         XENBUS_STORE(Free, &Adapter->Store, Buffer);
 
@@ -459,8 +462,8 @@ __AdapterHiddenTarget(
     }
 
     // Not Disk?
-    Status = XENBUS_STORE(Read, &Adapter->Store, NULL, FrontendPath, "device-type", &Buffer);
-    if (!NT_SUCCESS(Status))
+    status = XENBUS_STORE(Read, &Adapter->Store, NULL, Path, "device-type", &Buffer);
+    if (!NT_SUCCESS(status))
         goto ignore;
     *DeviceType = __DeviceType(Buffer);
     XENBUS_STORE(Free, &Adapter->Store, Buffer);
@@ -468,16 +471,11 @@ __AdapterHiddenTarget(
     switch (*DeviceType) {
     case XENVBD_DEVICE_TYPE_DISK:
         break;
-    case XENVBD_DEVICE_TYPE_CDROM:
-        if (DriverParameters.PVCDRom)
-            break;
-        // intentional fall-through
     default:
         goto ignore;
     }
 
     // Try to Create
-    DriverFormatFree(FrontendPath);
     return FALSE;
 
 fail:
@@ -485,7 +483,6 @@ fail:
     return TRUE;
 
 ignore:
-    DriverFormatFree(FrontendPath);
     return TRUE;
 }
 __checkReturn
@@ -1548,13 +1545,6 @@ __AdapterInitialize(
     if (!NT_SUCCESS(Status))
         goto fail4;
 
-    // query enumerator
-    // fix this up to query from device location(?)
-    //RtlInitAnsiString(&Adapter->Enumerator, "vbd");
-
-    // link fdo
-    DriverLinkAdapter(Adapter);
-
     Trace("<===== (%d)\n", KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
@@ -1585,7 +1575,6 @@ __AdapterTerminate(
 
     Trace("=====> (%d)\n", KeGetCurrentIrql());
 
-    DriverUnlinkAdapter(Adapter);
     ASSERT3U(Adapter->DevicePower, ==, PowerDeviceD3);
 
     // stop device power thread

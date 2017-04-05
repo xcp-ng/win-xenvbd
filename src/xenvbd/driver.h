@@ -29,34 +29,15 @@
  * SUCH DAMAGE.
  */ 
 
-#ifndef _XENVBD_XENVBD_H
-#define _XENVBD_XENVBD_H
+#ifndef _XENVBD_DRIVER_H
+#define _XENVBD_DRIVER_H
 
-#include <xen.h>
+#include <ntddk.h>
 
-// Global Constants
 #define XENVBD_MAX_TARGETS              (255)
-
-#define XENVBD_MAX_RING_PAGE_ORDER      (4)
-#define XENVBD_MAX_RING_PAGES           (1 << XENVBD_MAX_RING_PAGE_ORDER)
-
-#define XENVBD_MAX_SEGMENTS_PER_REQUEST (BLKIF_MAX_SEGMENTS_PER_REQUEST)
-#define XENVBD_MAX_REQUESTS_PER_SRB     (16)
-#define XENVBD_MAX_SEGMENTS_PER_SRB     (XENVBD_MAX_REQUESTS_PER_SRB * XENVBD_MAX_SEGMENTS_PER_REQUEST)
-#define XENVBD_MAX_TRANSFER_LENGTH      (XENVBD_MAX_SEGMENTS_PER_SRB * PAGE_SIZE)
-#define XENVBD_MAX_PHYSICAL_BREAKS      (XENVBD_MAX_SEGMENTS_PER_SRB - 1)
-#define XENVBD_MAX_QUEUE_DEPTH          (254)
-
-#define XENVBD_MIN_GRANT_REFS           (XENVBD_MAX_SEGMENTS_PER_SRB)
-
-typedef struct _XENVBD_PARAMETERS {
-    BOOLEAN     SynthesizeInquiry;
-    BOOLEAN     PVCDRom;
-} XENVBD_PARAMETERS;
-
-extern XENVBD_PARAMETERS    DriverParameters;
-
-#include "adapter.h"
+#define XENVBD_MAX_PAGES_PER_SRB        (1024)
+#define XENVBD_MAX_TRANSFER_LENGTH      (XENVBD_MAX_PAGES_PER_SRB * PAGE_SIZE)
+#define XENVBD_MAX_PHYSICAL_BREAKS      (XENVBD_MAX_PAGES_PER_SRB - 1)
 
 extern HANDLE
 DriverGetParametersKey(
@@ -75,33 +56,9 @@ DriverDispatchPower(
     IN  PIRP            Irp
     );
 
-// Fdo Device Extension management
-extern VOID
-DriverLinkAdapter(
-    IN  PXENVBD_ADAPTER Adapter
-    );
-
-extern VOID
-DriverUnlinkAdapter(
-    IN  PXENVBD_ADAPTER Adapter
-    );
-
 extern VOID
 DriverRequestReboot(
     VOID
     );
 
-__checkReturn
-__drv_allocatesMem(mem)
-extern PCHAR
-DriverFormat(
-    __in PCHAR                   Format,
-    ...
-    );
-
-extern VOID
-DriverFormatFree(
-    __in __drv_freesMem(mem) PCHAR Buffer
-    );
-
-#endif // _XENVBD_XENVBD_H
+#endif // _XENVBD_DRIVER_H

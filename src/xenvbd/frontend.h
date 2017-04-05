@@ -171,13 +171,12 @@ FrontendSetState(
     __in  XENVBD_STATE            State
     );
 
-__checkReturn
 extern NTSTATUS
 FrontendCreate(
-    __in  PXENVBD_TARGET          Target,
-    __in  PCHAR                   DeviceId, 
-    __in  ULONG                   TargetId, 
-    __out PXENVBD_FRONTEND*       _Frontend
+    IN  PXENVBD_TARGET          Target,
+    IN  PCHAR                   DeviceId,
+    IN  ULONG                   TargetId,
+    OUT PXENVBD_FRONTEND*       _Frontend
     );
 
 extern VOID
