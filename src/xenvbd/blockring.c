@@ -31,7 +31,7 @@
 
 #include "blockring.h"
 #include "frontend.h"
-#include "pdo.h"
+#include "target.h"
 #include "adapter.h"
 #include "util.h"
 #include "debug.h"
@@ -277,7 +277,7 @@ BlockRingConnect(
     NTSTATUS        status;
     PCHAR           Value;
     ULONG           Index, RingPages;
-    PXENVBD_ADAPTER     Adapter = PdoGetAdapter(FrontendGetPdo(BlockRing->Frontend));
+    PXENVBD_ADAPTER     Adapter = TargetGetAdapter(FrontendGetTarget(BlockRing->Frontend));
     PXENVBD_GRANTER Granter = FrontendGetGranter(BlockRing->Frontend);
 
     ASSERT(BlockRing->Connected == FALSE);
@@ -509,7 +509,7 @@ BlockRingPoll(
     IN  PXENVBD_BLOCKRING           BlockRing
     )
 {
-    PXENVBD_PDO Pdo = FrontendGetPdo(BlockRing->Frontend);
+    PXENVBD_TARGET Target = FrontendGetTarget(BlockRing->Frontend);
 
     ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
     KeAcquireSpinLockAtDpcLevel(&BlockRing->Lock);
@@ -542,7 +542,7 @@ BlockRingPoll(
 
             if (__BlockRingPutTag(BlockRing, Response->id, &Tag)) {
                 ++BlockRing->Received;
-                PdoCompleteResponse(Pdo, Tag, Response->status);
+                TargetCompleteResponse(Target, Tag, Response->status);
             }
 
             RtlZeroMemory(Response, sizeof(union blkif_sring_entry));

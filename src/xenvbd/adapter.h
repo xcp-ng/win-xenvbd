@@ -37,7 +37,7 @@
 typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 
 #include <storport.h>
-#include "pdo.h"
+#include "target.h"
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <gnttab_interface.h>
@@ -45,17 +45,17 @@ typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 #include <suspend_interface.h>
 #include <unplug_interface.h>
 
-// Link PDOs
+// Link TARGETs
 extern BOOLEAN
-AdapterLinkPdo(
+AdapterLinkTarget(
     __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_PDO                 Pdo
+    __in PXENVBD_TARGET                 Target
     );
 
 extern BOOLEAN
-AdapterUnlinkPdo(
+AdapterUnlinkTarget(
     __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_PDO                 Pdo
+    __in PXENVBD_TARGET                 Target
     );
 // Query Methods
 __checkReturn

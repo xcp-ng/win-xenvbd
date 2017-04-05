@@ -30,7 +30,7 @@
  */ 
 
 #include "frontend.h"
-#include "pdo.h"
+#include "target.h"
 #include "adapter.h"
 #include "util.h"
 #include "debug.h"
@@ -139,7 +139,7 @@ GranterConnect(
     IN  USHORT                      BackendDomain
     )
 {
-    PXENVBD_ADAPTER Adapter = PdoGetAdapter(FrontendGetPdo(Granter->Frontend));
+    PXENVBD_ADAPTER Adapter = TargetGetAdapter(FrontendGetTarget(Granter->Frontend));
     CHAR        Name[MAXNAMELEN];
     NTSTATUS    status;
 

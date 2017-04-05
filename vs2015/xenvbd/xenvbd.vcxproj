@@ -69,7 +69,7 @@
     <ClCompile Include="../../src/xenvbd/registry.c" />
     <ClCompile Include="../../src/xenvbd/adapter.c" />
     <ClCompile Include="../../src/xenvbd/frontend.c" />
-    <ClCompile Include="../../src/xenvbd/pdo.c" />
+    <ClCompile Include="../../src/xenvbd/target.c" />
     <ClCompile Include="../../src/xenvbd/pdoinquiry.c" />
     <ClCompile Include="../../src/xenvbd/queue.c" />
     <ClCompile Include="../../src/xenvbd/thread.c" />

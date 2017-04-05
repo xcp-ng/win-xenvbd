@@ -50,7 +50,7 @@
 
 struct _XENVBD_FRONTEND {
     // Frontend
-    PXENVBD_PDO                 Pdo;
+    PXENVBD_TARGET                 Target;
     ULONG                       TargetId;
     ULONG                       DeviceId;
     PCHAR                       FrontendPath;
@@ -188,12 +188,12 @@ FrontendGetInquiry(
 {
     return Frontend->Inquiry;
 }
-PXENVBD_PDO
-FrontendGetPdo(
+PXENVBD_TARGET
+FrontendGetTarget(
     __in  PXENVBD_FRONTEND      Frontend
     )
 {
-    return Frontend->Pdo;
+    return Frontend->Target;
 }
 PXENVBD_BLOCKRING
 FrontendGetBlockRing(
@@ -328,7 +328,7 @@ FrontendNotifyResponses(
     )
 {
     BlockRingPoll(Frontend->BlockRing);
-    PdoSubmitRequests(Frontend->Pdo);
+    TargetSubmitRequests(Frontend->Target);
 }
 
 //=============================================================================
@@ -609,7 +609,7 @@ abort:
         Trace("Target[%d] : BackendState(%s) FrontendState(%s)\n", 
                 Frontend->TargetId, XenbusStateName(BackendState), XenbusStateName(FrontendState));
 
-        PdoIssueDeviceEject(Frontend->Pdo, XenbusStateName(BackendState));
+        TargetIssueDeviceEject(Frontend->Target, XenbusStateName(BackendState));
     }    
 }
 
@@ -1407,7 +1407,7 @@ FrontendSuspendLateCallback(
     Verbose("Target[%d] : ===> from %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
     State = Frontend->State;
 
-    PdoPreResume(Frontend->Pdo);
+    TargetPreResume(Frontend->Target);
 
     // dont acquire state lock - called at DISPATCH on 1 vCPU with interrupts enabled
     Status = __FrontendSetState(Frontend, XENVBD_CLOSED);
@@ -1423,7 +1423,7 @@ FrontendSuspendLateCallback(
         ASSERT(FALSE);
     }
 
-    PdoPostResume(Frontend->Pdo);
+    TargetPostResume(Frontend->Target);
     NotifierTrigger(Frontend->Notifier);
 
     Verbose("Target[%d] : <=== restored %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
@@ -1442,13 +1442,13 @@ FrontendD3ToD0(
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
     // acquire interfaces
-    Frontend->Store   = AdapterAcquireStore(PdoGetAdapter(Frontend->Pdo));
+    Frontend->Store   = AdapterAcquireStore(TargetGetAdapter(Frontend->Target));
 
     Status = STATUS_UNSUCCESSFUL;
     if (Frontend->Store == NULL)
         goto fail1;
 
-    Frontend->Suspend = AdapterAcquireSuspend(PdoGetAdapter(Frontend->Pdo));
+    Frontend->Suspend = AdapterAcquireSuspend(TargetGetAdapter(Frontend->Target));
 
     Status = STATUS_UNSUCCESSFUL;
     if (Frontend->Suspend == NULL)
@@ -1575,7 +1575,7 @@ FrontendBackend(
 __checkReturn
 NTSTATUS
 FrontendCreate(
-    __in  PXENVBD_PDO             Pdo,
+    __in  PXENVBD_TARGET             Target,
     __in  PCHAR                   DeviceId, 
     __in  ULONG                   TargetId, 
     __out PXENVBD_FRONTEND*       _Frontend
@@ -1593,7 +1593,7 @@ FrontendCreate(
         goto fail1;
 
     // populate members
-    Frontend->Pdo = Pdo;
+    Frontend->Target = Target;
     Frontend->TargetId = TargetId;
     Frontend->DeviceId = strtoul(DeviceId, NULL, 10);
     Frontend->State = XENVBD_INITIALIZED;
@@ -1601,7 +1601,7 @@ FrontendCreate(
     Frontend->BackendId = DOMID_INVALID;
     
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    Frontend->FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(PdoGetAdapter(Pdo)), DeviceId);
+    Frontend->FrontendPath = DriverFormat("device/%s/%s", AdapterEnum(TargetGetAdapter(Target)), DeviceId);
     if (Frontend->FrontendPath == NULL) 
         goto fail2;
 

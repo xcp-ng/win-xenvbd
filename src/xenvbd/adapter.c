@@ -48,7 +48,7 @@
 #include "adapter.h"
 #include "driver.h"
 #include "registry.h"
-#include "pdo.h"
+#include "target.h"
 #include "srbext.h"
 #include "thread.h"
 #include "buffer.h"
@@ -89,7 +89,7 @@ struct _XENVBD_ADAPTER {
 
     // Targets
     KSPIN_LOCK                  TargetLock;
-    PXENVBD_PDO                 Targets[XENVBD_MAX_TARGETS];
+    PXENVBD_TARGET                 Targets[XENVBD_MAX_TARGETS];
 
     // Target Enumeration
     PXENVBD_THREAD              ScanThread;
@@ -141,97 +141,97 @@ __AdapterGetDevicePowerState(
 }
 
 __checkReturn
-static FORCEINLINE PXENVBD_PDO
-__AdapterGetPdoAlways(
+static FORCEINLINE PXENVBD_TARGET
+__AdapterGetTargetAlways(
     __in PXENVBD_ADAPTER                 Adapter,
     __in ULONG                       TargetId,
     __in PCHAR                       Caller
     )
 {
-    PXENVBD_PDO Pdo;
+    PXENVBD_TARGET Target;
     KIRQL       Irql;
 
     ASSERT3U(TargetId, <, XENVBD_MAX_TARGETS);
 
     KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
-    Pdo = Adapter->Targets[TargetId];
-    if (Pdo) {
-        __PdoReference(Pdo, Caller);
+    Target = Adapter->Targets[TargetId];
+    if (Target) {
+        __TargetReference(Target, Caller);
     }
     KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
-    return Pdo;
+    return Target;
 }
 
 __checkReturn
-static FORCEINLINE PXENVBD_PDO
-___AdapterGetPdo(
+static FORCEINLINE PXENVBD_TARGET
+___AdapterGetTarget(
     __in PXENVBD_ADAPTER                 Adapter,
     __in ULONG                       TargetId,
     __in PCHAR                       Caller
     )
 {
-    PXENVBD_PDO Pdo = NULL;
+    PXENVBD_TARGET Target = NULL;
     KIRQL       Irql;
 
     ASSERT3U(TargetId, <, XENVBD_MAX_TARGETS);
 
     KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
     if (Adapter->Targets[TargetId] &&
-        __PdoReference(Adapter->Targets[TargetId], Caller) > 0) {
-        Pdo = Adapter->Targets[TargetId];
+        __TargetReference(Adapter->Targets[TargetId], Caller) > 0) {
+        Target = Adapter->Targets[TargetId];
     }
     KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
-    return Pdo;
+    return Target;
 }
-#define __AdapterGetPdo(f, t) ___AdapterGetPdo(f, t, __FUNCTION__)
+#define __AdapterGetTarget(f, t) ___AdapterGetTarget(f, t, __FUNCTION__)
 
 BOOLEAN
-AdapterLinkPdo(
+AdapterLinkTarget(
     __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_PDO                 Pdo
+    __in PXENVBD_TARGET                 Target
     )
 {
     KIRQL       Irql;
-    PXENVBD_PDO Current;
+    PXENVBD_TARGET Current;
     BOOLEAN     Result = FALSE;
-    ULONG       TargetId = PdoGetTargetId(Pdo);
+    ULONG       TargetId = TargetGetTargetId(Target);
 
     KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
     Current = Adapter->Targets[TargetId];
     if (Adapter->Targets[TargetId] == NULL) {
-        Adapter->Targets[TargetId] = Pdo;
+        Adapter->Targets[TargetId] = Target;
         Result = TRUE;
     }
     KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
     if (!Result) {
-        Warning("Target[%d] : Current 0x%p, New 0x%p\n", TargetId, Current, Pdo);
+        Warning("Target[%d] : Current 0x%p, New 0x%p\n", TargetId, Current, Target);
     }
     return Result;
 }
 BOOLEAN
-AdapterUnlinkPdo(
+AdapterUnlinkTarget(
     __in PXENVBD_ADAPTER                 Adapter,
-    __in PXENVBD_PDO                 Pdo
+    __in PXENVBD_TARGET                 Target
     )
 {
     KIRQL       Irql;
-    PXENVBD_PDO Current;
+    PXENVBD_TARGET Current;
     BOOLEAN     Result = FALSE;
-    ULONG       TargetId = PdoGetTargetId(Pdo);
+    ULONG       TargetId = TargetGetTargetId(Target);
 
     KeAcquireSpinLock(&Adapter->TargetLock, &Irql);
     Current = Adapter->Targets[TargetId];
-    if (Adapter->Targets[TargetId] == Pdo) {
+    if (Adapter->Targets[TargetId] == Target) {
         Adapter->Targets[TargetId] = NULL;
         Result = TRUE;
     }
     KeReleaseSpinLock(&Adapter->TargetLock, Irql);
 
     if (!Result) {
-        Warning("Target[%d] : Current 0x%p, Expected 0x%p\n", TargetId, Current, Pdo);
+        Warning("Target[%d] : Current 0x%p, Expected 0x%p\n", TargetId, Current, Target);
     }
     return Result;
 }
@@ -367,21 +367,21 @@ AdapterDebugCallback(
     BufferDebugCallback(&Adapter->Debug);
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        // no need to use __AdapterGetPdo (which is locked at DISPATCH) as called at HIGH_LEVEL
-        PXENVBD_PDO Pdo = Adapter->Targets[TargetId];
-        if (Pdo == NULL)
+        // no need to use __AdapterGetTarget (which is locked at DISPATCH) as called at HIGH_LEVEL
+        PXENVBD_TARGET Target = Adapter->Targets[TargetId];
+        if (Target == NULL)
             continue;
 
         XENBUS_DEBUG(Printf, &Adapter->Debug,
                      "ADAPTER: ====> Target[%-3d]    : 0x%p\n",
-                     TargetId, Pdo);
+                     TargetId, Target);
 
         // call Target's debug callback directly
-        PdoDebugCallback(Pdo, &Adapter->Debug);
+        TargetDebugCallback(Target, &Adapter->Debug);
 
         XENBUS_DEBUG(Printf, &Adapter->Debug,
                      "ADAPTER: <==== Target[%-3d]    : 0x%p\n",
-                     TargetId, Pdo);
+                     TargetId, Target);
     }
 
     Adapter->MaximumSrbs = Adapter->CurrentSrbs;
@@ -490,7 +490,7 @@ ignore:
 }
 __checkReturn
 static FORCEINLINE BOOLEAN
-__AdapterIsPdoUnplugged(
+__AdapterIsTargetUnplugged(
     __in PXENVBD_ADAPTER                 Adapter,
     __in PCHAR                       Enumerator,
     __in PCHAR                       Device,
@@ -534,7 +534,7 @@ __AdapterEnumerate(
     ULONG               TargetId;
     PANSI_STRING        Device;
     ULONG               Index;
-    PXENVBD_PDO         Pdo;
+    PXENVBD_TARGET         Target;
 
     *NeedInvalidate = FALSE;
     *NeedReboot = FALSE;
@@ -542,8 +542,8 @@ __AdapterEnumerate(
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
         BOOLEAN     Missing = TRUE;
 
-        Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo == NULL)
+        Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target == NULL)
             continue;
 
         for (Index = 0; Devices[Index].Buffer != NULL; ++Index) {
@@ -556,19 +556,19 @@ __AdapterEnumerate(
             }
         }
 
-        if (Missing && !PdoIsMissing(Pdo)) {
-            PdoSetMissing(Pdo, "Device Disappeared");
-            if (PdoGetDevicePnpState(Pdo) == Present)
-                PdoSetDevicePnpState(Pdo, Deleted);
+        if (Missing && !TargetIsMissing(Target)) {
+            TargetSetMissing(Target, "Device Disappeared");
+            if (TargetGetDevicePnpState(Target) == Present)
+                TargetSetDevicePnpState(Target, Deleted);
             else
                 *NeedInvalidate = TRUE;
         }
 
-        if (PdoGetDevicePnpState(Pdo) == Deleted) {
-            PdoDereference(Pdo);
-            PdoDestroy(Pdo);
+        if (TargetGetDevicePnpState(Target) == Deleted) {
+            TargetDereference(Target);
+            TargetDestroy(Target);
         } else {
-            PdoDereference(Pdo);
+            TargetDereference(Target);
         }
     }
 
@@ -583,9 +583,9 @@ __AdapterEnumerate(
             continue;
         }
 
-        Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            PdoDereference(Pdo);
+        Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            TargetDereference(Target);
             continue;
         }
 
@@ -593,7 +593,7 @@ __AdapterEnumerate(
             continue;
         }
 
-        if (!__AdapterIsPdoUnplugged(Adapter,
+        if (!__AdapterIsTargetUnplugged(Adapter,
                                 AdapterEnum(Adapter),
                                 Device->Buffer,
                                 TargetId)) {
@@ -601,7 +601,7 @@ __AdapterEnumerate(
             continue;
         }
 
-        if (PdoCreate(Adapter,
+        if (TargetCreate(Adapter,
                       Device->Buffer,
                       TargetId,
                       DeviceType)) {
@@ -1340,12 +1340,12 @@ AdapterD3ToD0(
     if (!NT_SUCCESS(Status))
         goto fail2;
 
-    // Power UP any PDOs
+    // Power UP any TARGETs
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            Status = PdoD3ToD0(Pdo);
-            PdoDereference(Pdo);
+        PXENVBD_TARGET Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            Status = TargetD3ToD0(Target);
+            TargetDereference(Target);
 
             if (!NT_SUCCESS(Status))
                 goto fail3;
@@ -1382,10 +1382,10 @@ fail3:
     Error("Fail3\n");
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            PdoD0ToD3(Pdo);
-            PdoDereference(Pdo);
+        PXENVBD_TARGET Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            TargetD0ToD3(Target);
+            TargetDereference(Target);
         }
     }
 
@@ -1423,12 +1423,12 @@ AdapterD0ToD3(
 
     __AdapterD0ToD3(Adapter);
 
-    // Power DOWN any PDOs
+    // Power DOWN any TARGETs
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            PdoD0ToD3(Pdo);
-            PdoDereference(Pdo);
+        PXENVBD_TARGET Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            TargetD0ToD3(Target);
+            TargetDereference(Target);
         }
     }
 
@@ -1605,16 +1605,16 @@ __AdapterTerminate(
 
     // delete targets
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdoAlways(Adapter, TargetId, __FUNCTION__);
-        if (Pdo) {
-            // Pdo may not be in Deleted state yet, force it as Adapter is terminating
-            if (PdoGetDevicePnpState(Pdo) != Deleted)
-                PdoSetDevicePnpState(Pdo, Deleted);
+        PXENVBD_TARGET Target = __AdapterGetTargetAlways(Adapter, TargetId, __FUNCTION__);
+        if (Target) {
+            // Target may not be in Deleted state yet, force it as Adapter is terminating
+            if (TargetGetDevicePnpState(Target) != Deleted)
+                TargetSetDevicePnpState(Target, Deleted);
             // update missing (for debug output more than anything else
-            PdoSetMissing(Pdo, "AdapterTerminate");
-            // drop ref-count acquired in __AdapterGetPdo *before* destroying Pdo
-            PdoDereference(Pdo);
-            PdoDestroy(Pdo);
+            TargetSetMissing(Target, "AdapterTerminate");
+            // drop ref-count acquired in __AdapterGetTarget *before* destroying Target
+            TargetDereference(Target);
+            TargetDestroy(Target);
         }
     }
 
@@ -1708,10 +1708,10 @@ AdapterResetBus(
 
     Verbose("====>\n");
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            PdoReset(Pdo);
-            PdoDereference(Pdo);
+        PXENVBD_TARGET Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            TargetReset(Target);
+            TargetDereference(Target);
         }
     }
     Verbose("<====\n");
@@ -1792,12 +1792,12 @@ __AdapterSrbPnp(
     )
 {
     if (!(Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)) {
-        PXENVBD_PDO     Pdo;
+        PXENVBD_TARGET     Target;
 
-        Pdo = __AdapterGetPdo(Adapter, Srb->TargetId);
-        if (Pdo) {
-            PdoSrbPnp(Pdo, Srb);
-            PdoDereference(Pdo);
+        Target = __AdapterGetTarget(Adapter, Srb->TargetId);
+        if (Target) {
+            TargetSrbPnp(Target, Srb);
+            TargetDereference(Target);
         }
     }
 }
@@ -1845,13 +1845,13 @@ AdapterStartIo(
     __in PSCSI_REQUEST_BLOCK         Srb
     )
 {
-    PXENVBD_PDO Pdo;
+    PXENVBD_TARGET Target;
     BOOLEAN     CompleteSrb = TRUE;
 
-    Pdo = __AdapterGetPdo(Adapter, Srb->TargetId);
-    if (Pdo) {
-        CompleteSrb = PdoStartIo(Pdo, Srb);
-        PdoDereference(Pdo);
+    Target = __AdapterGetTarget(Adapter, Srb->TargetId);
+    if (Target) {
+        CompleteSrb = TargetStartIo(Target, Srb);
+        TargetDereference(Target);
     }
 
     if (CompleteSrb) {
@@ -1860,8 +1860,8 @@ AdapterStartIo(
     return TRUE;
 }
 
-static PXENVBD_PDO
-AdapterGetPdoFromDeviceObject(
+static PXENVBD_TARGET
+AdapterGetTargetFromDeviceObject(
     __in PXENVBD_ADAPTER                 Adapter,
     __in PDEVICE_OBJECT              DeviceObject
     )
@@ -1871,24 +1871,24 @@ AdapterGetPdoFromDeviceObject(
     ASSERT3P(DeviceObject, !=, NULL);
 
     for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        PXENVBD_PDO Pdo = __AdapterGetPdo(Adapter, TargetId);
-        if (Pdo) {
-            if (PdoGetDeviceObject(Pdo) == DeviceObject)
-                return Pdo;
-            PdoDereference(Pdo);
+        PXENVBD_TARGET Target = __AdapterGetTarget(Adapter, TargetId);
+        if (Target) {
+            if (TargetGetDeviceObject(Target) == DeviceObject)
+                return Target;
+            TargetDereference(Target);
         }
     }
 
     return NULL;
 }
 
-static PXENVBD_PDO
-AdapterMapDeviceObjectToPdo(
+static PXENVBD_TARGET
+AdapterMapDeviceObjectToTarget(
     __in PXENVBD_ADAPTER                Adapter,
     __in PDEVICE_OBJECT             DeviceObject
     )
 {
-    PXENVBD_PDO                 Pdo;
+    PXENVBD_TARGET                 Target;
     KEVENT                      Complete;
     PIRP                        Irp;
     IO_STATUS_BLOCK             StatusBlock;
@@ -1939,14 +1939,14 @@ AdapterMapDeviceObjectToPdo(
     if (!NT_SUCCESS(Status))
         goto fail4;
 
-    Pdo = __AdapterGetPdo(Adapter, TargetId);
-    if (Pdo == NULL)
+    Target = __AdapterGetTarget(Adapter, TargetId);
+    if (Target == NULL)
         goto fail5;
 
-    PdoSetDeviceObject(Pdo, DeviceObject);
+    TargetSetDeviceObject(Target, DeviceObject);
     ExFreePool(String);
 
-    return Pdo;
+    return Target;
 
 fail5:
 fail4:
@@ -1966,21 +1966,21 @@ AdapterForwardPnp(
     )
 {
     PIO_STACK_LOCATION  Stack;
-    PXENVBD_PDO         Pdo;
+    PXENVBD_TARGET         Target;
 
     ASSERT3P(DeviceObject, !=, Adapter->DeviceObject);
 
-    Pdo = AdapterGetPdoFromDeviceObject(Adapter, DeviceObject);
-    if (Pdo != NULL) {
-        return PdoDispatchPnp(Pdo, DeviceObject, Irp);
+    Target = AdapterGetTargetFromDeviceObject(Adapter, DeviceObject);
+    if (Target != NULL) {
+        return TargetDispatchPnp(Target, DeviceObject, Irp);
     }
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
     if (Stack->MinorFunction == IRP_MN_QUERY_ID &&
         Stack->Parameters.QueryId.IdType == BusQueryDeviceID) {
-        Pdo = AdapterMapDeviceObjectToPdo(Adapter, DeviceObject);
-        if (Pdo != NULL) {
-            return PdoDispatchPnp(Pdo, DeviceObject, Irp);
+        Target = AdapterMapDeviceObjectToTarget(Adapter, DeviceObject);
+        if (Target != NULL) {
+            return TargetDispatchPnp(Target, DeviceObject, Irp);
         }
     }
 

@@ -32,7 +32,7 @@
 #ifndef _XENVBD_FRONTEND_H
 #define _XENVBD_FRONTEND_H
 
-#include "pdo.h"
+#include "target.h"
 #include <debug_interface.h>
 
 typedef enum _XENVBD_STATE {
@@ -100,8 +100,8 @@ extern PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend
     );
-extern PXENVBD_PDO
-FrontendGetPdo(
+extern PXENVBD_TARGET
+FrontendGetTarget(
     __in  PXENVBD_FRONTEND      Frontend
     );
 #include "blockring.h"
@@ -174,7 +174,7 @@ FrontendSetState(
 __checkReturn
 extern NTSTATUS
 FrontendCreate(
-    __in  PXENVBD_PDO             Pdo,
+    __in  PXENVBD_TARGET          Target,
     __in  PCHAR                   DeviceId, 
     __in  ULONG                   TargetId, 
     __out PXENVBD_FRONTEND*       _Frontend

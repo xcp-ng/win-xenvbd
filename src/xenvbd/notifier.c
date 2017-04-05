@@ -31,7 +31,7 @@
 
 #include "notifier.h"
 #include "frontend.h"
-#include "pdo.h"
+#include "target.h"
 #include "adapter.h"
 #include "util.h"
 #include "debug.h"
@@ -162,7 +162,7 @@ NotifierConnect(
     IN  USHORT                      BackendDomain
     )
 {
-    PXENVBD_ADAPTER Adapter = PdoGetAdapter(FrontendGetPdo(Notifier->Frontend));
+    PXENVBD_ADAPTER Adapter = TargetGetAdapter(FrontendGetTarget(Notifier->Frontend));
     NTSTATUS    status;
 
     ASSERT(Notifier->Connected == FALSE);

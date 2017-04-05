@@ -31,7 +31,7 @@
 
 #include "driver.h"
 #include "adapter.h"
-#include "pdo.h"
+#include "target.h"
 #include "registry.h"
 #include "srbext.h"
 #include "buffer.h"
@@ -118,7 +118,7 @@ DriverDispatchPower(
 
 VOID
 DriverLinkAdapter(
-    __in PXENVBD_ADAPTER             Adapter
+    IN  PXENVBD_ADAPTER Adapter
     )
 {
     KIRQL       Irql;
@@ -130,7 +130,7 @@ DriverLinkAdapter(
 
 VOID
 DriverUnlinkAdapter(
-    __in PXENVBD_ADAPTER             Adapter
+    IN  PXENVBD_ADAPTER Adapter
     )
 {
     KIRQL       Irql;

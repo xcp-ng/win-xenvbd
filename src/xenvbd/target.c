@@ -1,35 +1,35 @@
 /* Copyright (c) Citrix Systems Inc.
  * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, 
- * with or without modification, are permitted provided 
+ *
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted provided
  * that the following conditions are met:
- * 
- * *   Redistributions of source code must retain the above 
- *     copyright notice, this list of conditions and the 
+ *
+ * *   Redistributions of source code must retain the above
+ *     copyright notice, this list of conditions and the
  *     following disclaimer.
- * *   Redistributions in binary form must reproduce the above 
- *     copyright notice, this list of conditions and the 
- *     following disclaimer in the documentation and/or other 
+ * *   Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the
+ *     following disclaimer in the documentation and/or other
  *     materials provided with the distribution.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND 
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR 
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- */ 
+ */
 
-#include "pdo.h"
+#include "target.h"
 #include "driver.h"
 #include "adapter.h"
 #include "frontend.h"
@@ -60,7 +60,7 @@ typedef struct _XENVBD_SG_LIST {
     ULONG                       Length;
 } XENVBD_SG_LIST, *PXENVBD_SG_LIST;
 
-#define PDO_SIGNATURE           'odpX'
+#define TARGET_SIGNATURE           'odpX'
 
 typedef struct _XENVBD_LOOKASIDE {
     KEVENT                      Empty;
@@ -71,7 +71,7 @@ typedef struct _XENVBD_LOOKASIDE {
     NPAGED_LOOKASIDE_LIST       List;
 } XENVBD_LOOKASIDE, *PXENVBD_LOOKASIDE;
 
-struct _XENVBD_PDO {
+struct _XENVBD_TARGET {
     ULONG                       Signature;
     PXENVBD_ADAPTER                 Adapter;
     PDEVICE_OBJECT              DeviceObject;
@@ -124,7 +124,7 @@ struct _XENVBD_PDO {
 };
 
 //=============================================================================
-#define PDO_POOL_TAG            'odPX'
+#define TARGET_POOL_TAG            'odPX'
 #define REQUEST_POOL_TAG        'qeRX'
 #define SEGMENT_POOL_TAG        'geSX'
 #define INDIRECT_POOL_TAG       'dnIX'
@@ -134,21 +134,21 @@ __drv_allocatesMem(mem)
 __bcount(Size)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
-__PdoAlloc(
+__TargetAlloc(
     __in ULONG  Size
     )
 {
-    return __AllocatePoolWithTag(NonPagedPool, Size, PDO_POOL_TAG);
+    return __AllocatePoolWithTag(NonPagedPool, Size, TARGET_POOL_TAG);
 }
 
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)
-__PdoFree(
+__TargetFree(
     __in __drv_freesMem(mem) PVOID Buffer
     )
 {
     if (Buffer)
-        __FreePoolWithTag(Buffer, PDO_POOL_TAG);
+        __FreePoolWithTag(Buffer, TARGET_POOL_TAG);
 }
 
 //=============================================================================
@@ -212,7 +212,7 @@ __LookasideFree(
     ExFreeToNPagedLookasideList(&Lookaside->List, Buffer);
     Result = InterlockedDecrement(&Lookaside->Used);
     ASSERT3S(Result, >=, 0);
-        
+
     if (Result == 0) {
         KeSetEvent(&Lookaside->Empty, IO_NO_INCREMENT, FALSE);
     }
@@ -257,96 +257,96 @@ __PnpStateName(
 }
 
 DECLSPEC_NOINLINE VOID
-PdoDebugCallback(
-    __in PXENVBD_PDO Pdo,
+TargetDebugCallback(
+    __in PXENVBD_TARGET Target,
     __in PXENBUS_DEBUG_INTERFACE DebugInterface
     )
 {
-    if (Pdo == NULL || DebugInterface == NULL)
+    if (Target == NULL || DebugInterface == NULL)
         return;
-    if (Pdo->Signature != PDO_SIGNATURE)
+    if (Target->Signature != TARGET_SIGNATURE)
         return;
 
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: Adapter 0x%p DeviceObject 0x%p\n",
-                 Pdo->Adapter,
-                 Pdo->DeviceObject);
+                 "TARGET: Adapter 0x%p DeviceObject 0x%p\n",
+                 Target->Adapter,
+                 Target->DeviceObject);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: ReferenceCount %d\n",
-                 Pdo->ReferenceCount);
+                 "TARGET: ReferenceCount %d\n",
+                 Target->ReferenceCount);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: DevicePnpState %s (%s)\n",
-                 __PnpStateName(Pdo->DevicePnpState),
-                 __PnpStateName(Pdo->PrevPnpState));
+                 "TARGET: DevicePnpState %s (%s)\n",
+                 __PnpStateName(Target->DevicePnpState),
+                 __PnpStateName(Target->PrevPnpState));
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: DevicePowerState %s\n",
-                 PowerDeviceStateName(Pdo->DevicePowerState));
+                 "TARGET: DevicePowerState %s\n",
+                 PowerDeviceStateName(Target->DevicePowerState));
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: %s\n",
-                 Pdo->Missing ? Pdo->Reason : "Not Missing");
+                 "TARGET: %s\n",
+                 Target->Missing ? Target->Reason : "Not Missing");
 
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: BLKIF_OPs: READ=%u WRITE=%u\n",
-                 Pdo->BlkOpRead, Pdo->BlkOpWrite);
+                 "TARGET: BLKIF_OPs: READ=%u WRITE=%u\n",
+                 Target->BlkOpRead, Target->BlkOpWrite);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
-                 Pdo->BlkOpIndirectRead, Pdo->BlkOpIndirectWrite);
+                 "TARGET: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
+                 Target->BlkOpIndirectRead, Target->BlkOpIndirectWrite);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
-                 Pdo->BlkOpBarrier, Pdo->BlkOpDiscard, Pdo->BlkOpFlush);
+                 "TARGET: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
+                 Target->BlkOpBarrier, Target->BlkOpDiscard, Target->BlkOpFlush);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: Failed: Maps=%u Bounces=%u Grants=%u\n",
-                 Pdo->FailedMaps, Pdo->FailedBounces, Pdo->FailedGrants);
+                 "TARGET: Failed: Maps=%u Bounces=%u Grants=%u\n",
+                 Target->FailedMaps, Target->FailedBounces, Target->FailedGrants);
     XENBUS_DEBUG(Printf, DebugInterface,
-                 "PDO: Segments Granted=%llu Bounced=%llu\n",
-                 Pdo->SegsGranted, Pdo->SegsBounced);
+                 "TARGET: Segments Granted=%llu Bounced=%llu\n",
+                 Target->SegsGranted, Target->SegsBounced);
 
-    __LookasideDebug(&Pdo->RequestList, DebugInterface, "REQUESTs");
-    __LookasideDebug(&Pdo->SegmentList, DebugInterface, "SEGMENTs");
-    __LookasideDebug(&Pdo->IndirectList, DebugInterface, "INDIRECTs");
+    __LookasideDebug(&Target->RequestList, DebugInterface, "REQUESTs");
+    __LookasideDebug(&Target->SegmentList, DebugInterface, "SEGMENTs");
+    __LookasideDebug(&Target->IndirectList, DebugInterface, "INDIRECTs");
 
-    QueueDebugCallback(&Pdo->FreshSrbs,    "Fresh    ", DebugInterface);
-    QueueDebugCallback(&Pdo->PreparedReqs, "Prepared ", DebugInterface);
-    QueueDebugCallback(&Pdo->SubmittedReqs, "Submitted", DebugInterface);
-    QueueDebugCallback(&Pdo->ShutdownSrbs, "Shutdown ", DebugInterface);
+    QueueDebugCallback(&Target->FreshSrbs,    "Fresh    ", DebugInterface);
+    QueueDebugCallback(&Target->PreparedReqs, "Prepared ", DebugInterface);
+    QueueDebugCallback(&Target->SubmittedReqs, "Submitted", DebugInterface);
+    QueueDebugCallback(&Target->ShutdownSrbs, "Shutdown ", DebugInterface);
 
-    FrontendDebugCallback(Pdo->Frontend, DebugInterface);
+    FrontendDebugCallback(Target->Frontend, DebugInterface);
 
-    Pdo->BlkOpRead = Pdo->BlkOpWrite = 0;
-    Pdo->BlkOpIndirectRead = Pdo->BlkOpIndirectWrite = 0;
-    Pdo->BlkOpBarrier = Pdo->BlkOpDiscard = Pdo->BlkOpFlush = 0;
-    Pdo->FailedMaps = Pdo->FailedBounces = Pdo->FailedGrants = 0;
-    Pdo->SegsGranted = Pdo->SegsBounced = 0;
+    Target->BlkOpRead = Target->BlkOpWrite = 0;
+    Target->BlkOpIndirectRead = Target->BlkOpIndirectWrite = 0;
+    Target->BlkOpBarrier = Target->BlkOpDiscard = Target->BlkOpFlush = 0;
+    Target->FailedMaps = Target->FailedBounces = Target->FailedGrants = 0;
+    Target->SegsGranted = Target->SegsBounced = 0;
 }
 
 //=============================================================================
 // Power States
 __checkReturn
 static FORCEINLINE BOOLEAN
-PdoSetDevicePowerState(
-    __in PXENVBD_PDO             Pdo,
+TargetSetDevicePowerState(
+    __in PXENVBD_TARGET             Target,
     __in DEVICE_POWER_STATE      State
     )
 {
     KIRQL       Irql;
     BOOLEAN     Changed = FALSE;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    if (Pdo->DevicePowerState != State) {
-        Verbose("Target[%d] : POWER %s to %s\n", PdoGetTargetId(Pdo), PowerDeviceStateName(Pdo->DevicePowerState), PowerDeviceStateName(State));
-        Pdo->DevicePowerState = State;
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->DevicePowerState != State) {
+        Verbose("Target[%d] : POWER %s to %s\n", TargetGetTargetId(Target), PowerDeviceStateName(Target->DevicePowerState), PowerDeviceStateName(State));
+        Target->DevicePowerState = State;
         Changed = TRUE;
     }
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
-    
+    KeReleaseSpinLock(&Target->Lock, Irql);
+
     return Changed;
 }
 
 //=============================================================================
 // PnP States
 FORCEINLINE VOID
-PdoSetMissing(
-    __in PXENVBD_PDO             Pdo,
+TargetSetMissing(
+    __in PXENVBD_TARGET             Target,
     __in __nullterminated const CHAR* Reason
     )
 {
@@ -354,104 +354,104 @@ PdoSetMissing(
 
     ASSERT3P(Reason, !=, NULL);
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    if (Pdo->Missing) {
-        Verbose("Target[%d] : Already MISSING (%s) when trying to set (%s)\n", PdoGetTargetId(Pdo), Pdo->Reason, Reason);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->Missing) {
+        Verbose("Target[%d] : Already MISSING (%s) when trying to set (%s)\n", TargetGetTargetId(Target), Target->Reason, Reason);
     } else {
-        Verbose("Target[%d] : MISSING %s\n", PdoGetTargetId(Pdo), Reason);
-        Pdo->Missing = TRUE;
-        Pdo->Reason = Reason;
+        Verbose("Target[%d] : MISSING %s\n", TargetGetTargetId(Target), Reason);
+        Target->Missing = TRUE;
+        Target->Reason = Reason;
     }
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeReleaseSpinLock(&Target->Lock, Irql);
 }
 
 __checkReturn
 FORCEINLINE BOOLEAN
-PdoIsMissing(
-    __in PXENVBD_PDO             Pdo
+TargetIsMissing(
+    __in PXENVBD_TARGET             Target
     )
 {
     KIRQL   Irql;
     BOOLEAN Missing;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    Missing = Pdo->Missing;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    Missing = Target->Missing;
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
     return Missing;
 }
 
 FORCEINLINE const CHAR*
-PdoMissingReason(
-    __in PXENVBD_PDO            Pdo
+TargetMissingReason(
+    __in PXENVBD_TARGET            Target
     )
 {
     KIRQL       Irql;
     const CHAR* Reason;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    Reason = Pdo->Reason;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    Reason = Target->Reason;
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
     return Reason;
 }
 
 FORCEINLINE VOID
-PdoSetDevicePnpState(
-    __in PXENVBD_PDO             Pdo,
+TargetSetDevicePnpState(
+    __in PXENVBD_TARGET             Target,
     __in DEVICE_PNP_STATE        State
     )
 {
     Verbose("Target[%d] : PNP %s to %s\n",
-            PdoGetTargetId(Pdo),
-            __PnpStateName(Pdo->DevicePnpState),
+            TargetGetTargetId(Target),
+            __PnpStateName(Target->DevicePnpState),
             __PnpStateName(State));
 
-    if (Pdo->DevicePnpState == Deleted)
+    if (Target->DevicePnpState == Deleted)
         return;
 
-    Pdo->PrevPnpState = Pdo->DevicePnpState;
-    Pdo->DevicePnpState = State;
+    Target->PrevPnpState = Target->DevicePnpState;
+    Target->DevicePnpState = State;
 }
 
 __checkReturn
 FORCEINLINE DEVICE_PNP_STATE
-PdoGetDevicePnpState(
-    __in PXENVBD_PDO             Pdo
+TargetGetDevicePnpState(
+    __in PXENVBD_TARGET             Target
     )
 {
-    return Pdo->DevicePnpState;
+    return Target->DevicePnpState;
 }
 
 static FORCEINLINE VOID
-__PdoRestoreDevicePnpState(
-    __in PXENVBD_PDO             Pdo,
+__TargetRestoreDevicePnpState(
+    __in PXENVBD_TARGET             Target,
     __in DEVICE_PNP_STATE        State
     )
 {
-    if (Pdo->DevicePnpState == State) {
-        Verbose("Target[%d] : PNP %s to %s\n", PdoGetTargetId(Pdo), __PnpStateName(Pdo->DevicePnpState), __PnpStateName(Pdo->PrevPnpState));
-        Pdo->DevicePnpState = Pdo->PrevPnpState;
+    if (Target->DevicePnpState == State) {
+        Verbose("Target[%d] : PNP %s to %s\n", TargetGetTargetId(Target), __PnpStateName(Target->DevicePnpState), __PnpStateName(Target->PrevPnpState));
+        Target->DevicePnpState = Target->PrevPnpState;
     }
 }
 
 //=============================================================================
 // Reference Counting
 FORCEINLINE LONG
-__PdoReference(
-    __in PXENVBD_PDO             Pdo,
+__TargetReference(
+    __in PXENVBD_TARGET             Target,
     __in PCHAR                   Caller
     )
 {
     LONG Result;
 
-    ASSERT3P(Pdo, !=, NULL);
-    Result = InterlockedIncrement(&Pdo->ReferenceCount);
+    ASSERT3P(Target, !=, NULL);
+    Result = InterlockedIncrement(&Target->ReferenceCount);
     ASSERTREFCOUNT(Result, >, 0, Caller);
 
     if (Result == 1) {
-        Result = InterlockedDecrement(&Pdo->ReferenceCount);
-        Error("Target[%d] : %s: Attempting to take reference of removed PDO from %d\n", PdoGetTargetId(Pdo), Caller, Result);
+        Result = InterlockedDecrement(&Target->ReferenceCount);
+        Error("Target[%d] : %s: Attempting to take reference of removed TARGET from %d\n", TargetGetTargetId(Target), Caller, Result);
         return 0;
     } else {
         ASSERTREFCOUNT(Result, >, 1, Caller);
@@ -460,20 +460,20 @@ __PdoReference(
 }
 
 FORCEINLINE LONG
-__PdoDereference(
-    __in PXENVBD_PDO             Pdo,
+__TargetDereference(
+    __in PXENVBD_TARGET             Target,
     __in PCHAR                   Caller
     )
 {
     LONG    Result;
-    
-    ASSERT3P(Pdo, !=, NULL);
-    Result = InterlockedDecrement(&Pdo->ReferenceCount);
+
+    ASSERT3P(Target, !=, NULL);
+    Result = InterlockedDecrement(&Target->ReferenceCount);
     ASSERTREFCOUNT(Result, >=, 0, Caller);
-    
+
     if (Result == 0) {
-        Verbose("Final ReferenceCount dropped, Target[%d] able to be removed\n", PdoGetTargetId(Pdo));
-        KeSetEvent(&Pdo->RemoveEvent, IO_NO_INCREMENT, FALSE);
+        Verbose("Final ReferenceCount dropped, Target[%d] able to be removed\n", TargetGetTargetId(Target));
+        KeSetEvent(&Target->RemoveEvent, IO_NO_INCREMENT, FALSE);
     }
     return Result;
 }
@@ -481,89 +481,89 @@ __PdoDereference(
 //=============================================================================
 // Query Methods
 FORCEINLINE ULONG
-PdoGetTargetId(
-    __in PXENVBD_PDO             Pdo
+TargetGetTargetId(
+    __in PXENVBD_TARGET             Target
     )
 {
-    ASSERT3P(Pdo, !=, NULL);
-    return FrontendGetTargetId(Pdo->Frontend);
+    ASSERT3P(Target, !=, NULL);
+    return FrontendGetTargetId(Target->Frontend);
 }
 
 __checkReturn
 FORCEINLINE PDEVICE_OBJECT
-PdoGetDeviceObject(
-    __in PXENVBD_PDO             Pdo
+TargetGetDeviceObject(
+    __in PXENVBD_TARGET             Target
     )
 {
-    ASSERT3P(Pdo, !=, NULL);
-    return Pdo->DeviceObject;
+    ASSERT3P(Target, !=, NULL);
+    return Target->DeviceObject;
 }
 
 FORCEINLINE VOID
-PdoSetDeviceObject(
-    __in PXENVBD_PDO             Pdo,
+TargetSetDeviceObject(
+    __in PXENVBD_TARGET             Target,
     __in PDEVICE_OBJECT          DeviceObject
     )
 {
-    Verbose("Target[%d] : Setting DeviceObject = 0x%p\n", PdoGetTargetId(Pdo), DeviceObject);
+    Verbose("Target[%d] : Setting DeviceObject = 0x%p\n", TargetGetTargetId(Target), DeviceObject);
 
-    ASSERT3P(Pdo->DeviceObject, ==, NULL);
-    Pdo->DeviceObject = DeviceObject;
+    ASSERT3P(Target->DeviceObject, ==, NULL);
+    Target->DeviceObject = DeviceObject;
 }
 
 __checkReturn
 FORCEINLINE BOOLEAN
-PdoIsPaused(
-    __in PXENVBD_PDO             Pdo
+TargetIsPaused(
+    __in PXENVBD_TARGET             Target
     )
 {
     BOOLEAN Paused;
     KIRQL   Irql;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    Paused = (Pdo->Paused > 0);
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
-    
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    Paused = (Target->Paused > 0);
+    KeReleaseSpinLock(&Target->Lock, Irql);
+
     return Paused;
 }
 
 __checkReturn
 FORCEINLINE ULONG
-PdoOutstandingReqs(
-    __in PXENVBD_PDO             Pdo
+TargetOutstandingReqs(
+    __in PXENVBD_TARGET             Target
     )
 {
-    return QueueCount(&Pdo->SubmittedReqs);
+    return QueueCount(&Target->SubmittedReqs);
 }
 
 __checkReturn
 FORCEINLINE PXENVBD_ADAPTER
-PdoGetAdapter(
-    __in PXENVBD_PDO             Pdo
+TargetGetAdapter(
+    __in PXENVBD_TARGET             Target
     )
 {
-    return Pdo->Adapter;
+    return Target->Adapter;
 }
 
 FORCEINLINE ULONG
-PdoSectorSize(
-    __in PXENVBD_PDO             Pdo
+TargetSectorSize(
+    __in PXENVBD_TARGET             Target
     )
 {
-    return FrontendGetDiskInfo(Pdo->Frontend)->SectorSize;
+    return FrontendGetDiskInfo(Target->Frontend)->SectorSize;
 }
 
 //=============================================================================
 static PXENVBD_INDIRECT
-PdoGetIndirect(
-    IN  PXENVBD_PDO             Pdo
+TargetGetIndirect(
+    IN  PXENVBD_TARGET             Target
     )
 {
     PXENVBD_INDIRECT    Indirect;
     NTSTATUS            status;
-    PXENVBD_GRANTER     Granter = FrontendGetGranter(Pdo->Frontend);
+    PXENVBD_GRANTER     Granter = FrontendGetGranter(Target->Frontend);
 
-    Indirect = __LookasideAlloc(&Pdo->IndirectList);
+    Indirect = __LookasideAlloc(&Target->IndirectList);
     if (Indirect == NULL)
         goto fail1;
 
@@ -588,18 +588,18 @@ PdoGetIndirect(
 fail3:
     __FreePage(Indirect->Mdl);
 fail2:
-    __LookasideFree(&Pdo->IndirectList, Indirect);
+    __LookasideFree(&Target->IndirectList, Indirect);
 fail1:
     return NULL;
 }
 
 static VOID
-PdoPutIndirect(
-    IN  PXENVBD_PDO             Pdo,
+TargetPutIndirect(
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_INDIRECT        Indirect
     )
 {
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Target->Frontend);
 
     if (Indirect->Grant)
         GranterPut(Granter, Indirect->Grant);
@@ -607,17 +607,17 @@ PdoPutIndirect(
         __FreePage(Indirect->Mdl);
 
     RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
-    __LookasideFree(&Pdo->IndirectList, Indirect);
+    __LookasideFree(&Target->IndirectList, Indirect);
 }
 
 static PXENVBD_SEGMENT
-PdoGetSegment(
-    IN  PXENVBD_PDO             Pdo
+TargetGetSegment(
+    IN  PXENVBD_TARGET             Target
     )
 {
     PXENVBD_SEGMENT             Segment;
 
-    Segment = __LookasideAlloc(&Pdo->SegmentList);
+    Segment = __LookasideAlloc(&Target->SegmentList);
     if (Segment == NULL)
         goto fail1;
 
@@ -629,12 +629,12 @@ fail1:
 }
 
 static VOID
-PdoPutSegment(
-    IN  PXENVBD_PDO             Pdo,
+TargetPutSegment(
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_SEGMENT         Segment
     )
 {
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Target->Frontend);
 
     if (Segment->Grant)
         GranterPut(Granter, Segment->Grant);
@@ -646,22 +646,22 @@ PdoPutSegment(
         MmUnmapLockedPages(Segment->Buffer, &Segment->Mdl);
 
     RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
-    __LookasideFree(&Pdo->SegmentList, Segment);
+    __LookasideFree(&Target->SegmentList, Segment);
 }
 
 static PXENVBD_REQUEST
-PdoGetRequest(
-    IN  PXENVBD_PDO             Pdo
+TargetGetRequest(
+    IN  PXENVBD_TARGET             Target
     )
 {
     PXENVBD_REQUEST             Request;
 
-    Request = __LookasideAlloc(&Pdo->RequestList);
+    Request = __LookasideAlloc(&Target->RequestList);
     if (Request == NULL)
         goto fail1;
 
     RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
-    Request->Id = (ULONG)InterlockedIncrement((PLONG)&Pdo->NextTag);
+    Request->Id = (ULONG)InterlockedIncrement((PLONG)&Target->NextTag);
     InitializeListHead(&Request->Segments);
     InitializeListHead(&Request->Indirects);
 
@@ -672,8 +672,8 @@ fail1:
 }
 
 static VOID
-PdoPutRequest(
-    IN  PXENVBD_PDO             Pdo,
+TargetPutRequest(
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_REQUEST         Request
     )
 {
@@ -686,7 +686,7 @@ PdoPutRequest(
         if (Entry == &Request->Segments)
             break;
         Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
-        PdoPutSegment(Pdo, Segment);
+        TargetPutSegment(Target, Segment);
     }
 
     for (;;) {
@@ -696,22 +696,22 @@ PdoPutRequest(
         if (Entry == &Request->Indirects)
             break;
         Indirect = CONTAINING_RECORD(Entry, XENVBD_INDIRECT, Entry);
-        PdoPutIndirect(Pdo, Indirect);
+        TargetPutIndirect(Target, Indirect);
     }
 
     RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
-    __LookasideFree(&Pdo->RequestList, Request);
+    __LookasideFree(&Target->RequestList, Request);
 }
 
 static FORCEINLINE PXENVBD_REQUEST
-PdoRequestFromTag(
-    IN  PXENVBD_PDO             Pdo,
+TargetRequestFromTag(
+    IN  PXENVBD_TARGET             Target,
     IN  ULONG                   Tag
     )
 {
     KIRQL           Irql;
     PLIST_ENTRY     Entry;
-    PXENVBD_QUEUE   Queue = &Pdo->SubmittedReqs;
+    PXENVBD_QUEUE   Queue = &Target->SubmittedReqs;
 
     KeAcquireSpinLock(&Queue->Lock, &Irql);
 
@@ -727,37 +727,37 @@ PdoRequestFromTag(
 
     KeReleaseSpinLock(&Queue->Lock, Irql);
     Warning("Target[%d] : Tag %x not found in submitted list (%u items)\n",
-            PdoGetTargetId(Pdo), Tag, QueueCount(Queue));
+            TargetGetTargetId(Target), Tag, QueueCount(Queue));
     return NULL;
 }
 
 static FORCEINLINE VOID
-__PdoIncBlkifOpCount(
-    __in PXENVBD_PDO             Pdo,
+__TargetIncBlkifOpCount(
+    __in PXENVBD_TARGET             Target,
     __in PXENVBD_REQUEST         Request
     )
 {
     switch (Request->Operation) {
     case BLKIF_OP_READ:
         if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST)
-            ++Pdo->BlkOpIndirectRead;
+            ++Target->BlkOpIndirectRead;
         else
-            ++Pdo->BlkOpRead;
+            ++Target->BlkOpRead;
         break;
     case BLKIF_OP_WRITE:
         if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST)
-            ++Pdo->BlkOpIndirectWrite;
+            ++Target->BlkOpIndirectWrite;
         else
-            ++Pdo->BlkOpWrite;
+            ++Target->BlkOpWrite;
         break;
     case BLKIF_OP_WRITE_BARRIER:
-        ++Pdo->BlkOpBarrier;
+        ++Target->BlkOpBarrier;
         break;
     case BLKIF_OP_DISCARD:
-        ++Pdo->BlkOpDiscard;
+        ++Target->BlkOpDiscard;
         break;
     case BLKIF_OP_FLUSH_DISKCACHE:
-        ++Pdo->BlkOpFlush;
+        ++Target->BlkOpFlush;
         break;
     default:
         ASSERT(FALSE);
@@ -820,13 +820,13 @@ __Virt2Pfn(
 }
 
 static FORCEINLINE MM_PAGE_PRIORITY
-__PdoPriority(
-    __in PXENVBD_PDO             Pdo
+__TargetPriority(
+    __in PXENVBD_TARGET             Target
     )
 {
-    PXENVBD_CAPS   Caps = FrontendGetCaps(Pdo->Frontend);
-    if (!(Caps->Paging || 
-          Caps->Hibernation || 
+    PXENVBD_CAPS   Caps = FrontendGetCaps(Target->Frontend);
+    if (!(Caps->Paging ||
+          Caps->Hibernation ||
           Caps->DumpFile))
         return NormalPagePriority;
 
@@ -873,7 +873,7 @@ SGListNext(
 
 static FORCEINLINE BOOLEAN
 MapSegmentBuffer(
-    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_SEGMENT         Segment,
     IN  PXENVBD_SG_LIST         SGList,
     IN  ULONG                   SectorSize,
@@ -907,17 +907,17 @@ MapSegmentBuffer(
     ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
     ASSERT3U(Mdl->ByteCount, <=, PAGE_SIZE);
     ASSERT3U(SectorsNow, ==, (Mdl->ByteCount / SectorSize));
-                
+
     Segment->Length = __min(Mdl->ByteCount, PAGE_SIZE);
     Segment->Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode,
-                            MmCached, NULL, FALSE, __PdoPriority(Pdo));
+                            MmCached, NULL, FALSE, __TargetPriority(Target));
     if (!Segment->Buffer) {
         goto fail;
     }
 
     ASSERT3P(MmGetMdlPfnArray(Mdl)[0], ==, Segment->Pfn[0]);
     ASSERT3P(MmGetMdlPfnArray(Mdl)[1], ==, Segment->Pfn[1]);
- 
+
     return TRUE;
 
 fail:
@@ -946,7 +946,7 @@ RequestCopyOutput(
 
 static BOOLEAN
 PrepareSegment(
-    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_SEGMENT         Segment,
     IN  PXENVBD_SG_LIST         SGList,
     IN  BOOLEAN                 ReadOnly,
@@ -956,12 +956,12 @@ PrepareSegment(
 {
     PFN_NUMBER      Pfn;
     NTSTATUS        Status;
-    PXENVBD_GRANTER Granter = FrontendGetGranter(Pdo->Frontend);
-    const ULONG     SectorSize = PdoSectorSize(Pdo);
+    PXENVBD_GRANTER Granter = FrontendGetGranter(Target->Frontend);
+    const ULONG     SectorSize = TargetSectorSize(Target);
     const ULONG     SectorsPerPage = __SectorsPerPage(SectorSize);
 
     if (SGListNext(SGList, SectorSize - 1)) {
-        ++Pdo->SegsGranted;
+        ++Target->SegsGranted;
         // get first sector, last sector and count
         Segment->FirstSector    = (UCHAR)((__Offset(SGList->PhysAddr) + SectorSize - 1) / SectorSize);
         *SectorsNow             = __min(SectorsLeft, SectorsPerPage - Segment->FirstSector);
@@ -974,21 +974,21 @@ PrepareSegment(
         ASSERT3U((SGList->PhysLen / SectorSize), ==, *SectorsNow);
         ASSERT3U((SGList->PhysLen & (SectorSize - 1)), ==, 0);
     } else {
-        ++Pdo->SegsBounced;
+        ++Target->SegsBounced;
         // get first sector, last sector and count
         Segment->FirstSector    = 0;
         *SectorsNow             = __min(SectorsLeft, SectorsPerPage);
         Segment->LastSector     = (UCHAR)(*SectorsNow - 1);
 
         // map SGList to Virtual Address. Populates Segment->Buffer and Segment->Length
-        if (!MapSegmentBuffer(Pdo, Segment, SGList, SectorSize, *SectorsNow)) {
-            ++Pdo->FailedMaps;
+        if (!MapSegmentBuffer(Target, Segment, SGList, SectorSize, *SectorsNow)) {
+            ++Target->FailedMaps;
             goto fail1;
         }
 
         // get a buffer
         if (!BufferGet(Segment, &Segment->BufferId, &Pfn)) {
-            ++Pdo->FailedBounces;
+            ++Target->FailedBounces;
             goto fail2;
         }
 
@@ -1001,7 +1001,7 @@ PrepareSegment(
     // Grant segment's page
     Status = GranterGet(Granter, Pfn, ReadOnly, &Segment->Grant);
     if (!NT_SUCCESS(Status)) {
-        ++Pdo->FailedGrants;
+        ++Target->FailedGrants;
         goto fail3;
     }
 
@@ -1015,7 +1015,7 @@ fail1:
 
 static BOOLEAN
 PrepareBlkifReadWrite(
-    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_REQUEST         Request,
     IN  PXENVBD_SG_LIST         SGList,
     IN  ULONG                   MaxSegments,
@@ -1040,14 +1040,14 @@ PrepareBlkifReadWrite(
         PXENVBD_SEGMENT Segment;
         ULONG           SectorsNow;
 
-        Segment = PdoGetSegment(Pdo);
+        Segment = TargetGetSegment(Target);
         if (Segment == NULL)
             goto fail1;
 
         InsertTailList(&Request->Segments, &Segment->Entry);
         ++Request->NrSegments;
 
-        if (!PrepareSegment(Pdo,
+        if (!PrepareSegment(Target,
                             Segment,
                             SGList,
                             ReadOnly,
@@ -1070,7 +1070,7 @@ fail1:
 
 static BOOLEAN
 PrepareBlkifIndirect(
-    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_TARGET             Target,
     IN  PXENVBD_REQUEST         Request
     )
 {
@@ -1083,7 +1083,7 @@ PrepareBlkifIndirect(
                 ++Index) {
         PXENVBD_INDIRECT    Indirect;
 
-        Indirect = PdoGetIndirect(Pdo);
+        Indirect = TargetGetIndirect(Target);
         if (Indirect == NULL)
             goto fail1;
         InsertTailList(&Request->Indirects, &Indirect->Entry);
@@ -1099,12 +1099,12 @@ fail1:
 
 static FORCEINLINE ULONG
 UseIndirect(
-    IN  PXENVBD_PDO             Pdo,
+    IN  PXENVBD_TARGET             Target,
     IN  ULONG                   SectorsLeft
     )
 {
-    const ULONG SectorsPerPage = __SectorsPerPage(PdoSectorSize(Pdo));
-    const ULONG MaxIndirectSegs = FrontendGetFeatures(Pdo->Frontend)->Indirect;
+    const ULONG SectorsPerPage = __SectorsPerPage(TargetSectorSize(Target));
+    const ULONG MaxIndirectSegs = FrontendGetFeatures(Target->Frontend)->Indirect;
 
     if (MaxIndirectSegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST)
         return BLKIF_MAX_SEGMENTS_PER_REQUEST; // not supported
@@ -1116,8 +1116,8 @@ UseIndirect(
 }
 
 static FORCEINLINE ULONG
-PdoQueueRequestList(
-    IN  PXENVBD_PDO     Pdo,
+TargetQueueRequestList(
+    IN  PXENVBD_TARGET     Target,
     IN  PLIST_ENTRY     List
     )
 {
@@ -1132,15 +1132,15 @@ PdoQueueRequestList(
 
         ++Count;
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        __PdoIncBlkifOpCount(Pdo, Request);
-        QueueAppend(&Pdo->PreparedReqs, &Request->Entry);
+        __TargetIncBlkifOpCount(Target, Request);
+        QueueAppend(&Target->PreparedReqs, &Request->Entry);
     }
     return Count;
 }
 
 static FORCEINLINE VOID
-PdoCancelRequestList(
-    IN  PXENVBD_PDO     Pdo,
+TargetCancelRequestList(
+    IN  PXENVBD_TARGET     Target,
     IN  PLIST_ENTRY     List
     )
 {
@@ -1153,14 +1153,14 @@ PdoCancelRequestList(
             break;
 
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        PdoPutRequest(Pdo, Request);
+        TargetPutRequest(Target, Request);
     }
 }
 
 __checkReturn
 static BOOLEAN
 PrepareReadWrite(
-    __in PXENVBD_PDO             Pdo,
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
@@ -1177,23 +1177,23 @@ PrepareReadWrite(
     SrbExt->Count = 0;
 
     RtlZeroMemory(&SGList, sizeof(SGList));
-    SGList.SGList = StorPortGetScatterGatherList(PdoGetAdapter(Pdo), Srb);
+    SGList.SGList = StorPortGetScatterGatherList(TargetGetAdapter(Target), Srb);
 
     while (SectorsLeft > 0) {
         ULONG           MaxSegments;
         ULONG           SectorsDone = 0;
         PXENVBD_REQUEST Request;
 
-        Request = PdoGetRequest(Pdo);
-        if (Request == NULL) 
+        Request = TargetGetRequest(Target);
+        if (Request == NULL)
             goto fail1;
         InsertTailList(&List, &Request->Entry);
         InterlockedIncrement(&SrbExt->Count);
-        
-        Request->Srb    = Srb;
-        MaxSegments = UseIndirect(Pdo, SectorsLeft);
 
-        if (!PrepareBlkifReadWrite(Pdo,
+        Request->Srb    = Srb;
+        MaxSegments = UseIndirect(Target, SectorsLeft);
+
+        if (!PrepareBlkifReadWrite(Target,
                                    Request,
                                    &SGList,
                                    MaxSegments,
@@ -1203,7 +1203,7 @@ PrepareReadWrite(
             goto fail2;
 
         if (MaxSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
-            if (!PrepareBlkifIndirect(Pdo, Request))
+            if (!PrepareBlkifIndirect(Target, Request))
                 goto fail3;
         }
 
@@ -1211,16 +1211,16 @@ PrepareReadWrite(
         SectorStart += SectorsDone;
     }
 
-    DebugCount = PdoQueueRequestList(Pdo, &List);
+    DebugCount = TargetQueueRequestList(Target, &List);
     if (DebugCount != (ULONG)SrbExt->Count) {
-        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+        Trace("[%u] %d != %u\n", TargetGetTargetId(Target), SrbExt->Count, DebugCount);
     }
     return TRUE;
 
 fail3:
 fail2:
 fail1:
-    PdoCancelRequestList(Pdo, &List);
+    TargetCancelRequestList(Target, &List);
     SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
@@ -1229,7 +1229,7 @@ fail1:
 __checkReturn
 static BOOLEAN
 PrepareSyncCache(
-    __in PXENVBD_PDO             Pdo,
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
@@ -1240,8 +1240,8 @@ PrepareSyncCache(
     ULONG               DebugCount;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
-    
-    if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache)
+
+    if (FrontendGetDiskInfo(Target->Frontend)->FlushCache)
         Operation = BLKIF_OP_FLUSH_DISKCACHE;
     else
         Operation = BLKIF_OP_WRITE_BARRIER;
@@ -1249,7 +1249,7 @@ PrepareSyncCache(
     InitializeListHead(&List);
     SrbExt->Count = 0;
 
-    Request = PdoGetRequest(Pdo);
+    Request = TargetGetRequest(Target);
     if (Request == NULL)
         goto fail1;
     InsertTailList(&List, &Request->Entry);
@@ -1259,14 +1259,14 @@ PrepareSyncCache(
     Request->Operation  = Operation;
     Request->FirstSector = Cdb_LogicalBlock(Srb);
 
-    DebugCount = PdoQueueRequestList(Pdo, &List);
+    DebugCount = TargetQueueRequestList(Target, &List);
     if (DebugCount != (ULONG)SrbExt->Count) {
-        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+        Trace("[%u] %d != %u\n", TargetGetTargetId(Target), SrbExt->Count, DebugCount);
     }
     return TRUE;
 
 fail1:
-    PdoCancelRequestList(Pdo, &List);
+    TargetCancelRequestList(Target, &List);
     SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
@@ -1275,7 +1275,7 @@ fail1:
 __checkReturn
 static BOOLEAN
 PrepareUnmap(
-    __in PXENVBD_PDO             Pdo,
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
@@ -1295,7 +1295,7 @@ PrepareUnmap(
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
         PXENVBD_REQUEST         Request;
 
-        Request = PdoGetRequest(Pdo);
+        Request = TargetGetRequest(Target);
         if (Request == NULL)
             goto fail1;
         InsertTailList(&List, &Request->Entry);
@@ -1308,14 +1308,14 @@ PrepareUnmap(
         Request->Flags          = 0;
     }
 
-    DebugCount = PdoQueueRequestList(Pdo, &List);
+    DebugCount = TargetQueueRequestList(Target, &List);
     if (DebugCount != (ULONG)SrbExt->Count) {
-        Trace("[%u] %d != %u\n", PdoGetTargetId(Pdo), SrbExt->Count, DebugCount);
+        Trace("[%u] %d != %u\n", TargetGetTargetId(Target), SrbExt->Count, DebugCount);
     }
     return TRUE;
 
 fail1:
-    PdoCancelRequestList(Pdo, &List);
+    TargetCancelRequestList(Target, &List);
     SrbExt->Count = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return FALSE;
@@ -1324,28 +1324,28 @@ fail1:
 //=============================================================================
 // Queue-Related
 static FORCEINLINE VOID
-__PdoPauseDataPath(
-    __in PXENVBD_PDO             Pdo,
+__TargetPauseDataPath(
+    __in PXENVBD_TARGET             Target,
     __in BOOLEAN                 Timeout
     )
 {
     KIRQL               Irql;
     ULONG               Requests;
     ULONG               Count = 0;
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
+    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Target->Frontend);
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    ++Pdo->Paused;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    ++Target->Paused;
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
-    Requests = QueueCount(&Pdo->SubmittedReqs);
+    Requests = QueueCount(&Target->SubmittedReqs);
     KeMemoryBarrier();
 
-    Verbose("Target[%d] : Waiting for %d Submitted requests\n", PdoGetTargetId(Pdo), Requests);
+    Verbose("Target[%d] : Waiting for %d Submitted requests\n", TargetGetTargetId(Target), Requests);
 
     // poll ring and send event channel notification every 1ms (for up to 3 minutes)
-    while (QueueCount(&Pdo->SubmittedReqs)) {
+    while (QueueCount(&Target->SubmittedReqs)) {
         if (Timeout && Count > 180000)
             break;
         KeRaiseIrql(DISPATCH_LEVEL, &Irql);
@@ -1357,65 +1357,65 @@ __PdoPauseDataPath(
     }
 
     Verbose("Target[%d] : %u/%u Submitted requests left (%u iterrations)\n",
-            PdoGetTargetId(Pdo), QueueCount(&Pdo->SubmittedReqs), Requests, Count);
+            TargetGetTargetId(Target), QueueCount(&Target->SubmittedReqs), Requests, Count);
 
     // Abort Fresh SRBs
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->FreshSrbs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->FreshSrbs);
         if (Entry == NULL)
             break;
         SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
 
-        Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", PdoGetTargetId(Pdo), SrbExt->Srb);
+        Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", TargetGetTargetId(Target), SrbExt->Srb);
         SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
         SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
-        AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
     }
 
     // Fail PreparedReqs
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
         PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->PreparedReqs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->PreparedReqs);
         if (Entry == NULL)
             break;
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        Verbose("Target[%d] : PreparedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
+        Verbose("Target[%d] : PreparedReq 0x%p -> FAILED\n", TargetGetTargetId(Target), Request);
 
         SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
-        PdoPutRequest(Pdo, Request);
+        TargetPutRequest(Target, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
+            AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
         }
     }
 }
 
 static FORCEINLINE VOID
-__PdoUnpauseDataPath(
-    __in PXENVBD_PDO             Pdo
+__TargetUnpauseDataPath(
+    __in PXENVBD_TARGET             Target
     )
 {
     KIRQL   Irql;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    --Pdo->Paused;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    --Target->Paused;
+    KeReleaseSpinLock(&Target->Lock, Irql);
 }
 
 static FORCEINLINE BOOLEAN
-PdoPrepareFresh(
-    IN  PXENVBD_PDO         Pdo
+TargetPrepareFresh(
+    IN  PXENVBD_TARGET         Target
     )
 {
     PXENVBD_SRBEXT  SrbExt;
     PLIST_ENTRY     Entry;
 
-    Entry = QueuePop(&Pdo->FreshSrbs);
+    Entry = QueuePop(&Target->FreshSrbs);
     if (Entry == NULL)
         return FALSE;   // fresh queue is empty
 
@@ -1424,37 +1424,37 @@ PdoPrepareFresh(
     switch (Cdb_OperationEx(SrbExt->Srb)) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        if (PrepareReadWrite(Pdo, SrbExt->Srb))
+        if (PrepareReadWrite(Target, SrbExt->Srb))
             return TRUE;    // prepared this SRB
         break;
     case SCSIOP_SYNCHRONIZE_CACHE:
-        if (PrepareSyncCache(Pdo, SrbExt->Srb))
+        if (PrepareSyncCache(Target, SrbExt->Srb))
             return TRUE;    // prepared this SRB
         break;
     case SCSIOP_UNMAP:
-        if (PrepareUnmap(Pdo, SrbExt->Srb))
+        if (PrepareUnmap(Target, SrbExt->Srb))
             return TRUE;    // prepared this SRB
         break;
     default:
         ASSERT(FALSE);
         break;
     }
-    QueueUnPop(&Pdo->FreshSrbs, &SrbExt->Entry);
+    QueueUnPop(&Target->FreshSrbs, &SrbExt->Entry);
 
     return FALSE;       // prepare failed
 }
 
 static FORCEINLINE BOOLEAN
-PdoSubmitPrepared(
-    __in PXENVBD_PDO             Pdo
+TargetSubmitPrepared(
+    __in PXENVBD_TARGET             Target
     )
 {
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Pdo->Frontend);
-    if (PdoIsPaused(Pdo)) {
-        if (QueueCount(&Pdo->PreparedReqs))
+    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Target->Frontend);
+    if (TargetIsPaused(Target)) {
+        if (QueueCount(&Target->PreparedReqs))
             Warning("Target[%d] : Paused, not submitting new requests (%u)\n",
-                    PdoGetTargetId(Pdo),
-                    QueueCount(&Pdo->PreparedReqs));
+                    TargetGetTargetId(Target),
+                    QueueCount(&Target->PreparedReqs));
         return FALSE;
     }
 
@@ -1462,20 +1462,20 @@ PdoSubmitPrepared(
         PXENVBD_REQUEST Request;
         PLIST_ENTRY     Entry;
 
-        Entry = QueuePop(&Pdo->PreparedReqs);
+        Entry = QueuePop(&Target->PreparedReqs);
         if (Entry == NULL)
             break;
 
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
 
-        QueueAppend(&Pdo->SubmittedReqs, &Request->Entry);
+        QueueAppend(&Target->SubmittedReqs, &Request->Entry);
         KeMemoryBarrier();
 
         if (BlockRingSubmit(BlockRing, Request))
             continue;
 
-        QueueRemove(&Pdo->SubmittedReqs, &Request->Entry);
-        QueueUnPop(&Pdo->PreparedReqs, &Request->Entry);
+        QueueRemove(&Target->SubmittedReqs, &Request->Entry);
+        QueueUnPop(&Target->PreparedReqs, &Request->Entry);
         return FALSE;   // ring full
     }
 
@@ -1483,26 +1483,26 @@ PdoSubmitPrepared(
 }
 
 static FORCEINLINE VOID
-PdoCompleteShutdown(
-    __in PXENVBD_PDO             Pdo
+TargetCompleteShutdown(
+    __in PXENVBD_TARGET             Target
     )
 {
-    if (QueueCount(&Pdo->ShutdownSrbs) == 0)
+    if (QueueCount(&Target->ShutdownSrbs) == 0)
         return;
 
-    if (QueueCount(&Pdo->FreshSrbs) ||
-        QueueCount(&Pdo->PreparedReqs) ||
-        QueueCount(&Pdo->SubmittedReqs))
+    if (QueueCount(&Target->FreshSrbs) ||
+        QueueCount(&Target->PreparedReqs) ||
+        QueueCount(&Target->SubmittedReqs))
         return;
 
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->ShutdownSrbs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->ShutdownSrbs);
         if (Entry == NULL)
             break;
         SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
         SrbExt->Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
     }
 }
 
@@ -1524,31 +1524,31 @@ BlkifOperationName(
 }
 
 VOID
-PdoSubmitRequests(
-    __in PXENVBD_PDO             Pdo
+TargetSubmitRequests(
+    __in PXENVBD_TARGET             Target
     )
 {
     for (;;) {
         // submit all prepared requests (0 or more requests)
         // return TRUE if submitted 0 or more requests from prepared queue
         // return FALSE iff ring is full
-        if (!PdoSubmitPrepared(Pdo))
+        if (!TargetSubmitPrepared(Target))
             break;
 
         // prepare a single SRB (into 1 or more requests)
         // return TRUE if prepare succeeded
         // return FALSE if prepare failed or fresh queue empty
-        if (!PdoPrepareFresh(Pdo))
+        if (!TargetPrepareFresh(Target))
             break;
     }
 
     // if no requests/SRBs outstanding, complete any shutdown SRBs
-    PdoCompleteShutdown(Pdo);
+    TargetCompleteShutdown(Target);
 }
 
 VOID
-PdoCompleteResponse(
-    __in PXENVBD_PDO             Pdo,
+TargetCompleteResponse(
+    __in PXENVBD_TARGET             Target,
     __in ULONG                   Tag,
     __in SHORT                   Status
     )
@@ -1557,7 +1557,7 @@ PdoCompleteResponse(
     PSCSI_REQUEST_BLOCK Srb;
     PXENVBD_SRBEXT      SrbExt;
 
-    Request = PdoRequestFromTag(Pdo, Tag);
+    Request = TargetRequestFromTag(Target, Tag);
     if (Request == NULL)
         return;
 
@@ -1572,7 +1572,7 @@ PdoCompleteResponse(
 
     case BLKIF_RSP_EOPNOTSUPP:
         // Remove appropriate feature support
-        FrontendRemoveFeature(Pdo->Frontend, Request->Operation);
+        FrontendRemoveFeature(Target->Frontend, Request->Operation);
         // Succeed this SRB, subsiquent SRBs will be succeeded instead of being passed to the backend.
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
@@ -1580,12 +1580,12 @@ PdoCompleteResponse(
     case BLKIF_RSP_ERROR:
     default:
         Warning("Target[%d] : %s BLKIF_RSP_ERROR (Tag %x)\n",
-                PdoGetTargetId(Pdo), BlkifOperationName(Request->Operation), Tag);
+                TargetGetTargetId(Target), BlkifOperationName(Request->Operation), Tag);
         Srb->SrbStatus = SRB_STATUS_ERROR;
         break;
     }
 
-    PdoPutRequest(Pdo, Request);
+    TargetPutRequest(Target, Request);
 
     // complete srb
     if (InterlockedDecrement(&SrbExt->Count) == 0) {
@@ -1599,13 +1599,13 @@ PdoCompleteResponse(
             Srb->ScsiStatus = 0x40; // SCSI_ABORTED
         }
 
-        AdapterCompleteSrb(PdoGetAdapter(Pdo), Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), Srb);
     }
 }
 
 VOID
-PdoPreResume(
-    __in PXENVBD_PDO             Pdo
+TargetPreResume(
+    __in PXENVBD_TARGET             Target
     )
 {
     LIST_ENTRY          List;
@@ -1616,13 +1616,13 @@ PdoPreResume(
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
         PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->SubmittedReqs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->SubmittedReqs);
         if (Entry == NULL)
             break;
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        PdoPutRequest(Pdo, Request);
+        TargetPutRequest(Target, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             InsertTailList(&List, &SrbExt->Entry);
@@ -1633,13 +1633,13 @@ PdoPreResume(
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
         PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->PreparedReqs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->PreparedReqs);
         if (Entry == NULL)
             break;
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        PdoPutRequest(Pdo, Request);
+        TargetPutRequest(Target, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             InsertTailList(&List, &SrbExt->Entry);
@@ -1654,28 +1654,28 @@ PdoPreResume(
             break;
         SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
 
-        QueueUnPop(&Pdo->FreshSrbs, &SrbExt->Entry);
+        QueueUnPop(&Target->FreshSrbs, &SrbExt->Entry);
     }
 
-    // now the first set of requests popped off submitted list is the next SRB 
+    // now the first set of requests popped off submitted list is the next SRB
     // to be popped off the fresh list
 }
 
 VOID
-PdoPostResume(
-    __in PXENVBD_PDO             Pdo
+TargetPostResume(
+    __in PXENVBD_TARGET             Target
     )
 {
     KIRQL   Irql;
 
-    Verbose("Target[%d] : %d Fresh SRBs\n", PdoGetTargetId(Pdo), QueueCount(&Pdo->FreshSrbs));
-    
+    Verbose("Target[%d] : %d Fresh SRBs\n", TargetGetTargetId(Target), QueueCount(&Target->FreshSrbs));
+
     // clear missing flag
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    Verbose("Target[%d] : %s (%s)\n", PdoGetTargetId(Pdo), Pdo->Missing ? "MISSING" : "NOT_MISSING", Pdo->Reason);
-    Pdo->Missing = FALSE;
-    Pdo->Reason = NULL;
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    Verbose("Target[%d] : %s (%s)\n", TargetGetTargetId(Target), Target->Missing ? "MISSING" : "NOT_MISSING", Target->Reason);
+    Target->Missing = FALSE;
+    Target->Reason = NULL;
+    KeReleaseSpinLock(&Target->Lock, Irql);
 }
 
 //=============================================================================
@@ -1721,29 +1721,29 @@ __ValidateSrbBuffer(
 
 __checkReturn
 static DECLSPEC_NOINLINE BOOLEAN
-PdoReadWrite(
-    __in PXENVBD_PDO            Pdo,
+TargetReadWrite(
+    __in PXENVBD_TARGET            Target,
     __in PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Pdo->Frontend);
+    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
 
-    if (FrontendGetCaps(Pdo->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", PdoGetTargetId(Pdo));
+    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
+        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
         Srb->ScsiStatus = 0x40; // SCSI_ABORT;
         return TRUE;
     }
 
     // check valid sectors
     if (!__ValidateSectors(DiskInfo->SectorCount, Cdb_LogicalBlock(Srb), Cdb_TransferBlock(Srb))) {
-        Trace("Target[%d] : Invalid Sector (%d @ %lld < %lld)\n", PdoGetTargetId(Pdo), Cdb_TransferBlock(Srb), Cdb_LogicalBlock(Srb), DiskInfo->SectorCount);
+        Trace("Target[%d] : Invalid Sector (%d @ %lld < %lld)\n", TargetGetTargetId(Target), Cdb_TransferBlock(Srb), Cdb_LogicalBlock(Srb), DiskInfo->SectorCount);
         Srb->ScsiStatus = 0x40; // SCSI_ABORT
         return TRUE; // Complete now
     }
 
-    QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
+    QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
     NotifierKick(Notifier);
 
     return FALSE;
@@ -1751,29 +1751,29 @@ PdoReadWrite(
 
 __checkReturn
 static DECLSPEC_NOINLINE BOOLEAN
-PdoSyncCache(
-    __in PXENVBD_PDO             Pdo,
+TargetSyncCache(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
 
-    if (FrontendGetCaps(Pdo->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", PdoGetTargetId(Pdo));
+    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
+        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
         Srb->ScsiStatus = 0x40; // SCSI_ABORT;
         return TRUE;
     }
 
-    if (FrontendGetDiskInfo(Pdo->Frontend)->FlushCache == FALSE &&
-        FrontendGetDiskInfo(Pdo->Frontend)->Barrier == FALSE) {
-        Trace("Target[%d] : FLUSH and BARRIER not supported, suppressing\n", PdoGetTargetId(Pdo));
+    if (FrontendGetDiskInfo(Target->Frontend)->FlushCache == FALSE &&
+        FrontendGetDiskInfo(Target->Frontend)->Barrier == FALSE) {
+        Trace("Target[%d] : FLUSH and BARRIER not supported, suppressing\n", TargetGetTargetId(Target));
         Srb->ScsiStatus = 0x00; // SCSI_GOOD
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         return TRUE;
     }
 
-    QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
+    QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
     NotifierKick(Notifier);
 
     return FALSE;
@@ -1781,28 +1781,28 @@ PdoSyncCache(
 
 __checkReturn
 static DECLSPEC_NOINLINE BOOLEAN
-PdoUnmap(
-    __in PXENVBD_PDO             Pdo,
+TargetUnmap(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
 
-    if (FrontendGetCaps(Pdo->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", PdoGetTargetId(Pdo));
+    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
+        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
         Srb->ScsiStatus = 0x40; // SCSI_ABORT;
         return TRUE;
     }
 
-    if (FrontendGetDiskInfo(Pdo->Frontend)->Discard == FALSE) {
-        Trace("Target[%d] : DISCARD not supported, suppressing\n", PdoGetTargetId(Pdo));
+    if (FrontendGetDiskInfo(Target->Frontend)->Discard == FALSE) {
+        Trace("Target[%d] : DISCARD not supported, suppressing\n", TargetGetTargetId(Target));
         Srb->ScsiStatus = 0x00; // SCSI_GOOD
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         return TRUE;
     }
 
-    QueueAppend(&Pdo->FreshSrbs, &SrbExt->Entry);
+    QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
     NotifierKick(Notifier);
 
     return FALSE;
@@ -1810,17 +1810,17 @@ PdoUnmap(
 
 #define MODE_CACHING_PAGE_LENGTH 20
 static DECLSPEC_NOINLINE VOID
-PdoModeSense(
-    __in PXENVBD_PDO             Pdo,
+TargetModeSense(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
-    )    
+    )
 {
     PMODE_PARAMETER_HEADER  Header  = Srb->DataBuffer;
     const UCHAR PageCode            = Cdb_PageCode(Srb);
     ULONG LengthLeft                = Cdb_AllocationLength(Srb);
     PVOID CurrentPage               = Srb->DataBuffer;
 
-    UNREFERENCED_PARAMETER(Pdo);
+    UNREFERENCED_PARAMETER(Target);
 
     RtlZeroMemory(Srb->DataBuffer, Srb->DataTransferLength);
 
@@ -1842,7 +1842,7 @@ PdoModeSense(
 
     // Fill in Block Parameters (if Specified and space)
     // when the DBD (Disable Block Descriptor) is set, ignore the block page
-    if (Cdb_Dbd(Srb) == 0 && 
+    if (Cdb_Dbd(Srb) == 0 &&
         LengthLeft >= sizeof(MODE_PARAMETER_BLOCK)) {
         PMODE_PARAMETER_BLOCK Block = (PMODE_PARAMETER_BLOCK)CurrentPage;
         // Fill in BlockParams
@@ -1870,7 +1870,7 @@ PdoModeSense(
         Caching->PageLength                 = MODE_CACHING_PAGE_LENGTH;
         Caching->ReadDisableCache           = 0;
         Caching->MultiplicationFactor       = 0;
-        Caching->WriteCacheEnable           = FrontendGetDiskInfo(Pdo->Frontend)->FlushCache ? 1 : 0;
+        Caching->WriteCacheEnable           = FrontendGetDiskInfo(Target->Frontend)->FlushCache ? 1 : 0;
         Caching->WriteRetensionPriority     = 0;
         Caching->ReadRetensionPriority      = 0;
         Caching->DisablePrefetchTransfer[0] = 0;
@@ -1918,14 +1918,14 @@ PdoModeSense(
 }
 
 static DECLSPEC_NOINLINE VOID
-PdoRequestSense(
-    __in PXENVBD_PDO             Pdo,
+TargetRequestSense(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PSENSE_DATA         Sense = Srb->DataBuffer;
 
-    UNREFERENCED_PARAMETER(Pdo);
+    UNREFERENCED_PARAMETER(Target);
 
     if (!__ValidateSrbBuffer(__FUNCTION__, Srb, (ULONG)sizeof(SENSE_DATA))) {
         Srb->ScsiStatus = 0x40;
@@ -1945,8 +1945,8 @@ PdoRequestSense(
 }
 
 static DECLSPEC_NOINLINE VOID
-PdoReportLuns(
-    __in PXENVBD_PDO             Pdo,
+TargetReportLuns(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
@@ -1955,7 +1955,7 @@ PdoReportLuns(
     ULONG           AllocLength = Cdb_AllocationLength(Srb);
     PUCHAR          Buffer = Srb->DataBuffer;
 
-    UNREFERENCED_PARAMETER(Pdo);
+    UNREFERENCED_PARAMETER(Target);
 
     if (!__ValidateSrbBuffer(__FUNCTION__, Srb, 8)) {
         Srb->ScsiStatus = 0x40;
@@ -1988,13 +1988,13 @@ PdoReportLuns(
 }
 
 static DECLSPEC_NOINLINE VOID
-PdoReadCapacity(
-    __in PXENVBD_PDO             Pdo,
+TargetReadCapacity(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PREAD_CAPACITY_DATA     Capacity = Srb->DataBuffer;
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Pdo->Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
     ULONG                   LastBlock;
@@ -2003,7 +2003,7 @@ PdoReadCapacity(
         Srb->ScsiStatus = 0x02; // CHECK_CONDITION
         return;
     }
-    
+
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
 
@@ -2021,13 +2021,13 @@ PdoReadCapacity(
 }
 
 static DECLSPEC_NOINLINE VOID
-PdoReadCapacity16(
-    __in PXENVBD_PDO             Pdo,
+TargetReadCapacity16(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PREAD_CAPACITY16_DATA   Capacity = Srb->DataBuffer;
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Pdo->Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
     ULONG                   PhysSectorSize;
@@ -2061,16 +2061,16 @@ PdoReadCapacity16(
 // StorPort Methods
 __checkReturn
 static FORCEINLINE BOOLEAN
-__PdoExecuteScsi(
-    __in PXENVBD_PDO             Pdo,
+__TargetExecuteScsi(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     const UCHAR Operation = Cdb_OperationEx(Srb);
-    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Pdo->Frontend);
+    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
 
     if (DiskInfo->DiskInfo & VDISK_READONLY) {
-        Trace("Target[%d] : (%08x) Read-Only, fail SRB (%02x:%s)\n", PdoGetTargetId(Pdo),
+        Trace("Target[%d] : (%08x) Read-Only, fail SRB (%02x:%s)\n", TargetGetTargetId(Target),
                 DiskInfo->DiskInfo, Operation, Cdb_OperationName(Operation));
         Srb->ScsiStatus = 0x40; // SCSI_ABORT
         return TRUE;
@@ -2080,41 +2080,41 @@ __PdoExecuteScsi(
     switch (Operation) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        return PdoReadWrite(Pdo, Srb);
+        return TargetReadWrite(Target, Srb);
         break;
-        
+
     case SCSIOP_SYNCHRONIZE_CACHE:
-        return PdoSyncCache(Pdo, Srb);
+        return TargetSyncCache(Target, Srb);
         break;
 
     case SCSIOP_UNMAP:
-        return PdoUnmap(Pdo, Srb);
+        return TargetUnmap(Target, Srb);
         break;
 
     case SCSIOP_INQUIRY:
-        if (!StorPortSetDeviceQueueDepth(PdoGetAdapter(Pdo),
+        if (!StorPortSetDeviceQueueDepth(TargetGetAdapter(Target),
                                          0,
-                                         (UCHAR)PdoGetTargetId(Pdo),
+                                         (UCHAR)TargetGetTargetId(Target),
                                          0,
                                          XENVBD_MAX_QUEUE_DEPTH))
             Verbose("Target[%d] : Failed to set queue depth\n",
-                    PdoGetTargetId(Pdo));
-        PdoInquiry(PdoGetTargetId(Pdo), FrontendGetInquiry(Pdo->Frontend), Srb, Pdo->DeviceType);
+                    TargetGetTargetId(Target));
+        PdoInquiry(TargetGetTargetId(Target), FrontendGetInquiry(Target->Frontend), Srb, Target->DeviceType);
         break;
     case SCSIOP_MODE_SENSE:
-        PdoModeSense(Pdo, Srb);
+        TargetModeSense(Target, Srb);
         break;
     case SCSIOP_REQUEST_SENSE:
-        PdoRequestSense(Pdo, Srb);
+        TargetRequestSense(Target, Srb);
         break;
     case SCSIOP_REPORT_LUNS:
-        PdoReportLuns(Pdo, Srb);
+        TargetReportLuns(Target, Srb);
         break;
     case SCSIOP_READ_CAPACITY:
-        PdoReadCapacity(Pdo, Srb);
+        TargetReadCapacity(Target, Srb);
         break;
     case SCSIOP_READ_CAPACITY16:
-        PdoReadCapacity16(Pdo, Srb);
+        TargetReadCapacity16(Target, Srb);
         break;
     case SCSIOP_MEDIUM_REMOVAL:
     case SCSIOP_TEST_UNIT_READY:
@@ -2127,79 +2127,79 @@ __PdoExecuteScsi(
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
     case SCSIOP_START_STOP_UNIT:
-        Trace("Target[%d] : Start/Stop Unit (%02X)\n", PdoGetTargetId(Pdo), Srb->Cdb[4]);
+        Trace("Target[%d] : Start/Stop Unit (%02X)\n", TargetGetTargetId(Target), Srb->Cdb[4]);
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
     default:
-        Trace("Target[%d] : Unsupported CDB (%02x:%s)\n", PdoGetTargetId(Pdo), Operation, Cdb_OperationName(Operation));
+        Trace("Target[%d] : Unsupported CDB (%02x:%s)\n", TargetGetTargetId(Target), Operation, Cdb_OperationName(Operation));
         break;
     }
     return TRUE;
 }
 
 static FORCEINLINE BOOLEAN
-__PdoQueueShutdown(
-    __in PXENVBD_PDO             Pdo,
+__TargetQueueShutdown(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Pdo->Frontend);
+    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
 
-    QueueAppend(&Pdo->ShutdownSrbs, &SrbExt->Entry);
+    QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
     NotifierKick(Notifier);
 
     return FALSE;
 }
 
 static FORCEINLINE BOOLEAN
-__PdoReset(
-    __in PXENVBD_PDO             Pdo,
+__TargetReset(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    Verbose("Target[%u] ====>\n", PdoGetTargetId(Pdo));
+    Verbose("Target[%u] ====>\n", TargetGetTargetId(Target));
 
-    PdoReset(Pdo);
+    TargetReset(Target);
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 
-    Verbose("Target[%u] <====\n", PdoGetTargetId(Pdo));
+    Verbose("Target[%u] <====\n", TargetGetTargetId(Target));
     return TRUE;
 }
 
 __checkReturn
 static FORCEINLINE BOOLEAN
-__ValidateSrbForPdo(
-    __in PXENVBD_PDO             Pdo,
+__ValidateSrbForTarget(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
     const UCHAR Operation = Cdb_OperationEx(Srb);
 
-    if (Pdo == NULL) {
-        Error("Invalid Pdo(NULL) (%02x:%s)\n", 
+    if (Target == NULL) {
+        Error("Invalid Target(NULL) (%02x:%s)\n",
                 Operation, Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
         return FALSE;
     }
 
     if (Srb->PathId != 0) {
-        Error("Target[%d] : Invalid PathId(%d) (%02x:%s)\n", 
-                PdoGetTargetId(Pdo), Srb->PathId, Operation, Cdb_OperationName(Operation));
+        Error("Target[%d] : Invalid PathId(%d) (%02x:%s)\n",
+                TargetGetTargetId(Target), Srb->PathId, Operation, Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_PATH_ID;
         return FALSE;
     }
 
     if (Srb->Lun != 0) {
-        Error("Target[%d] : Invalid Lun(%d) (%02x:%s)\n", 
-                PdoGetTargetId(Pdo), Srb->Lun, Operation, Cdb_OperationName(Operation));
+        Error("Target[%d] : Invalid Lun(%d) (%02x:%s)\n",
+                TargetGetTargetId(Target), Srb->Lun, Operation, Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_LUN;
         return FALSE;
     }
 
-    if (PdoIsMissing(Pdo)) {
-        Error("Target[%d] : %s (%s) (%02x:%s)\n", 
-                PdoGetTargetId(Pdo), Pdo->Missing ? "MISSING" : "NOT_MISSING", Pdo->Reason, Operation, Cdb_OperationName(Operation));
+    if (TargetIsMissing(Target)) {
+        Error("Target[%d] : %s (%s) (%02x:%s)\n",
+                TargetGetTargetId(Target), Target->Missing ? "MISSING" : "NOT_MISSING", Target->Reason, Operation, Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
         return FALSE;
     }
@@ -2209,24 +2209,24 @@ __ValidateSrbForPdo(
 
 __checkReturn
 BOOLEAN
-PdoStartIo(
-    __in PXENVBD_PDO             Pdo,
+TargetStartIo(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    if (!__ValidateSrbForPdo(Pdo, Srb))
+    if (!__ValidateSrbForTarget(Target, Srb))
         return TRUE;
 
     switch (Srb->Function) {
     case SRB_FUNCTION_EXECUTE_SCSI:
-        return __PdoExecuteScsi(Pdo, Srb);
+        return __TargetExecuteScsi(Target, Srb);
 
     case SRB_FUNCTION_RESET_DEVICE:
-        return __PdoReset(Pdo, Srb);
+        return __TargetReset(Target, Srb);
 
     case SRB_FUNCTION_FLUSH:
     case SRB_FUNCTION_SHUTDOWN:
-        return __PdoQueueShutdown(Pdo, Srb);
+        return __TargetQueueShutdown(Target, Srb);
 
     default:
         return TRUE;
@@ -2234,62 +2234,62 @@ PdoStartIo(
 }
 
 static FORCEINLINE VOID
-__PdoCleanupSubmittedReqs(
-    IN  PXENVBD_PDO             Pdo
+__TargetCleanupSubmittedReqs(
+    IN  PXENVBD_TARGET             Target
     )
 {
     // Fail PreparedReqs
     for (;;) {
         PXENVBD_SRBEXT  SrbExt;
         PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Pdo->SubmittedReqs);
+        PLIST_ENTRY     Entry = QueuePop(&Target->SubmittedReqs);
         if (Entry == NULL)
             break;
         Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
         SrbExt = GetSrbExt(Request->Srb);
 
-        Verbose("Target[%d] : SubmittedReq 0x%p -> FAILED\n", PdoGetTargetId(Pdo), Request);
+        Verbose("Target[%d] : SubmittedReq 0x%p -> FAILED\n", TargetGetTargetId(Target), Request);
 
-        PdoPutRequest(Pdo, Request);
+        TargetPutRequest(Target, Request);
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            AdapterCompleteSrb(PdoGetAdapter(Pdo), SrbExt->Srb);
+            AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
         }
     }
 }
 
 VOID
-PdoReset(
-    __in PXENVBD_PDO             Pdo
+TargetReset(
+    __in PXENVBD_TARGET             Target
     )
 {
-    Trace("Target[%d] ====> (Irql=%d)\n", PdoGetTargetId(Pdo), KeGetCurrentIrql());
+    Trace("Target[%d] ====> (Irql=%d)\n", TargetGetTargetId(Target), KeGetCurrentIrql());
 
-    __PdoPauseDataPath(Pdo, TRUE);
+    __TargetPauseDataPath(Target, TRUE);
 
-    if (QueueCount(&Pdo->SubmittedReqs)) {
-        Error("Target[%d] : backend has %u outstanding requests after a PdoReset\n",
-                PdoGetTargetId(Pdo), QueueCount(&Pdo->SubmittedReqs));
+    if (QueueCount(&Target->SubmittedReqs)) {
+        Error("Target[%d] : backend has %u outstanding requests after a TargetReset\n",
+                TargetGetTargetId(Target), QueueCount(&Target->SubmittedReqs));
     }
 
-    __PdoUnpauseDataPath(Pdo);
+    __TargetUnpauseDataPath(Target);
 
-    Trace("Target[%d] <==== (Irql=%d)\n", PdoGetTargetId(Pdo), KeGetCurrentIrql());
+    Trace("Target[%d] <==== (Irql=%d)\n", TargetGetTargetId(Target), KeGetCurrentIrql());
 }
 
 
 VOID
-PdoSrbPnp(
-    __in PXENVBD_PDO             Pdo,
+TargetSrbPnp(
+    __in PXENVBD_TARGET             Target,
     __in PSCSI_PNP_REQUEST_BLOCK Srb
     )
 {
     switch (Srb->PnPAction) {
     case StorQueryCapabilities: {
         PSTOR_DEVICE_CAPABILITIES DeviceCaps = Srb->DataBuffer;
-        PXENVBD_CAPS    Caps = FrontendGetCaps(Pdo->Frontend);
+        PXENVBD_CAPS    Caps = FrontendGetCaps(Target->Frontend);
 
         if (Caps->Removable)
             DeviceCaps->Removable = 1;
@@ -2310,15 +2310,15 @@ PdoSrbPnp(
 //=============================================================================
 // PnP Handler
 static FORCEINLINE VOID
-__PdoDeviceUsageNotification(
-    __in PXENVBD_PDO             Pdo,
+__TargetDeviceUsageNotification(
+    __in PXENVBD_TARGET             Target,
     __in PIRP                    Irp
     )
 {
     PIO_STACK_LOCATION      StackLocation;
     BOOLEAN                 Value;
     DEVICE_USAGE_NOTIFICATION_TYPE  Type;
-    PXENVBD_CAPS            Caps = FrontendGetCaps(Pdo->Frontend);
+    PXENVBD_CAPS            Caps = FrontendGetCaps(Target->Frontend);
 
     StackLocation = IoGetCurrentIrpStackLocation(Irp);
     Value = StackLocation->Parameters.UsageNotification.InPath;
@@ -2346,248 +2346,248 @@ __PdoDeviceUsageNotification(
     default:
         return;
     }
-    FrontendWriteUsage(Pdo->Frontend);
+    FrontendWriteUsage(Target->Frontend);
 }
 
 static FORCEINLINE VOID
-__PdoCheckEjectPending(
-    __in PXENVBD_PDO             Pdo
+__TargetCheckEjectPending(
+    __in PXENVBD_TARGET             Target
     )
 {
     KIRQL               Irql;
     BOOLEAN             EjectPending = FALSE;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    if (Pdo->EjectPending) {
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->EjectPending) {
         EjectPending = TRUE;
-        Pdo->EjectPending = FALSE;
-        Pdo->EjectRequested = TRUE;
+        Target->EjectPending = FALSE;
+        Target->EjectRequested = TRUE;
     }
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
     if (EjectPending) {
-        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", PdoGetTargetId(Pdo), Pdo->DeviceObject);
-        IoRequestDeviceEject(Pdo->DeviceObject);
+        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", TargetGetTargetId(Target), Target->DeviceObject);
+        IoRequestDeviceEject(Target->DeviceObject);
     }
 }
 
 static FORCEINLINE VOID
-__PdoCheckEjectFailed(
-    __in PXENVBD_PDO             Pdo
+__TargetCheckEjectFailed(
+    __in PXENVBD_TARGET             Target
     )
 {
     KIRQL               Irql;
     BOOLEAN             EjectFailed = FALSE;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    if (Pdo->EjectRequested) {
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->EjectRequested) {
         EjectFailed = TRUE;
-        Pdo->EjectRequested = FALSE;
+        Target->EjectRequested = FALSE;
     }
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
     if (EjectFailed) {
-        Error("Target[%d] : Unplug failed due to open handle(s)!\n", PdoGetTargetId(Pdo));
-        FrontendStoreWriteFrontend(Pdo->Frontend, "error", "Unplug failed due to open handle(s)!");
+        Error("Target[%d] : Unplug failed due to open handle(s)!\n", TargetGetTargetId(Target));
+        FrontendStoreWriteFrontend(Target->Frontend, "error", "Unplug failed due to open handle(s)!");
     }
 }
 
 static FORCEINLINE VOID
-__PdoRemoveDevice(
-    __in PXENVBD_PDO             Pdo
+__TargetRemoveDevice(
+    __in PXENVBD_TARGET             Target
     )
 {
-    PdoD0ToD3(Pdo);
+    TargetD0ToD3(Target);
 
-    switch (PdoGetDevicePnpState(Pdo)) {
+    switch (TargetGetDevicePnpState(Target)) {
     case SurpriseRemovePending:
-        PdoSetMissing(Pdo, "Surprise Remove");
-        PdoSetDevicePnpState(Pdo, Deleted);
-        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
+        TargetSetMissing(Target, "Surprise Remove");
+        TargetSetDevicePnpState(Target, Deleted);
+        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
         break;
 
     default:
-        PdoSetMissing(Pdo, "Removed");
-        PdoSetDevicePnpState(Pdo, Deleted);
-        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
+        TargetSetMissing(Target, "Removed");
+        TargetSetDevicePnpState(Target, Deleted);
+        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
         break;
     }
 }
 
 static FORCEINLINE VOID
-__PdoEject(
-    __in PXENVBD_PDO             Pdo
+__TargetEject(
+    __in PXENVBD_TARGET             Target
     )
 {
-    PdoSetMissing(Pdo, "Ejected");
-    PdoSetDevicePnpState(Pdo, Deleted);
-    StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
+    TargetSetMissing(Target, "Ejected");
+    TargetSetDevicePnpState(Target, Deleted);
+    StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
 }
 
 __checkReturn
 NTSTATUS
-PdoDispatchPnp(
-    __in PXENVBD_PDO             Pdo,
+TargetDispatchPnp(
+    __in PXENVBD_TARGET             Target,
     __in PDEVICE_OBJECT          DeviceObject,
     __in PIRP                    Irp
     )
 {
     PIO_STACK_LOCATION  Stack = IoGetCurrentIrpStackLocation(Irp);
 
-    __PdoCheckEjectPending(Pdo);
+    __TargetCheckEjectPending(Target);
 
     switch (Stack->MinorFunction) {
     case IRP_MN_START_DEVICE:
-        (VOID) PdoD3ToD0(Pdo);
-        PdoSetDevicePnpState(Pdo, Started);
+        (VOID) TargetD3ToD0(Target);
+        TargetSetDevicePnpState(Target, Started);
         break;
 
     case IRP_MN_QUERY_STOP_DEVICE:
-        PdoSetDevicePnpState(Pdo, StopPending);
+        TargetSetDevicePnpState(Target, StopPending);
         break;
 
     case IRP_MN_CANCEL_STOP_DEVICE:
-        __PdoRestoreDevicePnpState(Pdo, StopPending);
+        __TargetRestoreDevicePnpState(Target, StopPending);
         break;
 
     case IRP_MN_STOP_DEVICE:
-        PdoD0ToD3(Pdo);
-        PdoSetDevicePnpState(Pdo, Stopped);
+        TargetD0ToD3(Target);
+        TargetSetDevicePnpState(Target, Stopped);
         break;
 
     case IRP_MN_QUERY_REMOVE_DEVICE:
-        PdoSetDevicePnpState(Pdo, RemovePending);
+        TargetSetDevicePnpState(Target, RemovePending);
         break;
 
     case IRP_MN_CANCEL_REMOVE_DEVICE:
-        __PdoCheckEjectFailed(Pdo);
-        __PdoRestoreDevicePnpState(Pdo, RemovePending);
+        __TargetCheckEjectFailed(Target);
+        __TargetRestoreDevicePnpState(Target, RemovePending);
         break;
 
     case IRP_MN_SURPRISE_REMOVAL:
-        PdoSetDevicePnpState(Pdo, SurpriseRemovePending);
+        TargetSetDevicePnpState(Target, SurpriseRemovePending);
         break;
 
     case IRP_MN_REMOVE_DEVICE:
-        __PdoRemoveDevice(Pdo);
+        __TargetRemoveDevice(Target);
         break;
 
     case IRP_MN_EJECT:
-        __PdoEject(Pdo);
+        __TargetEject(Target);
         break;
 
     case IRP_MN_DEVICE_USAGE_NOTIFICATION:
-        __PdoDeviceUsageNotification(Pdo, Irp);
+        __TargetDeviceUsageNotification(Target, Irp);
         break;
 
     default:
         break;
     }
-    PdoDereference(Pdo);
+    TargetDereference(Target);
     return DriverDispatchPnp(DeviceObject, Irp);
 }
 
 __drv_maxIRQL(DISPATCH_LEVEL)
 VOID
-PdoIssueDeviceEject(
-    __in PXENVBD_PDO             Pdo,
+TargetIssueDeviceEject(
+    __in PXENVBD_TARGET             Target,
     __in __nullterminated const CHAR* Reason
     )
 {
     KIRQL       Irql;
     BOOLEAN     DoEject = FALSE;
 
-    KeAcquireSpinLock(&Pdo->Lock, &Irql);
-    if (Pdo->DeviceObject) {
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->DeviceObject) {
         DoEject = TRUE;
-        Pdo->EjectRequested = TRUE;
+        Target->EjectRequested = TRUE;
     } else {
-        Pdo->EjectPending = TRUE;
+        Target->EjectPending = TRUE;
     }
-    KeReleaseSpinLock(&Pdo->Lock, Irql);
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
-    Verbose("Target[%d] : Ejecting (%s - %s)\n", PdoGetTargetId(Pdo), DoEject ? "Now" : "Next PnP IRP", Reason);
-    if (!Pdo->WrittenEjected) {
-        Pdo->WrittenEjected = TRUE;
-        FrontendStoreWriteFrontend(Pdo->Frontend, "ejected", "1");
+    Verbose("Target[%d] : Ejecting (%s - %s)\n", TargetGetTargetId(Target), DoEject ? "Now" : "Next PnP IRP", Reason);
+    if (!Target->WrittenEjected) {
+        Target->WrittenEjected = TRUE;
+        FrontendStoreWriteFrontend(Target->Frontend, "ejected", "1");
     }
     if (DoEject) {
-        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", PdoGetTargetId(Pdo), Pdo->DeviceObject);
-        IoRequestDeviceEject(Pdo->DeviceObject);
+        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", TargetGetTargetId(Target), Target->DeviceObject);
+        IoRequestDeviceEject(Target->DeviceObject);
     } else {
-        Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n", PdoGetTargetId(Pdo));
-        StorPortNotification(BusChangeDetected, PdoGetAdapter(Pdo), 0);
+        Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n", TargetGetTargetId(Target));
+        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
     }
 }
 
 __checkReturn
 NTSTATUS
-PdoD3ToD0(
-    __in PXENVBD_PDO            Pdo
+TargetD3ToD0(
+    __in PXENVBD_TARGET            Target
     )
 {
     NTSTATUS                    Status;
-    const ULONG                 TargetId = PdoGetTargetId(Pdo);
+    const ULONG                 TargetId = TargetGetTargetId(Target);
 
-    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD0))
+    if (!TargetSetDevicePowerState(Target, PowerDeviceD0))
         return STATUS_SUCCESS;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : D3->D0\n", TargetId);
 
     // power up frontend
-    Status = FrontendD3ToD0(Pdo->Frontend);
+    Status = FrontendD3ToD0(Target->Frontend);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
     // connect frontend
-    Status = FrontendSetState(Pdo->Frontend, XENVBD_ENABLED);
+    Status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
     if (!NT_SUCCESS(Status))
         goto fail2;
-    __PdoUnpauseDataPath(Pdo);
+    __TargetUnpauseDataPath(Target);
 
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
 fail2:
     Error("Fail2\n");
-    FrontendD0ToD3(Pdo->Frontend);
+    FrontendD0ToD3(Target->Frontend);
 
 fail1:
     Error("Fail1 (%08x)\n", Status);
 
-    Pdo->DevicePowerState = PowerDeviceD3;
+    Target->DevicePowerState = PowerDeviceD3;
 
     return Status;
 }
 
 VOID
-PdoD0ToD3(
-    __in PXENVBD_PDO            Pdo
+TargetD0ToD3(
+    __in PXENVBD_TARGET            Target
     )
 {
-    const ULONG                 TargetId = PdoGetTargetId(Pdo);
+    const ULONG                 TargetId = TargetGetTargetId(Target);
 
-    if (!PdoSetDevicePowerState(Pdo, PowerDeviceD3))
+    if (!TargetSetDevicePowerState(Target, PowerDeviceD3))
         return;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : D0->D3\n", TargetId);
 
     // close frontend
-    __PdoPauseDataPath(Pdo, FALSE);
-    (VOID) FrontendSetState(Pdo->Frontend, XENVBD_CLOSED);
-    ASSERT3U(QueueCount(&Pdo->SubmittedReqs), ==, 0);
+    __TargetPauseDataPath(Target, FALSE);
+    (VOID) FrontendSetState(Target->Frontend, XENVBD_CLOSED);
+    ASSERT3U(QueueCount(&Target->SubmittedReqs), ==, 0);
 
     // power down frontend
-    FrontendD0ToD3(Pdo->Frontend);
+    FrontendD0ToD3(Target->Frontend);
 
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }
 
 __checkReturn
 BOOLEAN
-PdoCreate(
+TargetCreate(
     __in PXENVBD_ADAPTER             Adapter,
     __in __nullterminated PCHAR  DeviceId,
     __in ULONG                   TargetId,
@@ -2595,66 +2595,66 @@ PdoCreate(
     )
 {
     NTSTATUS    Status;
-    PXENVBD_PDO Pdo;
+    PXENVBD_TARGET Target;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
     Status = STATUS_INSUFFICIENT_RESOURCES;
 #pragma warning(suppress: 6014)
-    Pdo = __PdoAlloc(sizeof(XENVBD_PDO));
-    if (!Pdo)
+    Target = __TargetAlloc(sizeof(XENVBD_TARGET));
+    if (!Target)
         goto fail1;
 
     Verbose("Target[%d] : Creating\n", TargetId);
-    Pdo->Signature      = PDO_SIGNATURE;
-    Pdo->Adapter            = Adapter;
-    Pdo->DeviceObject   = NULL; // filled in later
-    KeInitializeEvent(&Pdo->RemoveEvent, SynchronizationEvent, FALSE);
-    Pdo->ReferenceCount = 1;
-    Pdo->Paused         = 1; // Paused until D3->D0 transition
-    Pdo->DevicePnpState = Present;
-    Pdo->DevicePowerState = PowerDeviceD3;
-    Pdo->DeviceType     = DeviceType;
+    Target->Signature      = TARGET_SIGNATURE;
+    Target->Adapter            = Adapter;
+    Target->DeviceObject   = NULL; // filled in later
+    KeInitializeEvent(&Target->RemoveEvent, SynchronizationEvent, FALSE);
+    Target->ReferenceCount = 1;
+    Target->Paused         = 1; // Paused until D3->D0 transition
+    Target->DevicePnpState = Present;
+    Target->DevicePowerState = PowerDeviceD3;
+    Target->DeviceType     = DeviceType;
 
-    KeInitializeSpinLock(&Pdo->Lock);
-    QueueInit(&Pdo->FreshSrbs);
-    QueueInit(&Pdo->PreparedReqs);
-    QueueInit(&Pdo->SubmittedReqs);
-    QueueInit(&Pdo->ShutdownSrbs);
-    __LookasideInit(&Pdo->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
-    __LookasideInit(&Pdo->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
-    __LookasideInit(&Pdo->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
+    KeInitializeSpinLock(&Target->Lock);
+    QueueInit(&Target->FreshSrbs);
+    QueueInit(&Target->PreparedReqs);
+    QueueInit(&Target->SubmittedReqs);
+    QueueInit(&Target->ShutdownSrbs);
+    __LookasideInit(&Target->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
+    __LookasideInit(&Target->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
+    __LookasideInit(&Target->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
 
-    Status = FrontendCreate(Pdo, DeviceId, TargetId, &Pdo->Frontend);
+    Status = FrontendCreate(Target, DeviceId, TargetId, &Target->Frontend);
     if (!NT_SUCCESS(Status))
         goto fail2;
 
-    Status = PdoD3ToD0(Pdo);
+    Status = TargetD3ToD0(Target);
     if (!NT_SUCCESS(Status))
         goto fail3;
 
-    if (!AdapterLinkPdo(Adapter, Pdo))
+    if (!AdapterLinkTarget(Adapter, Target))
         goto fail4;
 
-    Verbose("Target[%d] : Created (%s)\n", TargetId, Pdo);
+    Verbose("Target[%d] : Created (%s)\n", TargetId, Target);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return TRUE;
 
 fail4:
     Error("Fail4\n");
-    PdoD0ToD3(Pdo);
+    TargetD0ToD3(Target);
 
 fail3:
     Error("Fail3\n");
-    FrontendDestroy(Pdo->Frontend);
-    Pdo->Frontend = NULL;
+    FrontendDestroy(Target->Frontend);
+    Target->Frontend = NULL;
 
 fail2:
     Error("Fail2\n");
-    __LookasideTerm(&Pdo->IndirectList);
-    __LookasideTerm(&Pdo->SegmentList);
-    __LookasideTerm(&Pdo->RequestList);
-    __PdoFree(Pdo);
+    __LookasideTerm(&Target->IndirectList);
+    __LookasideTerm(&Target->SegmentList);
+    __LookasideTerm(&Target->RequestList);
+    __TargetFree(Target);
 
 fail1:
     Error("Fail1 (%08x)\n", Status);
@@ -2662,33 +2662,33 @@ fail1:
 }
 
 VOID
-PdoDestroy(
-    __in PXENVBD_PDO    Pdo
+TargetDestroy(
+    __in PXENVBD_TARGET    Target
     )
 {
-    const ULONG         TargetId = PdoGetTargetId(Pdo);
+    const ULONG         TargetId = TargetGetTargetId(Target);
     PVOID               Objects[4];
     PKWAIT_BLOCK        WaitBlock;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : Destroying\n", TargetId);
 
-    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
-    if (!AdapterUnlinkPdo(PdoGetAdapter(Pdo), Pdo)) {
-        Error("Target[%d] : PDO 0x%p not linked to ADAPTER 0x%p\n", TargetId, Pdo, PdoGetAdapter(Pdo));
+    ASSERT3U(Target->Signature, ==, TARGET_SIGNATURE);
+    if (!AdapterUnlinkTarget(TargetGetAdapter(Target), Target)) {
+        Error("Target[%d] : TARGET 0x%p not linked to ADAPTER 0x%p\n", TargetId, Target, TargetGetAdapter(Target));
     }
 
-    PdoD0ToD3(Pdo);
-    PdoDereference(Pdo); // drop initial ref count
+    TargetD0ToD3(Target);
+    TargetDereference(Target); // drop initial ref count
 
     // Wait for ReferenceCount == 0 and RequestListUsed == 0
-    Verbose("Target[%d] : ReferenceCount %d, RequestListUsed %d\n", TargetId, Pdo->ReferenceCount, Pdo->RequestList.Used);
-    Objects[0] = &Pdo->RemoveEvent;
-    Objects[1] = &Pdo->RequestList.Empty;
-    Objects[2] = &Pdo->SegmentList.Empty;
-    Objects[3] = &Pdo->IndirectList.Empty;
+    Verbose("Target[%d] : ReferenceCount %d, RequestListUsed %d\n", TargetId, Target->ReferenceCount, Target->RequestList.Used);
+    Objects[0] = &Target->RemoveEvent;
+    Objects[1] = &Target->RequestList.Empty;
+    Objects[2] = &Target->SegmentList.Empty;
+    Objects[3] = &Target->IndirectList.Empty;
 
-    WaitBlock = (PKWAIT_BLOCK)__PdoAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
+    WaitBlock = (PKWAIT_BLOCK)__TargetAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
     if (WaitBlock == NULL) {
         ULONG   Index;
 
@@ -2710,22 +2710,22 @@ PdoDestroy(
                                  NULL,
                                  WaitBlock);
 #pragma prefast(suppress:6102)
-        __PdoFree(WaitBlock);
+        __TargetFree(WaitBlock);
     }
 
-    ASSERT3S(Pdo->ReferenceCount, ==, 0);
-    ASSERT3U(PdoGetDevicePnpState(Pdo), ==, Deleted);
+    ASSERT3S(Target->ReferenceCount, ==, 0);
+    ASSERT3U(TargetGetDevicePnpState(Target), ==, Deleted);
 
-    FrontendDestroy(Pdo->Frontend);
-    Pdo->Frontend = NULL;
+    FrontendDestroy(Target->Frontend);
+    Target->Frontend = NULL;
 
-    __LookasideTerm(&Pdo->IndirectList);
-    __LookasideTerm(&Pdo->SegmentList);
-    __LookasideTerm(&Pdo->RequestList);
+    __LookasideTerm(&Target->IndirectList);
+    __LookasideTerm(&Target->SegmentList);
+    __LookasideTerm(&Target->RequestList);
 
-    ASSERT3U(Pdo->Signature, ==, PDO_SIGNATURE);
-    RtlZeroMemory(Pdo, sizeof(XENVBD_PDO));
-    __PdoFree(Pdo);
+    ASSERT3U(Target->Signature, ==, TARGET_SIGNATURE);
+    RtlZeroMemory(Target, sizeof(XENVBD_TARGET));
+    __TargetFree(Target);
 
     Verbose("Target[%d] : Destroyed\n", TargetId);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
