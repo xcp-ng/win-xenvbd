@@ -538,8 +538,11 @@ __CheckBackendForEject(
     ULONG           Attempt;
     NTSTATUS        Status;
 
+#pragma prefast(suppress:28649)
     if (Frontend->FrontendPath == NULL)
         return;
+
+#pragma prefast(suppress:28649)
     if (Frontend->BackendPath == NULL)
         return;
 

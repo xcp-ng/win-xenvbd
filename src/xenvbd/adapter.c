@@ -1204,7 +1204,7 @@ AdapterInitialize(
 {
     NTSTATUS            status;
 
-    ASSERT3U(KeGetCurrentIrql(), <=, DISPATCH_LEVEL);
+    ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
     Adapter->DeviceObject           = DeviceObject;
     Adapter->PhysicalDeviceObject   = PhysicalDeviceObject;
