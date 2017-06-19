@@ -86,17 +86,6 @@ TargetIsMissing(
     __in PXENVBD_TARGET             Target
     );
 
-extern const CHAR*
-TargetMissingReason(
-    __in PXENVBD_TARGET            Target
-    );
-
-__checkReturn
-extern BOOLEAN
-TargetIsEmulatedUnplugged(
-    __in PXENVBD_TARGET             Target
-    );
-
 extern VOID
 TargetSetDevicePnpState(
     __in PXENVBD_TARGET             Target,
@@ -139,19 +128,8 @@ TargetIsPaused(
     );
 
 __checkReturn
-extern ULONG
-TargetOutstandingReqs(
-    __in PXENVBD_TARGET             Target
-    );
-
-__checkReturn
 extern PXENVBD_ADAPTER
 TargetGetAdapter(
-    __in PXENVBD_TARGET             Target
-    );
-
-extern ULONG
-TargetSectorSize(
     __in PXENVBD_TARGET             Target
     );
 

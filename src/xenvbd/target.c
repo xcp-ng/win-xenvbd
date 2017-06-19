@@ -378,21 +378,6 @@ TargetIsMissing(
     return Missing;
 }
 
-FORCEINLINE const CHAR*
-TargetMissingReason(
-    __in PXENVBD_TARGET            Target
-    )
-{
-    KIRQL       Irql;
-    const CHAR* Reason;
-
-    KeAcquireSpinLock(&Target->Lock, &Irql);
-    Reason = Target->Reason;
-    KeReleaseSpinLock(&Target->Lock, Irql);
-
-    return Reason;
-}
-
 FORCEINLINE VOID
 TargetSetDevicePnpState(
     __in PXENVBD_TARGET             Target,
@@ -491,15 +476,6 @@ TargetIsPaused(
 }
 
 __checkReturn
-FORCEINLINE ULONG
-TargetOutstandingReqs(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    return QueueCount(&Target->SubmittedReqs);
-}
-
-__checkReturn
 FORCEINLINE PXENVBD_ADAPTER
 TargetGetAdapter(
     __in PXENVBD_TARGET             Target
@@ -508,7 +484,7 @@ TargetGetAdapter(
     return Target->Adapter;
 }
 
-FORCEINLINE ULONG
+static FORCEINLINE ULONG
 TargetSectorSize(
     __in PXENVBD_TARGET             Target
     )
@@ -772,14 +748,6 @@ __Phys2Pfn(
     )
 {
     return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
-}
-
-static FORCEINLINE PFN_NUMBER
-__Virt2Pfn(
-    __in PVOID                   VirtAddr
-    )
-{
-    return (PFN_NUMBER)(MmGetPhysicalAddress(VirtAddr).QuadPart >> PAGE_SHIFT);
 }
 
 static FORCEINLINE MM_PAGE_PRIORITY
@@ -2191,33 +2159,6 @@ TargetStartIo(
 
     default:
         return TRUE;
-    }
-}
-
-static FORCEINLINE VOID
-__TargetCleanupSubmittedReqs(
-    IN  PXENVBD_TARGET             Target
-    )
-{
-    // Fail PreparedReqs
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Target->SubmittedReqs);
-        if (Entry == NULL)
-            break;
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        SrbExt = GetSrbExt(Request->Srb);
-
-        Verbose("Target[%d] : SubmittedReq 0x%p -> FAILED\n", TargetGetTargetId(Target), Request);
-
-        TargetPutRequest(Target, Request);
-
-        if (InterlockedDecrement(&SrbExt->Count) == 0) {
-            SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
-            SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
-        }
     }
 }
 
