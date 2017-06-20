@@ -162,11 +162,10 @@ TargetReset(
     __in PXENVBD_TARGET             Target
     );
 
-__checkReturn
 extern BOOLEAN
 TargetStartIo(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
     );
 
 extern VOID

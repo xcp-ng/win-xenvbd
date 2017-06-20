@@ -36,12 +36,13 @@
 
 typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 
-#include <storport.h>
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <gnttab_interface.h>
 #include <debug_interface.h>
 #include <suspend_interface.h>
+
+#include "srbext.h"
 
 #define ADAPTER_GET_INTERFACE(_name, _type)     \
 extern VOID                                     \
@@ -66,8 +67,8 @@ AdapterIsTargetEmulated(
 
 extern VOID
 AdapterCompleteSrb(
-    IN  PXENVBD_ADAPTER     Adapter,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_SRBEXT  SrbExt
     );
 
 extern VOID

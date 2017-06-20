@@ -1396,10 +1396,12 @@ AdapterTeardown(
 
 VOID
 AdapterCompleteSrb(
-    IN  PXENVBD_ADAPTER     Adapter,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_SRBEXT  SrbExt
     )
 {
+    PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+
     ASSERT3U(Srb->SrbStatus, !=, SRB_STATUS_PENDING);
 
     ++Adapter->Completed;
@@ -1717,6 +1719,7 @@ AdapterHwBuildIo(
     )
 {
     PXENVBD_ADAPTER         Adapter = DevExt;
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
 
     InitSrbExt(Srb);
 
@@ -1746,7 +1749,7 @@ AdapterHwBuildIo(
         break;
     }
 
-    AdapterCompleteSrb(Adapter, Srb);
+    AdapterCompleteSrb(Adapter, SrbExt);
     return FALSE;
 }
 
@@ -1759,6 +1762,7 @@ AdapterHwStartIo(
     )
 {
     PXENVBD_ADAPTER         Adapter = DevExt;
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
     PXENVBD_TARGET          Target;
 
     Target = AdapterGetTarget(Adapter, Srb->TargetId);
@@ -1766,14 +1770,14 @@ AdapterHwStartIo(
         goto fail1;
 
     ++Adapter->StartIo;
-    if (TargetStartIo(Target, Srb))
-        AdapterCompleteSrb(Adapter, Srb);
+    if (TargetStartIo(Target, SrbExt))
+        AdapterCompleteSrb(Adapter, SrbExt);
 
     return TRUE;
 
 fail1:
     Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
-    AdapterCompleteSrb(Adapter, Srb);
+    AdapterCompleteSrb(Adapter, SrbExt);
     return TRUE;
 }
 

@@ -1297,7 +1297,7 @@ __TargetPauseDataPath(
         Verbose("Target[%d] : FreshSrb 0x%p -> SCSI_ABORTED\n", TargetGetTargetId(Target), SrbExt->Srb);
         SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
         SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
-        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt);
     }
 
     // Fail PreparedReqs
@@ -1317,7 +1317,7 @@ __TargetPauseDataPath(
 
         if (InterlockedDecrement(&SrbExt->Count) == 0) {
             SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-            AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
+            AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt);
         }
     }
 }
@@ -1429,7 +1429,7 @@ TargetCompleteShutdown(
             break;
         SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
         SrbExt->Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt->Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt);
     }
 }
 
@@ -1526,7 +1526,7 @@ TargetCompleteResponse(
             Srb->ScsiStatus = 0x40; // SCSI_ABORTED
         }
 
-        AdapterCompleteSrb(TargetGetAdapter(Target), Srb);
+        AdapterCompleteSrb(TargetGetAdapter(Target), SrbExt);
     }
 }
 
@@ -2129,13 +2129,14 @@ __ValidateSrbForTarget(
     return TRUE;
 }
 
-__checkReturn
 BOOLEAN
 TargetStartIo(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
     )
 {
+    PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+
     if (!__ValidateSrbForTarget(Target, Srb))
         return TRUE;
 
