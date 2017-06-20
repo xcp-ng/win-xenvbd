@@ -798,59 +798,6 @@ SGListNext(
     return !((SGList->PhysAddr.QuadPart & AlignmentMask) || (SGList->PhysLen & AlignmentMask));
 }
 
-static FORCEINLINE BOOLEAN
-MapSegmentBuffer(
-    IN  PXENVBD_TARGET             Target,
-    IN  PXENVBD_SEGMENT         Segment,
-    IN  PXENVBD_SG_LIST         SGList,
-    IN  ULONG                   SectorSize,
-    IN  ULONG                   SectorsNow
-    )
-{
-    PMDL    Mdl;
-
-    // map PhysAddr to 1 or 2 pages and lock for VirtAddr
-#pragma warning(push)
-#pragma warning(disable:28145)
-    Mdl = &Segment->Mdl;
-    Mdl->Next           = NULL;
-    Mdl->Size           = (SHORT)(sizeof(MDL) + sizeof(PFN_NUMBER));
-    Mdl->MdlFlags       = MDL_PAGES_LOCKED;
-    Mdl->Process        = NULL;
-    Mdl->MappedSystemVa = NULL;
-    Mdl->StartVa        = NULL;
-    Mdl->ByteCount      = SGList->PhysLen;
-    Mdl->ByteOffset     = __Offset(SGList->PhysAddr);
-    Segment->Pfn[0]     = __Phys2Pfn(SGList->PhysAddr);
-
-    if (SGList->PhysLen < SectorsNow * SectorSize) {
-        SGListGet(SGList);
-        Mdl->Size       += sizeof(PFN_NUMBER);
-        Mdl->ByteCount  = Mdl->ByteCount + SGList->PhysLen;
-        Segment->Pfn[1] = __Phys2Pfn(SGList->PhysAddr);
-    }
-#pragma warning(pop)
-
-    ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
-    ASSERT3U(Mdl->ByteCount, <=, PAGE_SIZE);
-    ASSERT3U(SectorsNow, ==, (Mdl->ByteCount / SectorSize));
-
-    Segment->Length = __min(Mdl->ByteCount, PAGE_SIZE);
-    Segment->Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode,
-                            MmCached, NULL, FALSE, __TargetPriority(Target));
-    if (!Segment->Buffer) {
-        goto fail;
-    }
-
-    ASSERT3P(MmGetMdlPfnArray(Mdl)[0], ==, Segment->Pfn[0]);
-    ASSERT3P(MmGetMdlPfnArray(Mdl)[1], ==, Segment->Pfn[1]);
-
-    return TRUE;
-
-fail:
-    return FALSE;
-}
-
 static FORCEINLINE VOID
 RequestCopyOutput(
     __in PXENVBD_REQUEST         Request
@@ -901,6 +848,8 @@ PrepareSegment(
         ASSERT3U((SGList->PhysLen / SectorSize), ==, *SectorsNow);
         ASSERT3U((SGList->PhysLen & (SectorSize - 1)), ==, 0);
     } else {
+        PMDL        Mdl;
+
         ++Target->SegsBounced;
         // get first sector, last sector and count
         Segment->FirstSector    = 0;
@@ -908,10 +857,41 @@ PrepareSegment(
         Segment->LastSector     = (UCHAR)(*SectorsNow - 1);
 
         // map SGList to Virtual Address. Populates Segment->Buffer and Segment->Length
-        if (!MapSegmentBuffer(Target, Segment, SGList, SectorSize, *SectorsNow)) {
+#pragma warning(push)
+#pragma warning(disable:28145)
+        Mdl = &Segment->Mdl;
+        Mdl->Next           = NULL;
+        Mdl->Size           = (SHORT)(sizeof(MDL) + sizeof(PFN_NUMBER));
+        Mdl->MdlFlags       = MDL_PAGES_LOCKED;
+        Mdl->Process        = NULL;
+        Mdl->MappedSystemVa = NULL;
+        Mdl->StartVa        = NULL;
+        Mdl->ByteCount      = SGList->PhysLen;
+        Mdl->ByteOffset     = __Offset(SGList->PhysAddr);
+        Segment->Pfn[0]     = __Phys2Pfn(SGList->PhysAddr);
+
+        if (SGList->PhysLen < *SectorsNow * SectorSize) {
+            SGListGet(SGList);
+            Mdl->Size       += sizeof(PFN_NUMBER);
+            Mdl->ByteCount  = Mdl->ByteCount + SGList->PhysLen;
+            Segment->Pfn[1] = __Phys2Pfn(SGList->PhysAddr);
+        }
+#pragma warning(pop)
+
+        ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
+        ASSERT3U(Mdl->ByteCount, <=, PAGE_SIZE);
+        ASSERT3U(*SectorsNow, ==, (Mdl->ByteCount / SectorSize));
+
+        Segment->Length = __min(Mdl->ByteCount, PAGE_SIZE);
+        Segment->Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode,
+                                MmCached, NULL, FALSE, __TargetPriority(Target));
+        if (!Segment->Buffer) {
             ++Target->FailedMaps;
             goto fail1;
         }
+
+        ASSERT3P(MmGetMdlPfnArray(Mdl)[0], ==, Segment->Pfn[0]);
+        ASSERT3P(MmGetMdlPfnArray(Mdl)[1], ==, Segment->Pfn[1]);
 
         // get a buffer
         if (!BufferGet(Segment, &Segment->BufferId, &Pfn)) {
