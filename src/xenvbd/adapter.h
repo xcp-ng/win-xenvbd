@@ -70,6 +70,17 @@ AdapterCompleteSrb(
     IN  PSCSI_REQUEST_BLOCK Srb
     );
 
+extern VOID
+AdapterTargetListChanged(
+    IN  PXENVBD_ADAPTER Adapter
+    );
+
+extern VOID
+AdapterSetDeviceQueueDepth(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  ULONG           TargetId
+    );
+
 extern NTSTATUS
 AdapterDispatchPnp(
     IN  PXENVBD_ADAPTER Adapter,

@@ -58,7 +58,8 @@
 #include "debug.h"
 #include "assert.h"
 
-#define MAXNAMELEN  128
+#define XENVBD_MAX_QUEUE_DEPTH  254
+#define MAXNAMELEN              128
 #define ADAPTER_POOL_TAG        'adAX'
 
 struct _XENVBD_ADAPTER {
@@ -498,9 +499,7 @@ __AdapterEnumerate(
     }
 
     if (NeedInvalidate)
-        StorPortNotification(BusChangeDetected,
-                             Adapter,
-                             NULL);
+        AdapterTargetListChanged(Adapter);
     if (NeedReboot)
         DriverRequestReboot();
 }
@@ -1408,6 +1407,31 @@ AdapterCompleteSrb(
     StorPortNotification(RequestComplete, Adapter, Srb);
 }
 
+VOID
+AdapterTargetListChanged(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    StorPortNotification(BusChangeDetected,
+                         Adapter,
+                         NULL);
+}
+
+VOID
+AdapterSetDeviceQueueDepth(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  ULONG           TargetId
+    )
+{
+    if (!StorPortSetDeviceQueueDepth(Adapter,
+                                     0,
+                                     (UCHAR)TargetId,
+                                     0,
+                                     XENVBD_MAX_QUEUE_DEPTH))
+        Verbose("Target[%d] : Failed to set queue depth\n",
+                TargetId);
+}
+
 static VOID
 AdapterUnplugRequest(
     IN  PXENVBD_ADAPTER Adapter,
@@ -1713,15 +1737,16 @@ AdapterHwBuildIo(
         Srb->SrbStatus = SRB_STATUS_ABORT_FAILED;
         break;
     case SRB_FUNCTION_RESET_BUS:
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
         AdapterHwResetBus(Adapter, Srb->PathId);
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
 
     default:
+        Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
         break;
     }
 
-    StorPortNotification(RequestComplete, Adapter, Srb);
+    AdapterCompleteSrb(Adapter, Srb);
     return FALSE;
 }
 
@@ -1747,6 +1772,7 @@ AdapterHwStartIo(
     return TRUE;
 
 fail1:
+    Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
     AdapterCompleteSrb(Adapter, Srb);
     return TRUE;
 }

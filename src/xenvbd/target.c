@@ -49,8 +49,6 @@
 #include <suspend_interface.h>
 #include <stdlib.h>
 
-#define XENVBD_MAX_QUEUE_DEPTH          (254)
-
 typedef struct _XENVBD_SG_LIST {
     // SGList from SRB
     PSTOR_SCATTER_GATHER_LIST   SGList;
@@ -2021,13 +2019,8 @@ __TargetExecuteScsi(
         break;
 
     case SCSIOP_INQUIRY:
-        if (!StorPortSetDeviceQueueDepth(TargetGetAdapter(Target),
-                                         0,
-                                         (UCHAR)TargetGetTargetId(Target),
-                                         0,
-                                         XENVBD_MAX_QUEUE_DEPTH))
-            Verbose("Target[%d] : Failed to set queue depth\n",
-                    TargetGetTargetId(Target));
+        AdapterSetDeviceQueueDepth(TargetGetAdapter(Target),
+                                   TargetGetTargetId(Target));
         PdoInquiry(TargetGetTargetId(Target), FrontendGetInquiry(Target->Frontend), Srb);
         break;
     case SCSIOP_MODE_SENSE:
@@ -2305,13 +2298,13 @@ __TargetRemoveDevice(
     case SurpriseRemovePending:
         TargetSetMissing(Target, "Surprise Remove");
         TargetSetDevicePnpState(Target, Deleted);
-        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
+        AdapterTargetListChanged(TargetGetAdapter(Target));
         break;
 
     default:
         TargetSetMissing(Target, "Removed");
         TargetSetDevicePnpState(Target, Deleted);
-        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
+        AdapterTargetListChanged(TargetGetAdapter(Target));
         break;
     }
 }
@@ -2323,7 +2316,7 @@ __TargetEject(
 {
     TargetSetMissing(Target, "Ejected");
     TargetSetDevicePnpState(Target, Deleted);
-    StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
+    AdapterTargetListChanged(TargetGetAdapter(Target));
 }
 
 __checkReturn
@@ -2417,7 +2410,7 @@ TargetIssueDeviceEject(
         IoRequestDeviceEject(Target->DeviceObject);
     } else {
         Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n", TargetGetTargetId(Target));
-        StorPortNotification(BusChangeDetected, TargetGetAdapter(Target), 0);
+        AdapterTargetListChanged(TargetGetAdapter(Target));
     }
 }
 
