@@ -49,18 +49,6 @@
 #include <suspend_interface.h>
 #include <stdlib.h>
 
-typedef struct _XENVBD_SG_LIST {
-    // SGList from SRB
-    PSTOR_SCATTER_GATHER_LIST   SGList;
-    // "current" values
-    STOR_PHYSICAL_ADDRESS       PhysAddr;
-    ULONG                       PhysLen;
-    // iteration
-    ULONG                       Index;
-    ULONG                       Offset;
-    ULONG                       Length;
-} XENVBD_SG_LIST, *PXENVBD_SG_LIST;
-
 #define TARGET_SIGNATURE           'odpX'
 
 typedef struct _XENVBD_LOOKASIDE {
@@ -732,22 +720,6 @@ __Operation(
     }
 }
 
-static FORCEINLINE ULONG
-__Offset(
-    __in STOR_PHYSICAL_ADDRESS   PhysAddr
-    )
-{
-    return (ULONG)(PhysAddr.QuadPart & (PAGE_SIZE - 1));
-}
-
-static FORCEINLINE PFN_NUMBER
-__Phys2Pfn(
-    __in STOR_PHYSICAL_ADDRESS   PhysAddr
-    )
-{
-    return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
-}
-
 static FORCEINLINE MM_PAGE_PRIORITY
 __TargetPriority(
     __in PXENVBD_TARGET             Target
@@ -760,42 +732,6 @@ __TargetPriority(
         return NormalPagePriority;
 
     return HighPagePriority;
-}
-
-static FORCEINLINE VOID
-SGListGet(
-    IN OUT  PXENVBD_SG_LIST         SGList
-    )
-{
-    PSTOR_SCATTER_GATHER_ELEMENT    SGElement;
-
-    ASSERT3U(SGList->Index, <, SGList->SGList->NumberOfElements);
-
-    SGElement = &SGList->SGList->List[SGList->Index];
-
-    SGList->PhysAddr.QuadPart = SGElement->PhysicalAddress.QuadPart + SGList->Offset;
-    SGList->PhysLen           = __min(PAGE_SIZE - __Offset(SGList->PhysAddr) - SGList->Length, SGElement->Length - SGList->Offset);
-
-    ASSERT3U(SGList->PhysLen, <=, PAGE_SIZE);
-    ASSERT3U(SGList->Offset, <, SGElement->Length);
-
-    SGList->Length = SGList->PhysLen; // gets reset every time for Granted, every 1or2 times for Bounced
-    SGList->Offset = SGList->Offset + SGList->PhysLen;
-    if (SGList->Offset >= SGElement->Length) {
-        SGList->Index  = SGList->Index + 1;
-        SGList->Offset = 0;
-    }
-}
-
-static FORCEINLINE BOOLEAN
-SGListNext(
-    IN OUT  PXENVBD_SG_LIST         SGList,
-    IN  ULONG                       AlignmentMask
-    )
-{
-    SGList->Length = 0;
-    SGListGet(SGList);  // get next PhysAddr and PhysLen
-    return !((SGList->PhysAddr.QuadPart & AlignmentMask) || (SGList->PhysLen & AlignmentMask));
 }
 
 static FORCEINLINE VOID
@@ -820,33 +756,39 @@ RequestCopyOutput(
 
 static BOOLEAN
 PrepareSegment(
-    IN  PXENVBD_TARGET             Target,
+    IN  PXENVBD_TARGET          Target,
     IN  PXENVBD_SEGMENT         Segment,
-    IN  PXENVBD_SG_LIST         SGList,
+    IN  PXENVBD_SRBEXT          SrbExt,
     IN  BOOLEAN                 ReadOnly,
     IN  ULONG                   SectorsLeft,
     OUT PULONG                  SectorsNow
     )
 {
     PFN_NUMBER      Pfn;
+    ULONG           Offset;
+    ULONG           Length;
     NTSTATUS        Status;
     PXENVBD_GRANTER Granter = FrontendGetGranter(Target->Frontend);
     const ULONG     SectorSize = TargetSectorSize(Target);
     const ULONG     SectorsPerPage = __SectorsPerPage(SectorSize);
 
-    if (SGListNext(SGList, SectorSize - 1)) {
+    Pfn = AdapterGetNextSGEntry(TargetGetAdapter(Target),
+                                SrbExt,
+                                0,
+                                &Offset,
+                                &Length);
+    if ((Offset & (SectorSize - 1)) == 0 &&
+        (Length & (SectorSize - 1)) == 0) {
         ++Target->SegsGranted;
         // get first sector, last sector and count
-        Segment->FirstSector    = (UCHAR)((__Offset(SGList->PhysAddr) + SectorSize - 1) / SectorSize);
+        Segment->FirstSector    = (UCHAR)((Offset + SectorSize - 1) / SectorSize);
         *SectorsNow             = __min(SectorsLeft, SectorsPerPage - Segment->FirstSector);
         Segment->LastSector     = (UCHAR)(Segment->FirstSector + *SectorsNow - 1);
         Segment->BufferId       = NULL; // granted, ensure its null
         Segment->Buffer         = NULL; // granted, ensure its null
         Segment->Length         = 0;    // granted, ensure its 0
-        Pfn                     = __Phys2Pfn(SGList->PhysAddr);
 
-        ASSERT3U((SGList->PhysLen / SectorSize), ==, *SectorsNow);
-        ASSERT3U((SGList->PhysLen & (SectorSize - 1)), ==, 0);
+        ASSERT3U((Length / SectorSize), ==, *SectorsNow);
     } else {
         PMDL        Mdl;
 
@@ -866,15 +808,19 @@ PrepareSegment(
         Mdl->Process        = NULL;
         Mdl->MappedSystemVa = NULL;
         Mdl->StartVa        = NULL;
-        Mdl->ByteCount      = SGList->PhysLen;
-        Mdl->ByteOffset     = __Offset(SGList->PhysAddr);
-        Segment->Pfn[0]     = __Phys2Pfn(SGList->PhysAddr);
+        Mdl->ByteCount      = Length;
+        Mdl->ByteOffset     = Offset;
+        Segment->Pfn[0]     = Pfn;
 
-        if (SGList->PhysLen < *SectorsNow * SectorSize) {
-            SGListGet(SGList);
+        if (Length < *SectorsNow * SectorSize) {
+            Pfn = AdapterGetNextSGEntry(TargetGetAdapter(Target),
+                                        SrbExt,
+                                        Length,
+                                        &Offset,
+                                        &Length);
             Mdl->Size       += sizeof(PFN_NUMBER);
-            Mdl->ByteCount  = Mdl->ByteCount + SGList->PhysLen;
-            Segment->Pfn[1] = __Phys2Pfn(SGList->PhysAddr);
+            Mdl->ByteCount  = Mdl->ByteCount + Length;
+            Segment->Pfn[1] = Pfn;
         }
 #pragma warning(pop)
 
@@ -922,9 +868,9 @@ fail1:
 
 static BOOLEAN
 PrepareBlkifReadWrite(
-    IN  PXENVBD_TARGET             Target,
+    IN  PXENVBD_TARGET          Target,
     IN  PXENVBD_REQUEST         Request,
-    IN  PXENVBD_SG_LIST         SGList,
+    IN  PXENVBD_SRBEXT          SrbExt,
     IN  ULONG                   MaxSegments,
     IN  ULONG64                 SectorStart,
     IN  ULONG                   SectorsLeft,
@@ -956,7 +902,7 @@ PrepareBlkifReadWrite(
 
         if (!PrepareSegment(Target,
                             Segment,
-                            SGList,
+                            SrbExt,
                             ReadOnly,
                             SectorsLeft,
                             &SectorsNow))
@@ -1075,16 +1021,12 @@ PrepareReadWrite(
     ULONG64         SectorStart = Cdb_LogicalBlock(Srb);
     ULONG           SectorsLeft = Cdb_TransferBlock(Srb);
     LIST_ENTRY      List;
-    XENVBD_SG_LIST  SGList;
     ULONG           DebugCount;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
     InitializeListHead(&List);
     SrbExt->Count = 0;
-
-    RtlZeroMemory(&SGList, sizeof(SGList));
-    SGList.SGList = StorPortGetScatterGatherList(TargetGetAdapter(Target), Srb);
 
     while (SectorsLeft > 0) {
         ULONG           MaxSegments;
@@ -1102,7 +1044,7 @@ PrepareReadWrite(
 
         if (!PrepareBlkifReadWrite(Target,
                                    Request,
-                                   &SGList,
+                                   SrbExt,
                                    MaxSegments,
                                    SectorStart,
                                    SectorsLeft,

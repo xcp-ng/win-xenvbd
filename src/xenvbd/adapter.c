@@ -1434,6 +1434,66 @@ AdapterSetDeviceQueueDepth(
                 TargetId);
 }
 
+PFN_NUMBER
+AdapterGetNextSGEntry(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_SRBEXT  SrbExt,
+    IN  ULONG           Existing,
+    OUT PULONG          Offset,
+    OUT PULONG          Length
+    )
+{
+    PSTOR_SCATTER_GATHER_LIST       SGList = SrbExt->SGList;
+    PSTOR_SCATTER_GATHER_ELEMENT    SGElement;
+    STOR_PHYSICAL_ADDRESS           PhysAddr;
+
+    UNREFERENCED_PARAMETER(Adapter);
+
+    ASSERT3P(SGList, !=, NULL);
+    ASSERT3U(SrbExt->SGIndex, <, SGList->NumberOfElements);
+
+    SGElement = &SGList->List[SrbExt->SGIndex];
+
+    PhysAddr.QuadPart = SGElement->PhysicalAddress.QuadPart + SrbExt->SGOffset;
+    *Offset           = (ULONG)(PhysAddr.QuadPart & (PAGE_SIZE - 1));
+    *Length           = __min(PAGE_SIZE - *Offset - Existing, SGElement->Length - SrbExt->SGOffset);
+
+    ASSERT3U(*Length, <=, PAGE_SIZE);
+    ASSERT3U(SrbExt->SGOffset, <, SGElement->Length);
+
+    SrbExt->SGOffset += *Length;
+    if (SrbExt->SGOffset >= SGElement->Length) {
+        SrbExt->SGIndex++;
+        SrbExt->SGOffset = 0;
+    }
+
+    return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
+}
+
+static FORCEINLINE VOID
+AdapterPullupSrb(
+    IN  PXENVBD_ADAPTER     Adapter,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    UCHAR                   Operation;
+
+    Operation = Cdb_OperationEx(Srb);
+    switch (Operation) {
+    case SCSIOP_READ:
+    case SCSIOP_WRITE:
+        SrbExt->SGList = StorPortGetScatterGatherList(Adapter, Srb);
+        ASSERT3P(SrbExt->SGList, !=, NULL);
+        ASSERT3U(((PSTOR_SCATTER_GATHER_LIST)SrbExt->SGList)->NumberOfElements, !=, 0);
+        ASSERT3U(((PSTOR_SCATTER_GATHER_LIST)SrbExt->SGList)->NumberOfElements, <=, XENVBD_MAX_PAGES_PER_SRB);
+        break;
+
+    default:
+        break;
+    }
+}
+
 static VOID
 AdapterUnplugRequest(
     IN  PXENVBD_ADAPTER Adapter,
@@ -1725,6 +1785,8 @@ AdapterHwBuildIo(
 
     switch (Srb->Function) {
     case SRB_FUNCTION_EXECUTE_SCSI:
+        AdapterPullupSrb(Adapter, Srb);
+        // Intentional fall through
     case SRB_FUNCTION_RESET_DEVICE:
     case SRB_FUNCTION_FLUSH:
     case SRB_FUNCTION_SHUTDOWN:

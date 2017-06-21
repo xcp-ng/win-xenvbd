@@ -82,6 +82,15 @@ AdapterSetDeviceQueueDepth(
     IN  ULONG           TargetId
     );
 
+extern PFN_NUMBER
+AdapterGetNextSGEntry(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_SRBEXT  SrbExt,
+    IN  ULONG           Existing,
+    OUT PULONG          Offset,
+    OUT PULONG          Length
+    );
+
 extern NTSTATUS
 AdapterDispatchPnp(
     IN  PXENVBD_ADAPTER Adapter,

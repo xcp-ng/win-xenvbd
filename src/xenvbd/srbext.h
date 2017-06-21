@@ -90,6 +90,10 @@ typedef struct _XENVBD_SRBEXT {
     PSCSI_REQUEST_BLOCK     Srb;
     LIST_ENTRY              Entry;
     LONG                    Count;
+
+    PVOID                   SGList;
+    ULONG                   SGIndex;
+    ULONG                   SGOffset;
 } XENVBD_SRBEXT, *PXENVBD_SRBEXT;
 
 FORCEINLINE PXENVBD_SRBEXT
