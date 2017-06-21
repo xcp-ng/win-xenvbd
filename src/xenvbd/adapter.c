@@ -1759,13 +1759,28 @@ __AdapterSrbPnp(
     IN  PSCSI_PNP_REQUEST_BLOCK Srb
     )
 {
-    if (!(Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)) {
-        PXENVBD_TARGET          Target;
+    PXENVBD_TARGET              Target;
 
-        Target = AdapterGetTarget(Adapter, Srb->TargetId);
-        if (Target) {
-            TargetSrbPnp(Target, Srb);
-        }
+    if (Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)
+        return;
+
+    Target = AdapterGetTarget(Adapter, Srb->TargetId);
+    if (Target == NULL)
+        return;
+
+    switch (Srb->PnPAction) {
+    case StorQueryCapabilities: {
+        PSTOR_DEVICE_CAPABILITIES Caps = Srb->DataBuffer;
+
+        Caps->Removable = TargetGetRemovable(Target);
+        Caps->EjectSupported = TargetGetRemovable(Target);
+        Caps->SurpriseRemovalOK = TargetGetSurpriseRemovable(Target);
+        Caps->UniqueID = 1;
+
+        } break;
+
+    default:
+        break;
     }
 }
 

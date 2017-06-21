@@ -403,36 +403,6 @@ __TargetRestoreDevicePnpState(
     }
 }
 
-//=============================================================================
-// Query Methods
-FORCEINLINE ULONG
-TargetGetTargetId(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    ASSERT3P(Target, !=, NULL);
-    return FrontendGetTargetId(Target->Frontend);
-}
-
-ULONG
-TargetGetDeviceId(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    ASSERT3P(Target, !=, NULL);
-    return FrontendGetDeviceId(Target->Frontend);
-}
-
-__checkReturn
-FORCEINLINE PDEVICE_OBJECT
-TargetGetDeviceObject(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    ASSERT3P(Target, !=, NULL);
-    return Target->DeviceObject;
-}
-
 FORCEINLINE VOID
 TargetSetDeviceObject(
     __in PXENVBD_TARGET             Target,
@@ -459,15 +429,6 @@ TargetIsPaused(
     KeReleaseSpinLock(&Target->Lock, Irql);
 
     return Paused;
-}
-
-__checkReturn
-FORCEINLINE PXENVBD_ADAPTER
-TargetGetAdapter(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    return Target->Adapter;
 }
 
 static FORCEINLINE ULONG
@@ -2091,44 +2052,55 @@ TargetShutdown(
 }
 
 VOID
-TargetSrbPnp(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_PNP_REQUEST_BLOCK Srb
+TargetIssueDeviceEject(
+    IN  PXENVBD_TARGET  Target,
+    IN  const CHAR      *Reason
     )
 {
-    switch (Srb->PnPAction) {
-    case StorQueryCapabilities: {
-        PSTOR_DEVICE_CAPABILITIES DeviceCaps = Srb->DataBuffer;
-        PXENVBD_CAPS    Caps = FrontendGetCaps(Target->Frontend);
+    KIRQL               Irql;
+    BOOLEAN             DoEject = FALSE;
 
-        if (Caps->Removable)
-            DeviceCaps->Removable = 1;
-        if (Caps->Removable)
-            DeviceCaps->EjectSupported = 1;
-        if (Caps->SurpriseRemovable)
-            DeviceCaps->SurpriseRemovalOK = 1;
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    if (Target->DeviceObject) {
+        DoEject = TRUE;
+        Target->EjectRequested = TRUE;
+    } else {
+        Target->EjectPending = TRUE;
+    }
+    KeReleaseSpinLock(&Target->Lock, Irql);
 
-        DeviceCaps->UniqueID = 1;
-
-        } break;
-
-    default:
-        break;
+    Verbose("Target[%d] : Ejecting (%s - %s)\n",
+            TargetGetTargetId(Target),
+            DoEject ? "Now" : "Next PnP IRP",
+            Reason);
+    if (!Target->WrittenEjected) {
+        Target->WrittenEjected = TRUE;
+        FrontendStoreWriteFrontend(Target->Frontend,
+                                   "ejected",
+                                   "1");
+    }
+    if (DoEject) {
+        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n",
+                TargetGetTargetId(Target),
+                Target->DeviceObject);
+        IoRequestDeviceEject(Target->DeviceObject);
+    } else {
+        Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n",
+                TargetGetTargetId(Target));
+        AdapterTargetListChanged(TargetGetAdapter(Target));
     }
 }
 
-//=============================================================================
-// PnP Handler
 static FORCEINLINE VOID
 __TargetDeviceUsageNotification(
-    __in PXENVBD_TARGET             Target,
-    __in PIRP                    Irp
+    IN  PXENVBD_TARGET              Target,
+    IN  PIRP                        Irp
     )
 {
-    PIO_STACK_LOCATION      StackLocation;
-    BOOLEAN                 Value;
+    PIO_STACK_LOCATION              StackLocation;
+    BOOLEAN                         Value;
     DEVICE_USAGE_NOTIFICATION_TYPE  Type;
-    PXENVBD_CAPS            Caps = FrontendGetCaps(Target->Frontend);
+    PXENVBD_CAPS                    Caps = FrontendGetCaps(Target->Frontend);
 
     StackLocation = IoGetCurrentIrpStackLocation(Irp);
     Value = StackLocation->Parameters.UsageNotification.InPath;
@@ -2161,7 +2133,7 @@ __TargetDeviceUsageNotification(
 
 static FORCEINLINE VOID
 __TargetCheckEjectPending(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     KIRQL               Irql;
@@ -2176,14 +2148,16 @@ __TargetCheckEjectPending(
     KeReleaseSpinLock(&Target->Lock, Irql);
 
     if (EjectPending) {
-        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", TargetGetTargetId(Target), Target->DeviceObject);
+        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n",
+                TargetGetTargetId(Target),
+                Target->DeviceObject);
         IoRequestDeviceEject(Target->DeviceObject);
     }
 }
 
 static FORCEINLINE VOID
 __TargetCheckEjectFailed(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     KIRQL               Irql;
@@ -2197,14 +2171,17 @@ __TargetCheckEjectFailed(
     KeReleaseSpinLock(&Target->Lock, Irql);
 
     if (EjectFailed) {
-        Error("Target[%d] : Unplug failed due to open handle(s)!\n", TargetGetTargetId(Target));
-        FrontendStoreWriteFrontend(Target->Frontend, "error", "Unplug failed due to open handle(s)!");
+        Error("Target[%d] : Unplug failed due to open handle(s)!\n",
+              TargetGetTargetId(Target));
+        FrontendStoreWriteFrontend(Target->Frontend,
+                                   "error",
+                                   "Unplug failed due to open handle(s)!");
     }
 }
 
 static FORCEINLINE VOID
 __TargetRemoveDevice(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     TargetD0ToD3(Target);
@@ -2212,21 +2189,20 @@ __TargetRemoveDevice(
     switch (TargetGetDevicePnpState(Target)) {
     case SurpriseRemovePending:
         TargetSetMissing(Target, "Surprise Remove");
-        TargetSetDevicePnpState(Target, Deleted);
-        AdapterTargetListChanged(TargetGetAdapter(Target));
         break;
 
     default:
         TargetSetMissing(Target, "Removed");
-        TargetSetDevicePnpState(Target, Deleted);
-        AdapterTargetListChanged(TargetGetAdapter(Target));
         break;
     }
+
+    TargetSetDevicePnpState(Target, Deleted);
+    AdapterTargetListChanged(TargetGetAdapter(Target));
 }
 
 static FORCEINLINE VOID
 __TargetEject(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     TargetSetMissing(Target, "Ejected");
@@ -2234,19 +2210,20 @@ __TargetEject(
     AdapterTargetListChanged(TargetGetAdapter(Target));
 }
 
-__checkReturn
 NTSTATUS
 TargetDispatchPnp(
-    __in PXENVBD_TARGET             Target,
-    __in PDEVICE_OBJECT          DeviceObject,
-    __in PIRP                    Irp
+    IN  PXENVBD_TARGET  Target,
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
     )
 {
-    PIO_STACK_LOCATION  Stack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION  StackLocation;
+
+    StackLocation = IoGetCurrentIrpStackLocation(Irp);
 
     __TargetCheckEjectPending(Target);
 
-    switch (Stack->MinorFunction) {
+    switch (StackLocation->MinorFunction) {
     case IRP_MN_START_DEVICE:
         (VOID) TargetD3ToD0(Target);
         TargetSetDevicePnpState(Target, Started);
@@ -2296,66 +2273,29 @@ TargetDispatchPnp(
     return DriverDispatchPnp(DeviceObject, Irp);
 }
 
-__drv_maxIRQL(DISPATCH_LEVEL)
-VOID
-TargetIssueDeviceEject(
-    __in PXENVBD_TARGET             Target,
-    __in __nullterminated const CHAR* Reason
-    )
-{
-    KIRQL       Irql;
-    BOOLEAN     DoEject = FALSE;
-
-    KeAcquireSpinLock(&Target->Lock, &Irql);
-    if (Target->DeviceObject) {
-        DoEject = TRUE;
-        Target->EjectRequested = TRUE;
-    } else {
-        Target->EjectPending = TRUE;
-    }
-    KeReleaseSpinLock(&Target->Lock, Irql);
-
-    Verbose("Target[%d] : Ejecting (%s - %s)\n", TargetGetTargetId(Target), DoEject ? "Now" : "Next PnP IRP", Reason);
-    if (!Target->WrittenEjected) {
-        Target->WrittenEjected = TRUE;
-        FrontendStoreWriteFrontend(Target->Frontend, "ejected", "1");
-    }
-    if (DoEject) {
-        Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n", TargetGetTargetId(Target), Target->DeviceObject);
-        IoRequestDeviceEject(Target->DeviceObject);
-    } else {
-        Verbose("Target[%d] : Triggering BusChangeDetected to detect device\n", TargetGetTargetId(Target));
-        AdapterTargetListChanged(TargetGetAdapter(Target));
-    }
-}
-
-__checkReturn
 NTSTATUS
 TargetD3ToD0(
-    __in PXENVBD_TARGET            Target
+    IN  PXENVBD_TARGET  Target
     )
 {
-    NTSTATUS                    Status;
-    const ULONG                 TargetId = TargetGetTargetId(Target);
+    NTSTATUS            status;
+    const ULONG         TargetId = TargetGetTargetId(Target);
 
     if (!TargetSetDevicePowerState(Target, PowerDeviceD0))
         return STATUS_SUCCESS;
 
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : D3->D0\n", TargetId);
 
-    // power up frontend
-    Status = FrontendD3ToD0(Target->Frontend);
-    if (!NT_SUCCESS(Status))
+    status = FrontendD3ToD0(Target->Frontend);
+    if (!NT_SUCCESS(status))
         goto fail1;
 
-    // connect frontend
-    Status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
-    if (!NT_SUCCESS(Status))
+    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
+    if (!NT_SUCCESS(status))
         goto fail2;
+
     __TargetUnpauseDataPath(Target);
 
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
 fail2:
@@ -2363,35 +2303,29 @@ fail2:
     FrontendD0ToD3(Target->Frontend);
 
 fail1:
-    Error("Fail1 (%08x)\n", Status);
+    Error("Fail1 (%08x)\n", status);
 
     Target->DevicePowerState = PowerDeviceD3;
 
-    return Status;
+    return status;
 }
 
 VOID
 TargetD0ToD3(
-    __in PXENVBD_TARGET            Target
+    IN  PXENVBD_TARGET  Target
     )
 {
-    const ULONG                 TargetId = TargetGetTargetId(Target);
+    const ULONG         TargetId = TargetGetTargetId(Target);
 
     if (!TargetSetDevicePowerState(Target, PowerDeviceD3))
         return;
 
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : D0->D3\n", TargetId);
 
-    // close frontend
     __TargetPauseDataPath(Target, FALSE);
     (VOID) FrontendSetState(Target->Frontend, XENVBD_CLOSED);
-    ASSERT3U(QueueCount(&Target->SubmittedReqs), ==, 0);
 
-    // power down frontend
     FrontendD0ToD3(Target->Frontend);
-
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }
 
 static FORCEINLINE ULONG
@@ -2399,7 +2333,7 @@ __ParseVbd(
     IN  PCHAR   DeviceIdStr
     )
 {
-    ULONG   DeviceId = strtoul(DeviceIdStr, NULL, 10);
+    ULONG       DeviceId = strtoul(DeviceIdStr, NULL, 10);
 
     ASSERT3U((DeviceId & ~((1 << 29) - 1)), ==, 0);
 
@@ -2421,17 +2355,16 @@ __ParseVbd(
     }
 }
 
-__checkReturn
 NTSTATUS
 TargetCreate(
-    __in PXENVBD_ADAPTER             Adapter,
-    __in __nullterminated PCHAR  DeviceId,
-    OUT PXENVBD_TARGET*         _Target
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PCHAR           DeviceId,
+    OUT PXENVBD_TARGET* _Target
     )
 {
-    NTSTATUS    Status;
-    PXENVBD_TARGET Target;
-    ULONG           TargetId;
+    NTSTATUS            status;
+    PXENVBD_TARGET      Target;
+    ULONG               TargetId;
 
     TargetId = __ParseVbd(DeviceId);
     if (TargetId >= XENVBD_MAX_TARGETS)
@@ -2440,20 +2373,18 @@ TargetCreate(
     if (AdapterIsTargetEmulated(Adapter, TargetId))
         return STATUS_RETRY;
 
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
-
-    Status = STATUS_INSUFFICIENT_RESOURCES;
+    status = STATUS_INSUFFICIENT_RESOURCES;
 #pragma warning(suppress: 6014)
     Target = __TargetAlloc(sizeof(XENVBD_TARGET));
     if (!Target)
         goto fail1;
 
     Verbose("Target[%d] : Creating\n", TargetId);
-    Target->Signature      = TARGET_SIGNATURE;
-    Target->Adapter            = Adapter;
-    Target->DeviceObject   = NULL; // filled in later
-    Target->Paused         = 1; // Paused until D3->D0 transition
-    Target->DevicePnpState = Present;
+    Target->Signature       = TARGET_SIGNATURE;
+    Target->Adapter         = Adapter;
+    Target->DeviceObject    = NULL; // filled in later
+    Target->Paused          = 1; // Paused until D3->D0 transition
+    Target->DevicePnpState  = Present;
     Target->DevicePowerState = PowerDeviceD3;
 
     KeInitializeSpinLock(&Target->Lock);
@@ -2465,18 +2396,17 @@ TargetCreate(
     __LookasideInit(&Target->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
     __LookasideInit(&Target->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
 
-    Status = FrontendCreate(Target, DeviceId, TargetId, &Target->Frontend);
-    if (!NT_SUCCESS(Status))
+    status = FrontendCreate(Target, DeviceId, TargetId, &Target->Frontend);
+    if (!NT_SUCCESS(status))
         goto fail2;
 
-    Status = TargetD3ToD0(Target);
-    if (!NT_SUCCESS(Status))
+    status = TargetD3ToD0(Target);
+    if (!NT_SUCCESS(status))
         goto fail3;
 
     *_Target = Target;
 
     Verbose("Target[%d] : Created (%s)\n", TargetId, Target);
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
     return STATUS_SUCCESS;
 
 fail3:
@@ -2492,55 +2422,20 @@ fail2:
     __TargetFree(Target);
 
 fail1:
-    Error("Fail1 (%08x)\n", Status);
-    return Status;
+    Error("Fail1 (%08x)\n", status);
+    return status;
 }
 
 VOID
 TargetDestroy(
-    __in PXENVBD_TARGET    Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     const ULONG         TargetId = TargetGetTargetId(Target);
-    PVOID               Objects[3];
-    PKWAIT_BLOCK        WaitBlock;
 
-    Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : Destroying\n", TargetId);
 
-    ASSERT3U(Target->Signature, ==, TARGET_SIGNATURE);
-
     TargetD0ToD3(Target);
-
-    Verbose("Target[%d] : RequestListUsed %d\n", TargetId, Target->RequestList.Used);
-    Objects[0] = &Target->RequestList.Empty;
-    Objects[1] = &Target->SegmentList.Empty;
-    Objects[2] = &Target->IndirectList.Empty;
-
-    WaitBlock = (PKWAIT_BLOCK)__TargetAlloc(sizeof(KWAIT_BLOCK) * ARRAYSIZE(Objects));
-    if (WaitBlock == NULL) {
-        ULONG   Index;
-
-        Error("Unable to allocate resources for KWAIT_BLOCK\n");
-
-        for (Index = 0; Index < ARRAYSIZE(Objects); Index++)
-            KeWaitForSingleObject(Objects[Index],
-                                  Executive,
-                                  KernelMode,
-                                  FALSE,
-                                  NULL);
-    } else {
-        KeWaitForMultipleObjects(ARRAYSIZE(Objects),
-                                 Objects,
-                                 WaitAll,
-                                 Executive,
-                                 KernelMode,
-                                 FALSE,
-                                 NULL,
-                                 WaitBlock);
-#pragma prefast(suppress:6102)
-        __TargetFree(WaitBlock);
-    }
 
     ASSERT3U(TargetGetDevicePnpState(Target), ==, Deleted);
 
@@ -2551,10 +2446,57 @@ TargetDestroy(
     __LookasideTerm(&Target->SegmentList);
     __LookasideTerm(&Target->RequestList);
 
-    ASSERT3U(Target->Signature, ==, TARGET_SIGNATURE);
     RtlZeroMemory(Target, sizeof(XENVBD_TARGET));
     __TargetFree(Target);
 
     Verbose("Target[%d] : Destroyed\n", TargetId);
-    Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }
+
+#define TARGET_GET_PROPERTY(_name, _type)       \
+_type                                           \
+TargetGet ## _name ## (                         \
+    IN  PXENVBD_TARGET  Target                  \
+    )                                           \
+{                                               \
+    return Target-> ## _name ## ;               \
+}
+
+TARGET_GET_PROPERTY(Adapter, PXENVBD_ADAPTER)
+TARGET_GET_PROPERTY(DeviceObject, PDEVICE_OBJECT)
+
+//TARGET_GET_PROPERTY(TargetId, ULONG)
+ULONG
+TargetGetTargetId(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    return FrontendGetTargetId(Target->Frontend);
+}
+//TARGET_GET_PROPERTY(DeviceId, ULONG)
+ULONG
+TargetGetDeviceId(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    return FrontendGetDeviceId(Target->Frontend);
+}
+
+//TARGET_GET_PROPERTY(Removable, BOOLEAN)
+BOOLEAN
+TargetGetRemovable(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    return FrontendGetCaps(Target->Frontend)->Removable;
+}
+
+//TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
+BOOLEAN
+TargetGetSurpriseRemovable(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    return FrontendGetCaps(Target->Frontend)->SurpriseRemovable;
+}
+
+#undef TARGET_GET_PROPERTY

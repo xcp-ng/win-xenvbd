@@ -36,6 +36,7 @@
 #include "debug.h"
 #include "thread.h"
 #include <gnttab_interface.h>
+#include <ntstrsafe.h>
 
 struct _XENVBD_GRANTER {
     PXENVBD_FRONTEND                Frontend;

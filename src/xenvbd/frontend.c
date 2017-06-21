@@ -45,6 +45,7 @@
 #include "thread.h"
 #include <store_interface.h>
 #include <suspend_interface.h>
+#include <ntstrsafe.h>
 
 #include <stdlib.h>
 

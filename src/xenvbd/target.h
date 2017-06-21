@@ -32,45 +32,57 @@
 #ifndef _XENVBD_TARGET_H
 #define _XENVBD_TARGET_H
 
+#include <ntddk.h>
+
 typedef struct _XENVBD_TARGET XENVBD_TARGET, *PXENVBD_TARGET;
 
-#include <ntddk.h>
-#include <ntstrsafe.h>
-#include <xenvbd-storport.h>
+#include <storport.h>
+
+#include <debug_interface.h>
+
 #include "adapter.h"
 #include "srbext.h"
 #include "types.h"
-#include <debug_interface.h>
+
+extern NTSTATUS
+TargetCreate(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PCHAR           DeviceId,
+    OUT PXENVBD_TARGET* _Target
+    );
+
+extern VOID
+TargetDestroy(
+    IN  PXENVBD_TARGET  Target
+    );
+
+extern NTSTATUS
+TargetD3ToD0(
+    IN  PXENVBD_TARGET  Target
+    );
+
+extern VOID
+TargetD0ToD3(
+    IN  PXENVBD_TARGET  Target
+    );
+
+extern NTSTATUS
+TargetDispatchPnp(
+    IN  PXENVBD_TARGET  Target,
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp
+    );
+
+extern VOID
+TargetIssueDeviceEject(
+    IN  PXENVBD_TARGET  Target,
+    IN  const CHAR      *Reason
+    );
 
 extern VOID
 TargetDebugCallback(
     __in PXENVBD_TARGET             Target,
     __in PXENBUS_DEBUG_INTERFACE Debug
-    );
-
-// Creation/Deletion
-__checkReturn
-extern NTSTATUS
-TargetCreate(
-    __in PXENVBD_ADAPTER             Adapter,
-    __in __nullterminated PCHAR  DeviceId,
-    OUT PXENVBD_TARGET*         _Target
-    );
-
-extern VOID
-TargetDestroy(
-    __in PXENVBD_TARGET             Target
-    );
-
-__checkReturn
-extern NTSTATUS
-TargetD3ToD0(
-    __in PXENVBD_TARGET             Target
-    );
-
-extern VOID
-TargetD0ToD3(
-    __in PXENVBD_TARGET             Target
     );
 
 // PnP States
@@ -98,23 +110,6 @@ TargetGetDevicePnpState(
     __in PXENVBD_TARGET             Target
     );
 
-// Query Methods
-extern ULONG
-TargetGetTargetId(
-    __in PXENVBD_TARGET             Target
-    );
-
-extern ULONG
-TargetGetDeviceId(
-    __in PXENVBD_TARGET             Target
-    );
-
-__checkReturn
-extern PDEVICE_OBJECT
-TargetGetDeviceObject(
-    __in PXENVBD_TARGET             Target
-    );
-
 extern VOID
 TargetSetDeviceObject(
     __in PXENVBD_TARGET             Target,
@@ -124,12 +119,6 @@ TargetSetDeviceObject(
 __checkReturn
 extern BOOLEAN
 TargetIsPaused(
-    __in PXENVBD_TARGET             Target
-    );
-
-__checkReturn
-extern PXENVBD_ADAPTER
-TargetGetAdapter(
     __in PXENVBD_TARGET             Target
     );
 
@@ -185,26 +174,19 @@ TargetShutdown(
     IN  PXENVBD_SRBEXT  SrbExt
     );
 
-extern VOID
-TargetSrbPnp(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_PNP_REQUEST_BLOCK Srb
+#define TARGET_GET_PROPERTY(_name, _type)       \
+extern _type                                    \
+TargetGet ## _name ## (                         \
+    IN  PXENVBD_TARGET  Target                  \
     );
 
-// PnP Handler
-__checkReturn
-extern NTSTATUS
-TargetDispatchPnp(
-    __in PXENVBD_TARGET             Target,
-    __in PDEVICE_OBJECT          DeviceObject,
-    __in PIRP                    Irp
-    );
+TARGET_GET_PROPERTY(Adapter, PXENVBD_ADAPTER)
+TARGET_GET_PROPERTY(DeviceObject, PDEVICE_OBJECT)
+TARGET_GET_PROPERTY(TargetId, ULONG)
+TARGET_GET_PROPERTY(DeviceId, ULONG)
+TARGET_GET_PROPERTY(Removable, BOOLEAN)
+TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
 
-__drv_maxIRQL(DISPATCH_LEVEL)
-extern VOID
-TargetIssueDeviceEject(
-    __in PXENVBD_TARGET             Target,
-    __in __nullterminated const CHAR* Reason
-    );
+#undef TARGET_GET_PROPERTY
 
 #endif // _XENVBD_TARGET_H
