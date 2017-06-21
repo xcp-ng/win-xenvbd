@@ -36,10 +36,6 @@
 
 typedef struct _XENVBD_TARGET XENVBD_TARGET, *PXENVBD_TARGET;
 
-#include <storport.h>
-
-#include <debug_interface.h>
-
 #include "adapter.h"
 #include "srbext.h"
 #include "types.h"
@@ -77,12 +73,6 @@ extern VOID
 TargetIssueDeviceEject(
     IN  PXENVBD_TARGET  Target,
     IN  const CHAR      *Reason
-    );
-
-extern VOID
-TargetDebugCallback(
-    __in PXENVBD_TARGET             Target,
-    __in PXENBUS_DEBUG_INTERFACE Debug
     );
 
 // PnP States

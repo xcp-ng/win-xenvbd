@@ -881,7 +881,6 @@ AdapterDebugCallback(
     )
 {
     PXENVBD_ADAPTER Adapter = Context;
-    ULONG           TargetId;
 
     XENBUS_DEBUG(Printf,
                  &Adapter->DebugInterface,
@@ -911,24 +910,6 @@ AdapterDebugCallback(
                  Adapter->Completed);
 
     BufferDebugCallback(&Adapter->DebugInterface);
-
-    for (TargetId = 0; TargetId < XENVBD_MAX_TARGETS; ++TargetId) {
-        // no need to use AdapterGetTarget (which is locked at DISPATCH) as called at HIGH_LEVEL
-        PXENVBD_TARGET Target = Adapter->TargetList[TargetId];
-        if (Target == NULL)
-            continue;
-
-        XENBUS_DEBUG(Printf, &Adapter->DebugInterface,
-                     "ADAPTER: ====> Target[%-3d]    : 0x%p\n",
-                     TargetId, Target);
-
-        // call Target's debug callback directly
-        TargetDebugCallback(Target, &Adapter->DebugInterface);
-
-        XENBUS_DEBUG(Printf, &Adapter->DebugInterface,
-                     "ADAPTER: <==== Target[%-3d]    : 0x%p\n",
-                     TargetId, Target);
-    }
 }
 
 static NTSTATUS

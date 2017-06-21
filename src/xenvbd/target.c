@@ -71,6 +71,8 @@ struct _XENVBD_TARGET {
 
     // Frontend (Ring, includes XenBus interfaces)
     PXENVBD_FRONTEND            Frontend;
+    XENBUS_DEBUG_INTERFACE      DebugInterface;
+    PXENBUS_DEBUG_CALLBACK      DebugCallback;
 
     // State
     LONG                        Paused;
@@ -240,66 +242,6 @@ __PnpStateName(
     case Deleted:               return "Deleted";
     default:                    return "UNKNOWN";
     }
-}
-
-DECLSPEC_NOINLINE VOID
-TargetDebugCallback(
-    __in PXENVBD_TARGET Target,
-    __in PXENBUS_DEBUG_INTERFACE DebugInterface
-    )
-{
-    if (Target == NULL || DebugInterface == NULL)
-        return;
-    if (Target->Signature != TARGET_SIGNATURE)
-        return;
-
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: Adapter 0x%p DeviceObject 0x%p\n",
-                 Target->Adapter,
-                 Target->DeviceObject);
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: DevicePnpState %s (%s)\n",
-                 __PnpStateName(Target->DevicePnpState),
-                 __PnpStateName(Target->PrevPnpState));
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: DevicePowerState %s\n",
-                 PowerDeviceStateName(Target->DevicePowerState));
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: %s\n",
-                 Target->Missing ? Target->Reason : "Not Missing");
-
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: BLKIF_OPs: READ=%u WRITE=%u\n",
-                 Target->BlkOpRead, Target->BlkOpWrite);
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
-                 Target->BlkOpIndirectRead, Target->BlkOpIndirectWrite);
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
-                 Target->BlkOpBarrier, Target->BlkOpDiscard, Target->BlkOpFlush);
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: Failed: Maps=%u Bounces=%u Grants=%u\n",
-                 Target->FailedMaps, Target->FailedBounces, Target->FailedGrants);
-    XENBUS_DEBUG(Printf, DebugInterface,
-                 "TARGET: Segments Granted=%llu Bounced=%llu\n",
-                 Target->SegsGranted, Target->SegsBounced);
-
-    __LookasideDebug(&Target->RequestList, DebugInterface, "REQUESTs");
-    __LookasideDebug(&Target->SegmentList, DebugInterface, "SEGMENTs");
-    __LookasideDebug(&Target->IndirectList, DebugInterface, "INDIRECTs");
-
-    QueueDebugCallback(&Target->FreshSrbs,    "Fresh    ", DebugInterface);
-    QueueDebugCallback(&Target->PreparedReqs, "Prepared ", DebugInterface);
-    QueueDebugCallback(&Target->SubmittedReqs, "Submitted", DebugInterface);
-    QueueDebugCallback(&Target->ShutdownSrbs, "Shutdown ", DebugInterface);
-
-    FrontendDebugCallback(Target->Frontend, DebugInterface);
-
-    Target->BlkOpRead = Target->BlkOpWrite = 0;
-    Target->BlkOpIndirectRead = Target->BlkOpIndirectWrite = 0;
-    Target->BlkOpBarrier = Target->BlkOpDiscard = Target->BlkOpFlush = 0;
-    Target->FailedMaps = Target->FailedBounces = Target->FailedGrants = 0;
-    Target->SegsGranted = Target->SegsBounced = 0;
 }
 
 //=============================================================================
@@ -2273,6 +2215,89 @@ TargetDispatchPnp(
     return DriverDispatchPnp(DeviceObject, Irp);
 }
 
+static DECLSPEC_NOINLINE VOID
+TargetDebugCallback(
+    IN  PVOID       Argument,
+    IN  BOOLEAN     Crashing
+    )
+{
+    PXENVBD_TARGET  Target = Argument;
+
+    UNREFERENCED_PARAMETER(Crashing);
+
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: Adapter 0x%p DeviceObject 0x%p\n",
+                 Target->Adapter,
+                 Target->DeviceObject);
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: DevicePnpState %s (%s)\n",
+                 __PnpStateName(Target->DevicePnpState),
+                 __PnpStateName(Target->PrevPnpState));
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: DevicePowerState %s\n",
+                 PowerDeviceStateName(Target->DevicePowerState));
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: %s\n",
+                 Target->Missing ? Target->Reason : "Not Missing");
+
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: BLKIF_OPs: READ=%u WRITE=%u\n",
+                 Target->BlkOpRead, Target->BlkOpWrite);
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
+                 Target->BlkOpIndirectRead, Target->BlkOpIndirectWrite);
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
+                 Target->BlkOpBarrier, Target->BlkOpDiscard, Target->BlkOpFlush);
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: Failed: Maps=%u Bounces=%u Grants=%u\n",
+                 Target->FailedMaps, Target->FailedBounces, Target->FailedGrants);
+    XENBUS_DEBUG(Printf,
+                 &Target->DebugInterface,
+                 "TARGET: Segments Granted=%llu Bounced=%llu\n",
+                 Target->SegsGranted, Target->SegsBounced);
+
+    __LookasideDebug(&Target->RequestList,
+                     &Target->DebugInterface,
+                     "REQUESTs");
+    __LookasideDebug(&Target->SegmentList,
+                     &Target->DebugInterface,
+                     "SEGMENTs");
+    __LookasideDebug(&Target->IndirectList,
+                     &Target->DebugInterface,
+                     "INDIRECTs");
+
+    QueueDebugCallback(&Target->FreshSrbs,
+                       "Fresh    ",
+                       &Target->DebugInterface);
+    QueueDebugCallback(&Target->PreparedReqs,
+                       "Prepared ",
+                       &Target->DebugInterface);
+    QueueDebugCallback(&Target->SubmittedReqs,
+                       "Submitted",
+                       &Target->DebugInterface);
+    QueueDebugCallback(&Target->ShutdownSrbs,
+                       "Shutdown ",
+                       &Target->DebugInterface);
+
+    FrontendDebugCallback(Target->Frontend,
+                          &Target->DebugInterface);
+
+    Target->BlkOpRead = Target->BlkOpWrite = 0;
+    Target->BlkOpIndirectRead = Target->BlkOpIndirectWrite = 0;
+    Target->BlkOpBarrier = Target->BlkOpDiscard = Target->BlkOpFlush = 0;
+    Target->FailedMaps = Target->FailedBounces = Target->FailedGrants = 0;
+    Target->SegsGranted = Target->SegsBounced = 0;
+}
+
 NTSTATUS
 TargetD3ToD0(
     IN  PXENVBD_TARGET  Target
@@ -2286,25 +2311,55 @@ TargetD3ToD0(
 
     Verbose("Target[%d] : D3->D0\n", TargetId);
 
-    status = FrontendD3ToD0(Target->Frontend);
+    AdapterGetDebugInterface(TargetGetAdapter(Target),
+                             &Target->DebugInterface);
+
+    status = XENBUS_DEBUG(Acquire, &Target->DebugInterface);
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
+    status = XENBUS_DEBUG(Register,
+                          &Target->DebugInterface,
+                          __MODULE__,
+                          TargetDebugCallback,
+                          Target,
+                          &Target->DebugCallback);
     if (!NT_SUCCESS(status))
         goto fail2;
+
+    status = FrontendD3ToD0(Target->Frontend);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
+    if (!NT_SUCCESS(status))
+        goto fail4;
 
     __TargetUnpauseDataPath(Target);
 
     return STATUS_SUCCESS;
 
+fail4:
+    Error("fail4\n");
+    FrontendD0ToD3(Target->Frontend);
+
+fail3:
+    Error("fail3\n");
+    XENBUS_DEBUG(Deregister,
+                 &Target->DebugInterface,
+                 Target->DebugCallback);
+    Target->DebugCallback = NULL;
+
 fail2:
     Error("Fail2\n");
-    FrontendD0ToD3(Target->Frontend);
+    XENBUS_DEBUG(Release,
+                 &Target->DebugInterface);
 
 fail1:
     Error("Fail1 (%08x)\n", status);
 
+    RtlZeroMemory(&Target->DebugInterface,
+                  sizeof(XENBUS_DEBUG_INTERFACE));
     Target->DevicePowerState = PowerDeviceD3;
 
     return status;
@@ -2323,9 +2378,21 @@ TargetD0ToD3(
     Verbose("Target[%d] : D0->D3\n", TargetId);
 
     __TargetPauseDataPath(Target, FALSE);
+
     (VOID) FrontendSetState(Target->Frontend, XENVBD_CLOSED);
 
     FrontendD0ToD3(Target->Frontend);
+
+    XENBUS_DEBUG(Deregister,
+                 &Target->DebugInterface,
+                 Target->DebugCallback);
+    Target->DebugCallback = NULL;
+
+    XENBUS_DEBUG(Release,
+                 &Target->DebugInterface);
+
+    RtlZeroMemory(&Target->DebugInterface,
+                  sizeof(XENBUS_DEBUG_INTERFACE));
 }
 
 static FORCEINLINE ULONG
