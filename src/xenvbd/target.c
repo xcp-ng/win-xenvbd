@@ -1906,149 +1906,68 @@ TargetReadCapacity16(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
-//=============================================================================
-// StorPort Methods
-__checkReturn
-static FORCEINLINE BOOLEAN
-__TargetExecuteScsi(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
-    )
-{
-    const UCHAR Operation = Cdb_OperationEx(Srb);
-    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-
-    if (DiskInfo->DiskInfo & VDISK_READONLY) {
-        Trace("Target[%d] : (%08x) Read-Only, fail SRB (%02x:%s)\n", TargetGetTargetId(Target),
-                DiskInfo->DiskInfo, Operation, Cdb_OperationName(Operation));
-        Srb->ScsiStatus = 0x40; // SCSI_ABORT
-        return TRUE;
-    }
-
-    // idea: check pdo state here. still push to freshsrbs
-    switch (Operation) {
-    case SCSIOP_READ:
-    case SCSIOP_WRITE:
-        return TargetReadWrite(Target, Srb);
-        break;
-
-    case SCSIOP_SYNCHRONIZE_CACHE:
-        return TargetSyncCache(Target, Srb);
-        break;
-
-    case SCSIOP_UNMAP:
-        return TargetUnmap(Target, Srb);
-        break;
-
-    case SCSIOP_INQUIRY:
-        AdapterSetDeviceQueueDepth(TargetGetAdapter(Target),
-                                   TargetGetTargetId(Target));
-        PdoInquiry(TargetGetTargetId(Target), FrontendGetInquiry(Target->Frontend), Srb);
-        break;
-    case SCSIOP_MODE_SENSE:
-        TargetModeSense(Target, Srb);
-        break;
-    case SCSIOP_REQUEST_SENSE:
-        TargetRequestSense(Target, Srb);
-        break;
-    case SCSIOP_REPORT_LUNS:
-        TargetReportLuns(Target, Srb);
-        break;
-    case SCSIOP_READ_CAPACITY:
-        TargetReadCapacity(Target, Srb);
-        break;
-    case SCSIOP_READ_CAPACITY16:
-        TargetReadCapacity16(Target, Srb);
-        break;
-    case SCSIOP_MEDIUM_REMOVAL:
-    case SCSIOP_TEST_UNIT_READY:
-    case SCSIOP_RESERVE_UNIT:
-    case SCSIOP_RESERVE_UNIT10:
-    case SCSIOP_RELEASE_UNIT:
-    case SCSIOP_RELEASE_UNIT10:
-    case SCSIOP_VERIFY:
-    case SCSIOP_VERIFY16:
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        break;
-    case SCSIOP_START_STOP_UNIT:
-        Trace("Target[%d] : Start/Stop Unit (%02X)\n", TargetGetTargetId(Target), Srb->Cdb[4]);
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        break;
-    default:
-        Trace("Target[%d] : Unsupported CDB (%02x:%s)\n", TargetGetTargetId(Target), Operation, Cdb_OperationName(Operation));
-        break;
-    }
-    return TRUE;
-}
-
-static FORCEINLINE BOOLEAN
-__TargetQueueShutdown(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
-    )
-{
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
-
-    QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
-    NotifierKick(Notifier);
-
-    return FALSE;
-}
-
-static FORCEINLINE BOOLEAN
-__TargetReset(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
-    )
-{
-    Verbose("Target[%u] ====>\n", TargetGetTargetId(Target));
-
-    TargetReset(Target);
-    Srb->SrbStatus = SRB_STATUS_SUCCESS;
-
-    Verbose("Target[%u] <====\n", TargetGetTargetId(Target));
-    return TRUE;
-}
-
-__checkReturn
 static FORCEINLINE BOOLEAN
 __ValidateSrbForTarget(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    const UCHAR Operation = Cdb_OperationEx(Srb);
+    const UCHAR             Operation = Cdb_OperationEx(Srb);
 
     if (Target == NULL) {
         Error("Invalid Target(NULL) (%02x:%s)\n",
-                Operation, Cdb_OperationName(Operation));
+              Operation,
+              Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
         return FALSE;
     }
 
     if (Srb->PathId != 0) {
         Error("Target[%d] : Invalid PathId(%d) (%02x:%s)\n",
-                TargetGetTargetId(Target), Srb->PathId, Operation, Cdb_OperationName(Operation));
+              TargetGetTargetId(Target),
+              Srb->PathId,
+              Operation,
+              Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_PATH_ID;
         return FALSE;
     }
 
     if (Srb->Lun != 0) {
         Error("Target[%d] : Invalid Lun(%d) (%02x:%s)\n",
-                TargetGetTargetId(Target), Srb->Lun, Operation, Cdb_OperationName(Operation));
+              TargetGetTargetId(Target),
+              Srb->Lun,
+              Operation,
+              Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_INVALID_LUN;
         return FALSE;
     }
 
     if (TargetIsMissing(Target)) {
         Error("Target[%d] : %s (%s) (%02x:%s)\n",
-                TargetGetTargetId(Target), Target->Missing ? "MISSING" : "NOT_MISSING", Target->Reason, Operation, Cdb_OperationName(Operation));
+              TargetGetTargetId(Target),
+              Target->Missing ? "MISSING" : "NOT_MISSING",
+              Target->Reason,
+              Operation,
+              Cdb_OperationName(Operation));
         Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
         return FALSE;
     }
 
     return TRUE;
+}
+
+VOID
+TargetPrepareIo(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
+    )
+{
+    PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+
+    if (!__ValidateSrbForTarget(Target, Srb))
+        return;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
 }
 
 BOOLEAN
@@ -2058,45 +1977,118 @@ TargetStartIo(
     )
 {
     PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+    const UCHAR         Operation = Cdb_OperationEx(Srb);
+    BOOLEAN             WasQueued = FALSE;
 
-    if (!__ValidateSrbForTarget(Target, Srb))
-        return TRUE;
+    ASSERT(__ValidateSrbForTarget(Target, Srb));
 
-    switch (Srb->Function) {
-    case SRB_FUNCTION_EXECUTE_SCSI:
-        return __TargetExecuteScsi(Target, Srb);
+    switch (Operation) {
+    case SCSIOP_READ:
+    case SCSIOP_WRITE:
+        if (!TargetReadWrite(Target, Srb))
+            WasQueued = TRUE;
+        break;
 
-    case SRB_FUNCTION_RESET_DEVICE:
-        return __TargetReset(Target, Srb);
+    case SCSIOP_UNMAP:
+        if (!TargetUnmap(Target, Srb))
+            WasQueued = TRUE;
+        break;
 
-    case SRB_FUNCTION_FLUSH:
-    case SRB_FUNCTION_SHUTDOWN:
-        return __TargetQueueShutdown(Target, Srb);
+    case SCSIOP_SYNCHRONIZE_CACHE:
+        if (!TargetSyncCache(Target, Srb))
+            WasQueued = TRUE;
+        break;
+
+    case SCSIOP_INQUIRY:
+        AdapterSetDeviceQueueDepth(TargetGetAdapter(Target),
+                                   TargetGetTargetId(Target));
+        PdoInquiry(TargetGetTargetId(Target),
+                   FrontendGetInquiry(Target->Frontend),
+                   Srb);
+        break;
+
+    case SCSIOP_MODE_SENSE:
+        TargetModeSense(Target, Srb);
+        break;
+
+    case SCSIOP_REQUEST_SENSE:
+        TargetRequestSense(Target, Srb);
+        break;
+
+    case SCSIOP_REPORT_LUNS:
+        TargetReportLuns(Target, Srb);
+        break;
+
+    case SCSIOP_READ_CAPACITY:
+        TargetReadCapacity(Target, Srb);
+        break;
+
+    case SCSIOP_READ_CAPACITY16:
+        TargetReadCapacity16(Target, Srb);
+        break;
+
+    case SCSIOP_MEDIUM_REMOVAL:
+    case SCSIOP_TEST_UNIT_READY:
+    case SCSIOP_RESERVE_UNIT:
+    case SCSIOP_RESERVE_UNIT10:
+    case SCSIOP_RELEASE_UNIT:
+    case SCSIOP_RELEASE_UNIT10:
+    case SCSIOP_VERIFY:
+    case SCSIOP_VERIFY16:
+    case SCSIOP_START_STOP_UNIT:
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+        break;
 
     default:
-        return TRUE;
+        Trace("Target[%d] : Unsupported CDB (%02x:%s)\n",
+              TargetGetTargetId(Target),
+              Operation,
+              Cdb_OperationName(Operation));
+        Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
+        break;
     }
+    return WasQueued;
 }
 
 VOID
 TargetReset(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
-    Trace("Target[%d] ====> (Irql=%d)\n", TargetGetTargetId(Target), KeGetCurrentIrql());
+    Verbose("[%u] =====>\n", TargetGetTargetId(Target));
 
     __TargetPauseDataPath(Target, TRUE);
 
     if (QueueCount(&Target->SubmittedReqs)) {
         Error("Target[%d] : backend has %u outstanding requests after a TargetReset\n",
-                TargetGetTargetId(Target), QueueCount(&Target->SubmittedReqs));
+              TargetGetTargetId(Target),
+              QueueCount(&Target->SubmittedReqs));
     }
 
     __TargetUnpauseDataPath(Target);
 
-    Trace("Target[%d] <==== (Irql=%d)\n", TargetGetTargetId(Target), KeGetCurrentIrql());
+    Verbose("[%u] <=====\n", TargetGetTargetId(Target));
 }
 
+VOID
+TargetFlush(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
+    )
+{
+    QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
+    NotifierKick(FrontendGetNotifier(Target->Frontend));
+}
+
+VOID
+TargetShutdown(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
+    )
+{
+    QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
+    NotifierKick(FrontendGetNotifier(Target->Frontend));
+}
 
 VOID
 TargetSrbPnp(

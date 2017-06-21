@@ -1404,7 +1404,7 @@ AdapterCompleteSrb(
 
     ASSERT3U(Srb->SrbStatus, !=, SRB_STATUS_PENDING);
 
-    ++Adapter->Completed;
+    InterlockedIncrement((PLONG)&Adapter->Completed);
 
     StorPortNotification(RequestComplete, Adapter, Srb);
 }
@@ -1753,7 +1753,6 @@ AdapterHwResetBus(
     return TRUE;
 }
 
-
 static FORCEINLINE VOID
 __AdapterSrbPnp(
     IN  PXENVBD_ADAPTER         Adapter,
@@ -1780,27 +1779,40 @@ AdapterHwBuildIo(
 {
     PXENVBD_ADAPTER         Adapter = DevExt;
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PXENVBD_TARGET          Target;
 
     InitSrbExt(Srb);
 
+    InterlockedIncrement((PLONG)&Adapter->BuildIo);
     switch (Srb->Function) {
     case SRB_FUNCTION_EXECUTE_SCSI:
         AdapterPullupSrb(Adapter, Srb);
-        // Intentional fall through
+        Target = AdapterGetTarget(Adapter, Srb->TargetId);
+        if (Target == NULL)
+            Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
+        else
+            TargetPrepareIo(Target, SrbExt);
+        break;
+
     case SRB_FUNCTION_RESET_DEVICE:
     case SRB_FUNCTION_FLUSH:
     case SRB_FUNCTION_SHUTDOWN:
-        ++Adapter->BuildIo;
-        return TRUE;
+        Target = AdapterGetTarget(Adapter, Srb->TargetId);
+        if (Target == NULL)
+            Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
+        else
+            Srb->SrbStatus = SRB_STATUS_PENDING;
+        break;
 
-        // dont pass to StartIo
     case SRB_FUNCTION_PNP:
         __AdapterSrbPnp(Adapter, (PSCSI_PNP_REQUEST_BLOCK)Srb);
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         break;
+
     case SRB_FUNCTION_ABORT_COMMAND:
         Srb->SrbStatus = SRB_STATUS_ABORT_FAILED;
         break;
+
     case SRB_FUNCTION_RESET_BUS:
         AdapterHwResetBus(Adapter, Srb->PathId);
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
@@ -1810,6 +1822,9 @@ AdapterHwBuildIo(
         Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
         break;
     }
+
+    if (Srb->SrbStatus == SRB_STATUS_PENDING)
+        return TRUE;
 
     AdapterCompleteSrb(Adapter, SrbExt);
     return FALSE;
@@ -1825,21 +1840,46 @@ AdapterHwStartIo(
 {
     PXENVBD_ADAPTER         Adapter = DevExt;
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    BOOLEAN                 WasQueued = FALSE;
     PXENVBD_TARGET          Target;
 
     Target = AdapterGetTarget(Adapter, Srb->TargetId);
-    if (Target == NULL)
-        goto fail1;
+    if (Target == NULL) {
+        Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
+        goto done;
+    }
 
-    ++Adapter->StartIo;
-    if (TargetStartIo(Target, SrbExt))
+    switch (Srb->Function) {
+    case SRB_FUNCTION_EXECUTE_SCSI:
+        WasQueued = TargetStartIo(Target, SrbExt);
+        break;
+
+    case SRB_FUNCTION_RESET_DEVICE:
+        TargetReset(Target);
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+        break;
+
+    case SRB_FUNCTION_FLUSH:
+        TargetFlush(Target, SrbExt);
+        WasQueued = TRUE;
+        break;
+
+    case SRB_FUNCTION_SHUTDOWN:
+        TargetShutdown(Target, SrbExt);
+        WasQueued = TRUE;
+        break;
+
+    default:
+        ASSERT(FALSE);
+        break;
+    }
+
+done:
+    // if SRB WasQueued, the SRB will be completed when the Queues are processed
+    // Note: there could be a race in updating the Srb->SrbStatus field if the
+    //       processing of the queue completes before returning from TargetStartIo
+    if (!WasQueued)
         AdapterCompleteSrb(Adapter, SrbExt);
-
-    return TRUE;
-
-fail1:
-    Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
-    AdapterCompleteSrb(Adapter, SrbExt);
     return TRUE;
 }
 

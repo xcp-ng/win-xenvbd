@@ -156,14 +156,31 @@ TargetPostResume(
     __in PXENVBD_TARGET             Target
     );
 
-// StorPort Methods
 extern VOID
-TargetReset(
-    __in PXENVBD_TARGET             Target
+TargetPrepareIo(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
     );
 
 extern BOOLEAN
 TargetStartIo(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
+    );
+
+extern VOID
+TargetReset(
+    IN  PXENVBD_TARGET  Target
+    );
+
+extern VOID
+TargetFlush(
+    IN  PXENVBD_TARGET  Target,
+    IN  PXENVBD_SRBEXT  SrbExt
+    );
+
+extern VOID
+TargetShutdown(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt
     );
