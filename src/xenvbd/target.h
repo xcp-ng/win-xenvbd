@@ -126,16 +126,6 @@ TargetCompleteResponse(
     );
 
 extern VOID
-TargetPreResume(
-    __in PXENVBD_TARGET             Target
-    );
-
-extern VOID
-TargetPostResume(
-    __in PXENVBD_TARGET             Target
-    );
-
-extern VOID
 TargetPrepareIo(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt

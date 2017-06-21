@@ -1412,8 +1412,6 @@ FrontendSuspendLateCallback(
     Verbose("Target[%d] : ===> from %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
     State = Frontend->State;
 
-    TargetPreResume(Frontend->Target);
-
     // dont acquire state lock - called at DISPATCH on 1 vCPU with interrupts enabled
     Status = __FrontendSetState(Frontend, XENVBD_CLOSED);
     if (!NT_SUCCESS(Status)) {
@@ -1428,7 +1426,6 @@ FrontendSuspendLateCallback(
         ASSERT(FALSE);
     }
 
-    TargetPostResume(Frontend->Target);
     NotifierTrigger(Frontend->Notifier);
 
     Verbose("Target[%d] : <=== restored %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));

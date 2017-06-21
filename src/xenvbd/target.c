@@ -72,7 +72,9 @@ struct _XENVBD_TARGET {
     // Frontend (Ring, includes XenBus interfaces)
     PXENVBD_FRONTEND            Frontend;
     XENBUS_DEBUG_INTERFACE      DebugInterface;
+    XENBUS_SUSPEND_INTERFACE    SuspendInterface;
     PXENBUS_DEBUG_CALLBACK      DebugCallback;
+    PXENBUS_SUSPEND_CALLBACK    SuspendCallback;
 
     // State
     LONG                        Paused;
@@ -1355,81 +1357,6 @@ TargetCompleteResponse(
     }
 }
 
-VOID
-TargetPreResume(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    LIST_ENTRY          List;
-
-    InitializeListHead(&List);
-
-    // pop all submitted requests, cleanup and add associated SRB to a list
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Target->SubmittedReqs);
-        if (Entry == NULL)
-            break;
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        SrbExt = GetSrbExt(Request->Srb);
-
-        TargetPutRequest(Target, Request);
-
-        if (InterlockedDecrement(&SrbExt->Count) == 0) {
-            InsertTailList(&List, &SrbExt->Entry);
-        }
-    }
-
-    // pop all prepared requests, cleanup and add associated SRB to a list
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PXENVBD_REQUEST Request;
-        PLIST_ENTRY     Entry = QueuePop(&Target->PreparedReqs);
-        if (Entry == NULL)
-            break;
-        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
-        SrbExt = GetSrbExt(Request->Srb);
-
-        TargetPutRequest(Target, Request);
-
-        if (InterlockedDecrement(&SrbExt->Count) == 0) {
-            InsertTailList(&List, &SrbExt->Entry);
-        }
-    }
-
-    // foreach SRB in list, put on start of FreshSrbs
-    for (;;) {
-        PXENVBD_SRBEXT  SrbExt;
-        PLIST_ENTRY     Entry = RemoveTailList(&List);
-        if (Entry == &List)
-            break;
-        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
-
-        QueueUnPop(&Target->FreshSrbs, &SrbExt->Entry);
-    }
-
-    // now the first set of requests popped off submitted list is the next SRB
-    // to be popped off the fresh list
-}
-
-VOID
-TargetPostResume(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    KIRQL   Irql;
-
-    Verbose("Target[%d] : %d Fresh SRBs\n", TargetGetTargetId(Target), QueueCount(&Target->FreshSrbs));
-
-    // clear missing flag
-    KeAcquireSpinLock(&Target->Lock, &Irql);
-    Verbose("Target[%d] : %s (%s)\n", TargetGetTargetId(Target), Target->Missing ? "MISSING" : "NOT_MISSING", Target->Reason);
-    Target->Missing = FALSE;
-    Target->Reason = NULL;
-    KeReleaseSpinLock(&Target->Lock, Irql);
-}
-
 //=============================================================================
 // SRBs
 __checkReturn
@@ -2298,6 +2225,76 @@ TargetDebugCallback(
     Target->SegsGranted = Target->SegsBounced = 0;
 }
 
+static DECLSPEC_NOINLINE VOID
+TargetSuspendCallback(
+    IN  PVOID       Argument
+    )
+{
+    PXENVBD_TARGET  Target = Argument;
+    LIST_ENTRY      List;
+
+    InitializeListHead(&List);
+
+    // pop all submitted requests, cleanup and add associated SRB to a list
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Target->SubmittedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        TargetPutRequest(Target, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            InsertTailList(&List, &SrbExt->Entry);
+        }
+    }
+
+    // pop all prepared requests, cleanup and add associated SRB to a list
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Target->PreparedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        TargetPutRequest(Target, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            InsertTailList(&List, &SrbExt->Entry);
+        }
+    }
+
+    // foreach SRB in list, put on start of FreshSrbs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PLIST_ENTRY     Entry = RemoveTailList(&List);
+        if (Entry == &List)
+            break;
+        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+
+        QueueUnPop(&Target->FreshSrbs, &SrbExt->Entry);
+    }
+
+    // now the first set of requests popped off submitted list is the next SRB
+    // to be popped off the fresh list
+
+    Verbose("Target[%d] : %d Fresh SRBs\n",
+            TargetGetTargetId(Target),
+            QueueCount(&Target->FreshSrbs));
+
+    Verbose("Target[%d] : %s (%s)\n",
+            TargetGetTargetId(Target),
+            Target->Missing ? "MISSING" : "NOT_MISSING",
+            Target->Reason);
+    Target->Missing = FALSE;
+    Target->Reason = NULL;
+}
+
 NTSTATUS
 TargetD3ToD0(
     IN  PXENVBD_TARGET  Target
@@ -2313,6 +2310,8 @@ TargetD3ToD0(
 
     AdapterGetDebugInterface(TargetGetAdapter(Target),
                              &Target->DebugInterface);
+    AdapterGetSuspendInterface(TargetGetAdapter(Target),
+                               &Target->SuspendInterface);
 
     status = XENBUS_DEBUG(Acquire, &Target->DebugInterface);
     if (!NT_SUCCESS(status))
@@ -2327,21 +2326,46 @@ TargetD3ToD0(
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = FrontendD3ToD0(Target->Frontend);
+    status = XENBUS_SUSPEND(Acquire, &Target->SuspendInterface);
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
+    status = XENBUS_SUSPEND(Register,
+                            &Target->SuspendInterface,
+                            SUSPEND_CALLBACK_LATE,
+                            TargetSuspendCallback,
+                            Target,
+                            &Target->SuspendCallback);
     if (!NT_SUCCESS(status))
         goto fail4;
+
+    status = FrontendD3ToD0(Target->Frontend);
+    if (!NT_SUCCESS(status))
+        goto fail5;
+
+    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
+    if (!NT_SUCCESS(status))
+        goto fail6;
 
     __TargetUnpauseDataPath(Target);
 
     return STATUS_SUCCESS;
 
+fail6:
+    Error("fail6\n");
+    FrontendD0ToD3(Target->Frontend);
+
+fail5:
+    Error("fail5\n");
+    XENBUS_SUSPEND(Deregister,
+                   &Target->SuspendInterface,
+                   Target->SuspendCallback);
+    Target->SuspendCallback = NULL;
+
 fail4:
     Error("fail4\n");
-    FrontendD0ToD3(Target->Frontend);
+    XENBUS_SUSPEND(Release,
+                   &Target->SuspendInterface);
 
 fail3:
     Error("fail3\n");
@@ -2358,6 +2382,8 @@ fail2:
 fail1:
     Error("Fail1 (%08x)\n", status);
 
+    RtlZeroMemory(&Target->SuspendInterface,
+                  sizeof(XENBUS_SUSPEND_INTERFACE));
     RtlZeroMemory(&Target->DebugInterface,
                   sizeof(XENBUS_DEBUG_INTERFACE));
     Target->DevicePowerState = PowerDeviceD3;
@@ -2383,6 +2409,14 @@ TargetD0ToD3(
 
     FrontendD0ToD3(Target->Frontend);
 
+    XENBUS_SUSPEND(Deregister,
+                   &Target->SuspendInterface,
+                   Target->SuspendCallback);
+    Target->SuspendCallback = NULL;
+
+    XENBUS_SUSPEND(Release,
+                   &Target->SuspendInterface);
+
     XENBUS_DEBUG(Deregister,
                  &Target->DebugInterface,
                  Target->DebugCallback);
@@ -2391,6 +2425,8 @@ TargetD0ToD3(
     XENBUS_DEBUG(Release,
                  &Target->DebugInterface);
 
+    RtlZeroMemory(&Target->SuspendInterface,
+                  sizeof(XENBUS_SUSPEND_INTERFACE));
     RtlZeroMemory(&Target->DebugInterface,
                   sizeof(XENBUS_DEBUG_INTERFACE));
 }
