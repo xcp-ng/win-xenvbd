@@ -75,54 +75,34 @@ TargetIssueDeviceEject(
     IN  const CHAR      *Reason
     );
 
-// PnP States
 extern VOID
 TargetSetMissing(
-    __in PXENVBD_TARGET             Target,
-    __in __nullterminated const CHAR* Reason
-    );
-
-__checkReturn
-extern BOOLEAN
-TargetIsMissing(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target,
+    IN  const CHAR      *Reason
     );
 
 extern VOID
 TargetSetDevicePnpState(
-    __in PXENVBD_TARGET             Target,
-    __in DEVICE_PNP_STATE        State
-    );
-
-__checkReturn
-extern DEVICE_PNP_STATE
-TargetGetDevicePnpState(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET      Target,
+    IN  DEVICE_PNP_STATE    State
     );
 
 extern VOID
 TargetSetDeviceObject(
-    __in PXENVBD_TARGET             Target,
-    __in PDEVICE_OBJECT          DeviceObject
+    IN  PXENVBD_TARGET  Target,
+    IN  PDEVICE_OBJECT  DeviceObject
     );
 
-__checkReturn
-extern BOOLEAN
-TargetIsPaused(
-    __in PXENVBD_TARGET             Target
-    );
-
-// Queue-Related
 extern VOID
 TargetSubmitRequests(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     );
 
 extern VOID
 TargetCompleteResponse(
-    __in PXENVBD_TARGET             Target,
-    __in ULONG                   Tag,
-    __in SHORT                   Status
+    IN  PXENVBD_TARGET  Target,
+    IN  ULONG           Tag,
+    IN  SHORT           Status
     );
 
 extern VOID
@@ -166,6 +146,8 @@ TARGET_GET_PROPERTY(TargetId, ULONG)
 TARGET_GET_PROPERTY(DeviceId, ULONG)
 TARGET_GET_PROPERTY(Removable, BOOLEAN)
 TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
+TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
+TARGET_GET_PROPERTY(Missing, BOOLEAN)
 
 #undef TARGET_GET_PROPERTY
 

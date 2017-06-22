@@ -450,7 +450,7 @@ __AdapterEnumerate(
             }
         }
 
-        if (Missing && !TargetIsMissing(Target)) {
+        if (Missing && !TargetGetMissing(Target)) {
             TargetSetMissing(Target, "Device Disappeared");
             if (TargetGetDevicePnpState(Target) == Present)
                 TargetSetDevicePnpState(Target, Deleted);

@@ -246,8 +246,6 @@ __PnpStateName(
     }
 }
 
-//=============================================================================
-// Power States
 __checkReturn
 static FORCEINLINE BOOLEAN
 TargetSetDevicePowerState(
@@ -269,49 +267,36 @@ TargetSetDevicePowerState(
     return Changed;
 }
 
-//=============================================================================
-// PnP States
-FORCEINLINE VOID
+VOID
 TargetSetMissing(
-    __in PXENVBD_TARGET             Target,
-    __in __nullterminated const CHAR* Reason
+    IN  PXENVBD_TARGET  Target,
+    IN  const CHAR      *Reason
     )
 {
-    KIRQL   Irql;
+    KIRQL               Irql;
 
     ASSERT3P(Reason, !=, NULL);
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     if (Target->Missing) {
-        Verbose("Target[%d] : Already MISSING (%s) when trying to set (%s)\n", TargetGetTargetId(Target), Target->Reason, Reason);
+        Verbose("Target[%d] : Already MISSING (%s) when trying to set (%s)\n",
+                TargetGetTargetId(Target),
+                Target->Reason,
+                Reason);
     } else {
-        Verbose("Target[%d] : MISSING %s\n", TargetGetTargetId(Target), Reason);
+        Verbose("Target[%d] : MISSING %s\n",
+                TargetGetTargetId(Target),
+                Reason);
         Target->Missing = TRUE;
         Target->Reason = Reason;
     }
     KeReleaseSpinLock(&Target->Lock, Irql);
 }
 
-__checkReturn
-FORCEINLINE BOOLEAN
-TargetIsMissing(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    KIRQL   Irql;
-    BOOLEAN Missing;
-
-    KeAcquireSpinLock(&Target->Lock, &Irql);
-    Missing = Target->Missing;
-    KeReleaseSpinLock(&Target->Lock, Irql);
-
-    return Missing;
-}
-
-FORCEINLINE VOID
+VOID
 TargetSetDevicePnpState(
-    __in PXENVBD_TARGET             Target,
-    __in DEVICE_PNP_STATE        State
+    IN  PXENVBD_TARGET      Target,
+    IN  DEVICE_PNP_STATE    State
     )
 {
     Verbose("Target[%d] : PNP %s to %s\n",
@@ -326,15 +311,6 @@ TargetSetDevicePnpState(
     Target->DevicePnpState = State;
 }
 
-__checkReturn
-FORCEINLINE DEVICE_PNP_STATE
-TargetGetDevicePnpState(
-    __in PXENVBD_TARGET             Target
-    )
-{
-    return Target->DevicePnpState;
-}
-
 static FORCEINLINE VOID
 __TargetRestoreDevicePnpState(
     __in PXENVBD_TARGET             Target,
@@ -347,26 +323,27 @@ __TargetRestoreDevicePnpState(
     }
 }
 
-FORCEINLINE VOID
+VOID
 TargetSetDeviceObject(
-    __in PXENVBD_TARGET             Target,
-    __in PDEVICE_OBJECT          DeviceObject
+    IN  PXENVBD_TARGET  Target,
+    IN  PDEVICE_OBJECT  DeviceObject
     )
 {
-    Verbose("Target[%d] : Setting DeviceObject = 0x%p\n", TargetGetTargetId(Target), DeviceObject);
+    Verbose("Target[%d] : Setting DeviceObject = 0x%p\n",
+            TargetGetTargetId(Target),
+            DeviceObject);
 
     ASSERT3P(Target->DeviceObject, ==, NULL);
     Target->DeviceObject = DeviceObject;
 }
 
-__checkReturn
-FORCEINLINE BOOLEAN
+static FORCEINLINE BOOLEAN
 TargetIsPaused(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
-    BOOLEAN Paused;
-    KIRQL   Irql;
+    BOOLEAN             Paused;
+    KIRQL               Irql;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     Paused = (Target->Paused > 0);
@@ -1279,7 +1256,7 @@ BlkifOperationName(
 
 VOID
 TargetSubmitRequests(
-    __in PXENVBD_TARGET             Target
+    IN  PXENVBD_TARGET  Target
     )
 {
     for (;;) {
@@ -1302,9 +1279,9 @@ TargetSubmitRequests(
 
 VOID
 TargetCompleteResponse(
-    __in PXENVBD_TARGET             Target,
-    __in ULONG                   Tag,
-    __in SHORT                   Status
+    IN  PXENVBD_TARGET  Target,
+    IN  ULONG           Tag,
+    IN  SHORT           Status
     )
 {
     PXENVBD_REQUEST     Request;
@@ -1772,7 +1749,7 @@ __ValidateSrbForTarget(
         return FALSE;
     }
 
-    if (TargetIsMissing(Target)) {
+    if (TargetGetMissing(Target)) {
         Error("Target[%d] : %s (%s) (%02x:%s)\n",
               TargetGetTargetId(Target),
               Target->Missing ? "MISSING" : "NOT_MISSING",
@@ -2600,6 +2577,24 @@ TargetGetSurpriseRemovable(
     )
 {
     return FrontendGetCaps(Target->Frontend)->SurpriseRemovable;
+}
+
+TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
+//TARGET_GET_PROPERTY(Missing, BOOLEAN)
+
+BOOLEAN
+TargetGetMissing(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    KIRQL               Irql;
+    BOOLEAN             Missing;
+
+    KeAcquireSpinLock(&Target->Lock, &Irql);
+    Missing = Target->Missing;
+    KeReleaseSpinLock(&Target->Lock, Irql);
+
+    return Missing;
 }
 
 #undef TARGET_GET_PROPERTY
