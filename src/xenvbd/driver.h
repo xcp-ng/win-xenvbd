@@ -61,6 +61,7 @@ DriverDispatchPower(
     IN  PIRP            Irp
     );
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 extern VOID
 DriverRequestReboot(
     VOID

@@ -1095,6 +1095,7 @@ AdapterDevicePowerThread(
     return STATUS_SUCCESS;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 __AdapterQueryInterface(
     IN  PXENVBD_ADAPTER Adapter,
@@ -1174,6 +1175,8 @@ fail1:
                             (PINTERFACE)(_itf),                 \
                             sizeof( ## _name ## _INTERFACE),    \
                             (_opt))
+
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 AdapterInitialize(
     IN  PXENVBD_ADAPTER Adapter,
@@ -1916,12 +1919,7 @@ AdapterHwFindAdapter(
     OUT PBOOLEAN                            Again
     )
 {
-    PXENVBD_ADAPTER                         Adapter = DevExt;
-    PDEVICE_OBJECT                          DeviceObject;
-    PDEVICE_OBJECT                          PhysicalDeviceObject;
-    PDEVICE_OBJECT                          LowerDeviceObject;
-    NTSTATUS                                status;
-
+    UNREFERENCED_PARAMETER(DevExt);
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(BusInformation);
     UNREFERENCED_PARAMETER(ArgumentString);
@@ -1948,36 +1946,57 @@ AdapterHwFindAdapter(
     // We need to do this to avoid an assertion in a checked kernel
     (VOID) StorPortGetUncachedExtension(DevExt, ConfigInfo, PAGE_SIZE);
 
-    (VOID) StorPortGetDeviceObjects(DevExt,
-                                    &DeviceObject,
-                                    &PhysicalDeviceObject,
-                                    &LowerDeviceObject);
-    if (Adapter->DeviceObject == DeviceObject)
-        return SP_RETURN_FOUND;
+    return SP_RETURN_FOUND;
+}
+
+HW_PASSIVE_INITIALIZE_ROUTINE AdapterHwPassiveInitialize;
+
+BOOLEAN
+AdapterHwPassiveInitialize(
+    IN  PVOID   DevExt
+    )
+{
+    PXENVBD_ADAPTER Adapter = DevExt;
+    PDEVICE_OBJECT  DeviceObject;
+    PDEVICE_OBJECT  PhysicalDeviceObject;
+    PDEVICE_OBJECT  LowerDeviceObject;
+    NTSTATUS        status;
+
+    if (StorPortGetDeviceObjects(DevExt,
+                                 &DeviceObject,
+                                 &PhysicalDeviceObject,
+                                 &LowerDeviceObject) != STOR_STATUS_SUCCESS)
+        goto fail1;
 
     status = AdapterInitialize(Adapter,
                                DeviceObject,
                                PhysicalDeviceObject,
                                LowerDeviceObject);
     if (!NT_SUCCESS(status))
-        goto fail1;
+        goto fail2;
 
     AdapterUnplugRequest(Adapter, TRUE);
 
     status = AdapterD3ToD0(Adapter);
     if (!NT_SUCCESS(status))
-        goto fail2;
+        goto fail3;
 
     DriverSetAdapter(Adapter);
-    return SP_RETURN_FOUND;
+    return TRUE;
+
+fail3:
+    Error("fail2\n");
+
+    AdapterUnplugRequest(Adapter, FALSE);
+    AdapterTeardown(Adapter);
 
 fail2:
     Error("fail2\n");
-    AdapterUnplugRequest(Adapter, FALSE);
-    AdapterTeardown(Adapter);
+
 fail1:
     Error("fail1\n");
-    return SP_RETURN_ERROR;
+
+    return FALSE;
 }
 
 HW_INITIALIZE   AdapterHwInitialize;
@@ -1987,8 +2006,8 @@ AdapterHwInitialize(
     IN  PVOID   DevExt
     )
 {
-    UNREFERENCED_PARAMETER(DevExt);
-    return TRUE;
+    return StorPortEnablePassiveInitialization(DevExt,
+                                               AdapterHwPassiveInitialize);
 }
 
 HW_INTERRUPT    AdapterHwInterrupt;

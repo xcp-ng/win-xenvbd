@@ -105,6 +105,7 @@ DriverDispatchPower(
 
 #define MAXNAMELEN  256
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 VOID
 DriverRequestReboot(
     VOID
