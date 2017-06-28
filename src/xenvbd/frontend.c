@@ -620,15 +620,55 @@ abort:
 
 static FORCEINLINE BOOLEAN
 FrontendReadFeature(
-    IN  PXENVBD_FRONTEND            Frontend,
-    IN  PCHAR                       Name,
-    IN  PBOOLEAN                    Value
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  XENVBD_FEATURE      Feature,
+    IN  PBOOLEAN            Value
+)
+{
+    NTSTATUS                status;
+    PCHAR                   Buffer;
+    ULONG                   Override;
+    BOOLEAN                 Old = *Value;
+    const CHAR              *Name;
+
+    Name = DriverGetFeatureName(Feature);
+    if (Name == NULL) {
+        Trace("Target[%d] : Could not find Feature %u.\n", Frontend->TargetId, Feature);
+        return FALSE;
+    }
+
+    if (DriverGetFeatureOverride(Feature, &Override)) {
+        *Value = !!Override;
+    } else {
+        status = XENBUS_STORE(Read,
+                              &Frontend->StoreInterface,
+                              NULL,
+                              Frontend->BackendPath,
+                              (PCHAR)Name,
+                              &Buffer);
+        if (!NT_SUCCESS(status))
+            return FALSE;   // no value, unchanged
+
+        *Value = !!(strtoul(Buffer, NULL, 10));
+
+        XENBUS_STORE(Free,
+                     &Frontend->StoreInterface,
+                     Buffer);
+    }
+
+    return Old != *Value;
+}
+
+static FORCEINLINE BOOLEAN
+FrontendReadDiskFeature(
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  PCHAR               Name,
+    IN  PBOOLEAN            Value
     )
 {
-    NTSTATUS        status;
-    PCHAR           Buffer;
-    ULONG           Override;
-    BOOLEAN         Old = *Value;
+    NTSTATUS                status;
+    PCHAR                   Buffer;
+    BOOLEAN                 Old = *Value;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -640,34 +680,67 @@ FrontendReadFeature(
         return FALSE;   // no value, unchanged
 
     *Value = !!(strtoul(Buffer, NULL, 10));
-    XENBUS_STORE(Free,
-                    &Frontend->StoreInterface,
-                    Buffer);
 
-    // check registry for disable-override
-    status = RegistryQueryDwordValue(DriverGetParametersKey(),
-                                    Name,
-                                    &Override);
-    if (NT_SUCCESS(status)) {
-        if (Override == 0)
-            *Value = FALSE;
-    }
+    XENBUS_STORE(Free,
+                 &Frontend->StoreInterface,
+                 Buffer);
 
     return Old != *Value;
 }
 
 static FORCEINLINE BOOLEAN
 FrontendReadValue32(
-    IN  PXENVBD_FRONTEND            Frontend,
-    IN  PCHAR                       Name,
-    IN  BOOLEAN                     AllowOverride,
-    IN  PULONG                      Value
-    )
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  XENVBD_FEATURE      Feature,
+    IN  BOOLEAN             AllowOverride,
+    IN  PULONG              Value
+)
 {
-    NTSTATUS        status;
-    PCHAR           Buffer;
-    ULONG           Override;
-    ULONG           Old = *Value;
+    NTSTATUS                status;
+    PCHAR                   Buffer;
+    ULONG                   Override;
+    ULONG                   Old = *Value;
+    const CHAR              *Name;
+
+    Name = DriverGetFeatureName(Feature);
+    if (Name == NULL) {
+        Trace("Target[%d] : Could not find Feature %u.\n", Frontend->TargetId, Feature);
+        return FALSE;
+    }
+
+    // check registry for disable-override
+    if (AllowOverride && DriverGetFeatureOverride(Feature, &Override)) {
+        *Value = Override;
+    } else {
+        status = XENBUS_STORE(Read,
+                              &Frontend->StoreInterface,
+                              NULL,
+                              Frontend->BackendPath,
+                              (PCHAR)Name,
+                              &Buffer);
+        if (!NT_SUCCESS(status))
+            return FALSE;   // no value, unchanged
+
+        *Value = strtoul(Buffer, NULL, 10);
+
+        XENBUS_STORE(Free,
+                     &Frontend->StoreInterface,
+                     Buffer);
+    }
+
+    return Old != *Value;
+}
+
+static FORCEINLINE BOOLEAN
+FrontendReadDiskValue32(
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  PCHAR               Name,
+    IN  PULONG              Value
+)
+{
+    NTSTATUS                status;
+    PCHAR                   Buffer;
+    ULONG                   Old = *Value;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -679,33 +752,24 @@ FrontendReadValue32(
         return FALSE;   // no value, unchanged
 
     *Value = strtoul(Buffer, NULL, 10);
-    XENBUS_STORE(Free,
-                    &Frontend->StoreInterface,
-                    Buffer);
 
-    // check registry for disable-override
-    if (AllowOverride) {
-        status = RegistryQueryDwordValue(DriverGetParametersKey(),
-                                        Name,
-                                        &Override);
-        if (NT_SUCCESS(status)) {
-            *Value = Override;
-        }
-    }
+    XENBUS_STORE(Free,
+                 &Frontend->StoreInterface,
+                 Buffer);
 
     return Old != *Value;
 }
 
 static FORCEINLINE BOOLEAN
 FrontendReadValue64(
-    IN  PXENVBD_FRONTEND            Frontend,
-    IN  PCHAR                       Name,
-    IN OUT PULONG64                 Value
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  PCHAR               Name,
+    IN OUT PULONG64         Value
     )
 {
-    NTSTATUS        status;
-    PCHAR           Buffer;
-    ULONG64         Old = *Value;
+    NTSTATUS                status;
+    PCHAR                   Buffer;
+    ULONG64                 Old = *Value;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -717,57 +781,59 @@ FrontendReadValue64(
         return FALSE;   // no value, unchanged
 
     *Value = _strtoui64(Buffer, NULL, 10);
+
     XENBUS_STORE(Free,
-                    &Frontend->StoreInterface,
-                    Buffer);
+                 &Frontend->StoreInterface,
+                 Buffer);
 
     return Old != *Value;
 }
 
 static FORCEINLINE ULONG
 __Size(
-    __in  PXENVBD_DISKINFO          Info
+    __in  PXENVBD_DISKINFO  Info
     )
 {
-    ULONG64 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024); 
+    ULONG64                 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024);
+
     if (MBytes < 10240)
         return (ULONG)MBytes;
+
     return (ULONG)(MBytes >> 10); // / 1024
 }
 static FORCEINLINE PCHAR
 __Units(
-    __in  PXENVBD_DISKINFO          Info
+    __in  PXENVBD_DISKINFO  Info
     )
 {
-    ULONG64 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024); 
+    ULONG64                 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024);
+
     if (MBytes < 10240)
         return "MB";
+
     return "GB";
 }
 
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static VOID
 __ReadDiskInfo(
-    __in  PXENVBD_FRONTEND        Frontend
+    __in  PXENVBD_FRONTEND  Frontend
     )
 {
-    BOOLEAN Changed = FALSE;
+    BOOLEAN                 Changed;
 
-    Changed |= FrontendReadValue32(Frontend,
-                                  "info",
-                                  FALSE,
-                                  &Frontend->DiskInfo.DiskInfo);
-    Changed |= FrontendReadValue32(Frontend,
-                                  "sector-size",
-                                  FALSE,
-                                  &Frontend->DiskInfo.SectorSize);
-    Changed |= FrontendReadValue32(Frontend,
-                                  "physical-sector-size",
-                                  FALSE,
-                                  &Frontend->DiskInfo.PhysSectorSize);
+    Changed = FrontendReadDiskValue32(Frontend,
+                                      "info",
+                                      &Frontend->DiskInfo.DiskInfo);
+    Changed |= FrontendReadDiskValue32(Frontend,
+                                       "sector-size",
+                                       &Frontend->DiskInfo.SectorSize);
+    Changed |= FrontendReadDiskValue32(Frontend,
+                                       "physical-sector-size",
+                                       &Frontend->DiskInfo.PhysSectorSize);
     Changed |= FrontendReadValue64(Frontend,
-                                  "sectors",
-                                  &Frontend->DiskInfo.SectorCount);
+                                   "sectors",
+                                   &Frontend->DiskInfo.SectorCount);
 
     if (!Changed)
         return;
@@ -791,40 +857,41 @@ __ReadDiskInfo(
 
     // dump actual values
     Verbose("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
-                Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
-                Frontend->DiskInfo.PhysSectorSize);
+            Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
+            Frontend->DiskInfo.PhysSectorSize);
     Verbose("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
-                __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-                Frontend->DiskInfo.DiskInfo,
-                Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+            __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
+            Frontend->DiskInfo.DiskInfo,
+            Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
 }
 
 static FORCEINLINE VOID
 FrontendReadFeatures(
-    IN  PXENVBD_FRONTEND            Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    BOOLEAN Changed = FALSE;
+    BOOLEAN                 Changed;
 
-    Changed |= FrontendReadFeature(Frontend,
-                                   "removable",
-                                   &Frontend->Caps.Removable);
+    Changed = FrontendReadFeature(Frontend,
+                                  FeatureRemovable,
+                                  &Frontend->Caps.Removable);
     Changed |= FrontendReadValue32(Frontend,
-                                   "feature-max-indirect-segments",
+                                   FeatureMaxIndirectSegments,
                                    TRUE,
                                    &Frontend->Features.Indirect);
     Changed |= FrontendReadFeature(Frontend,
-                                   "feature-persistent",
+                                   FeaturePersistent,
                                    &Frontend->Features.Persistent);
 
     if (!Changed)
         return;
 
     Verbose("Target[%d] : Features: %s%s%s\n",
-                Frontend->TargetId,
-                Frontend->Features.Persistent ? "PERSISTENT " : "",
-                Frontend->Features.Indirect ? "INDIRECT " : "",
-                Frontend->Caps.Removable ? "REMOVABLE" : "");
+            Frontend->TargetId,
+            Frontend->Features.Persistent ? "PERSISTENT " : "",
+            Frontend->Features.Indirect ? "INDIRECT " : "",
+            Frontend->Caps.Removable ? "REMOVABLE" : "");
+
     if (Frontend->Features.Indirect) {
         Verbose("Target[%d] : INDIRECT %x\n",
                     Frontend->TargetId,
@@ -834,40 +901,44 @@ FrontendReadFeatures(
 
 static FORCEINLINE VOID
 FrontendReadDiskInfo(
-    IN  PXENVBD_FRONTEND            Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    BOOLEAN Changed = FALSE;
-    BOOLEAN Discard;
-    BOOLEAN DiscardFeature = FALSE;
-    BOOLEAN DiscardEnable = TRUE;
+    BOOLEAN                 Changed;
+    BOOLEAN                 Discard;
+    BOOLEAN                 DiscardFeature = FALSE;
+    BOOLEAN                 DiscardEnable = TRUE;
 
+    Changed = FrontendReadFeature(Frontend,
+                                  FeatureBarrier,
+                                  &Frontend->DiskInfo.Barrier);
     Changed |= FrontendReadFeature(Frontend,
-                                   "feature-barrier",
-                                   &Frontend->DiskInfo.Barrier);
-    Changed |= FrontendReadFeature(Frontend,
-                                   "feature-flush-cache",
+                                   FeatureFlushCache,
                                    &Frontend->DiskInfo.FlushCache);
 
     // discard related
     FrontendReadFeature(Frontend,
-                        "feature-discard",
+                        FeatureDiscard,
                         &DiscardFeature);
     FrontendReadFeature(Frontend,
-                        "discard-enable",
+                        FeatureDiscardEnable,
                         &DiscardEnable);
+
     Discard = DiscardFeature && DiscardEnable;
+
     Changed |= (Discard != Frontend->DiskInfo.Discard);
+
     Frontend->DiskInfo.Discard = Discard;
+
     Changed |= FrontendReadFeature(Frontend,
-                                   "discard-secure",
+                                   FeatureDiscardSecure,
                                    &Frontend->DiskInfo.DiscardSecure);
     Changed |= FrontendReadValue32(Frontend,
-                                   "discard-alignment",
+                                   FeatureDiscardAlignment,
                                    TRUE,
                                    &Frontend->DiskInfo.DiscardAlignment);
     Changed |= FrontendReadValue32(Frontend,
-                                   "discard-granularity",
+                                   FeatureDiscardGranularity,
                                    TRUE,
                                    &Frontend->DiskInfo.DiscardGranularity);
 
@@ -879,6 +950,7 @@ FrontendReadDiskInfo(
                 Frontend->DiskInfo.Barrier ? "BARRIER " : "",
                 Frontend->DiskInfo.FlushCache ?  "FLUSH " : "",
                 Frontend->DiskInfo.Discard ? "DISCARD " : "");
+
     if (Frontend->DiskInfo.Discard) {
         Verbose("Target[%d] : DISCARD %s%x/%x\n",
                     Frontend->TargetId,
@@ -1240,6 +1312,8 @@ FrontendDisable(
 
 //=============================================================================
 // Init/Term
+_IRQL_requires_(DISPATCH_LEVEL)
+_Requires_lock_held_(Frontend->StateLock)
 static DECLSPEC_NOINLINE NTSTATUS
 __FrontendSetState(
     __in  PXENVBD_FRONTEND        Frontend,
@@ -1413,6 +1487,7 @@ FrontendSuspendLateCallback(
     State = Frontend->State;
 
     // dont acquire state lock - called at DISPATCH on 1 vCPU with interrupts enabled
+#pragma warning(suppress: 26110) // warning C26110: Caller failing to hold lock <lock> before calling function <func>.
     Status = __FrontendSetState(Frontend, XENVBD_CLOSED);
     if (!NT_SUCCESS(Status)) {
         Error("Target[%d] : SetState CLOSED (%08x)\n", Frontend->TargetId, Status);

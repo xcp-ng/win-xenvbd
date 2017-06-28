@@ -67,4 +67,35 @@ DriverRequestReboot(
     VOID
     );
 
+// Registry overrides for driver features
+typedef enum _XENVBD_FEATURE {
+    FeatureRemovable = 0,
+    FeaturePersistent,
+    FeatureMaxIndirectSegments,
+    FeatureBarrier,
+    FeatureFlushCache,
+    FeatureDiscard,
+    FeatureDiscardEnable,
+    FeatureDiscardSecure,
+    FeatureDiscardAlignment,
+    FeatureDiscardGranularity,
+
+    // Add any new features before this enum
+    NumberOfFeatures
+} XENVBD_FEATURE, *PXENVBD_FEATURE;
+
+__checkReturn
+_Success_(return)
+extern BOOLEAN
+DriverGetFeatureOverride(
+    IN  XENVBD_FEATURE   Feature,
+    OUT PULONG           Value
+    );
+
+__checkReturn
+extern const CHAR *
+DriverGetFeatureName(
+    IN  XENVBD_FEATURE  Feature
+    );
+
 #endif // _XENVBD_DRIVER_H

@@ -47,12 +47,20 @@
 #include "debug.h"
 #include "assert.h"
 
+// Feature Overrides From Registry Values
+typedef struct _XENVBD_FEATURE_OVERRIDE {
+    const CHAR                  *Name;
+    ULONG                       Value;
+    BOOLEAN                     Present;
+} XENVBD_FEATURE_OVERRIDE, *PXENVBD_FEATURE_OVERRIDE;
+
 typedef struct _XENVBD_DRIVER {
-    PXENVBD_ADAPTER     Adapter;
-    HANDLE              ParametersKey;
-    PDRIVER_DISPATCH    StorPortDispatchPnp;
-    PDRIVER_DISPATCH    StorPortDispatchPower;
-    PDRIVER_UNLOAD      StorPortDriverUnload;
+    PXENVBD_ADAPTER             Adapter;
+    HANDLE                      ParametersKey;
+    PDRIVER_DISPATCH            StorPortDispatchPnp;
+    PDRIVER_DISPATCH            StorPortDispatchPower;
+    PDRIVER_UNLOAD              StorPortDriverUnload;
+    XENVBD_FEATURE_OVERRIDE     FeatureOverride[NumberOfFeatures];
 } XENVBD_DRIVER;
 
 static XENVBD_DRIVER Driver;
@@ -240,7 +248,80 @@ DriverUnload(
     RegistryTeardown();
 }
 
-DRIVER_INITIALIZE           DriverEntry;
+__drv_requiresIRQL(PASSIVE_LEVEL)
+static FORCEINLINE VOID
+__DriverInitializeOverrides(
+    VOID
+    )
+{
+    ULONG           Index;
+    struct {
+        const CHAR      *Name;
+        XENVBD_FEATURE  Feature;
+    } Mapping[] =
+          {
+              { "removable" , FeatureRemovable },
+              { "feature-persistent", FeaturePersistent },
+              { "feature-max-indirect-segments", FeatureMaxIndirectSegments },
+              { "feature-barrier", FeatureBarrier },
+              { "feature-flush-cache", FeatureFlushCache },
+              { "feature-discard", FeatureDiscard },
+              { "discard-enable", FeatureDiscardEnable },
+              { "discard-secure", FeatureDiscardSecure },
+              { "discard-alignment", FeatureDiscardAlignment },
+              { "discard-granularity", FeatureDiscardGranularity }
+          };
+
+    for (Index = 0; Index < ARRAYSIZE(Mapping); Index++) {
+        XENVBD_FEATURE  Feature = Mapping[Index].Feature;
+        const CHAR      *Name = Mapping[Index].Name;
+        ULONG           Value;
+        NTSTATUS        status;
+
+        Driver.FeatureOverride[Feature].Name = Name;
+
+        status = RegistryQueryDwordValue(__DriverGetParametersKey(),
+                                         (PCHAR)Name,
+                                         &Value);
+
+        if (!NT_SUCCESS(status))
+            continue;
+
+        Driver.FeatureOverride[Feature].Present = TRUE;
+        Driver.FeatureOverride[Feature].Value = Value;
+    }
+}
+
+__checkReturn
+_Success_(return)
+BOOLEAN
+DriverGetFeatureOverride(
+    IN  XENVBD_FEATURE   Feature,
+    OUT PULONG           Value
+    )
+{
+    BOOLEAN              Present = FALSE;
+
+    if (Feature < ARRAYSIZE(Driver.FeatureOverride)) {
+        Present = Driver.FeatureOverride[Feature].Present;
+        *Value = Driver.FeatureOverride[Feature].Value;
+    }
+
+    return Present;
+}
+
+__checkReturn
+const CHAR *
+DriverGetFeatureName(
+    IN  XENVBD_FEATURE  Feature
+    )
+{
+    return (Feature < ARRAYSIZE(Driver.FeatureOverride)) ?
+           Driver.FeatureOverride[Feature].Name :
+           NULL;
+}
+
+DRIVER_INITIALIZE   DriverEntry;
 
 NTSTATUS
 DriverEntry(
@@ -286,6 +367,8 @@ DriverEntry(
     Driver.ParametersKey = ParametersKey;
     Driver.Adapter = NULL;
     BufferInitialize();
+
+    __DriverInitializeOverrides();
 
     status = AdapterDriverEntry(RegistryPath,
                                 DriverObject);
