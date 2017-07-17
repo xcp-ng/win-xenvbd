@@ -89,6 +89,7 @@ RegistryTeardown(
     RegistryPath.MaximumLength = RegistryPath.Length = 0;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenKey(
     IN  HANDLE          Parent,
@@ -118,6 +119,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 RegistryOpenRoot(
     IN  PWCHAR          Path,
@@ -151,6 +153,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateKey(
     IN  HANDLE          Root,
@@ -250,6 +253,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenServiceKey(
     IN  ACCESS_MASK     DesiredAccess,
@@ -259,6 +263,7 @@ RegistryOpenServiceKey(
     return RegistryOpenKey(NULL, &RegistryPath, DesiredAccess, Key);
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateServiceKey(
     OUT PHANDLE         Key
@@ -267,6 +272,7 @@ RegistryCreateServiceKey(
     return RegistryCreateKey(NULL, &RegistryPath, REG_OPTION_NON_VOLATILE, Key);
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenSoftwareKey(
     IN  PDEVICE_OBJECT  DeviceObject,
@@ -289,6 +295,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenHardwareKey(
     IN  PDEVICE_OBJECT      DeviceObject,
@@ -366,6 +373,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenSubKey(
     IN  PHANDLE         Key,
@@ -399,6 +407,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateSubKey(
     IN  PHANDLE         Key,
@@ -432,6 +441,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteSubKey(
     IN  PHANDLE         Key,
@@ -475,6 +485,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryEnumerateSubKeys(
     IN  HANDLE              Key,
@@ -579,6 +590,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryEnumerateValues(
     IN  HANDLE                      Key,
@@ -677,6 +689,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteValue(
     IN  PHANDLE         Key,
@@ -710,6 +723,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryDwordValue(
     IN  HANDLE                      Key,
@@ -780,6 +794,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateDwordValue(
     IN  HANDLE                      Key,
@@ -838,6 +853,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistrySzToAnsi(
     IN  PWCHAR      Buffer
@@ -877,6 +893,7 @@ fail1:
     return NULL;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistryMultiSzToAnsi(
     IN  PWCHAR      Buffer
@@ -939,6 +956,7 @@ fail1:
     return NULL;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySzValue(
     IN  HANDLE                      Key,
@@ -1026,6 +1044,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryBinaryValue(
     IN  HANDLE                      Key,
@@ -1111,6 +1130,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateBinaryValue(
     IN  HANDLE                      Key,
@@ -1170,6 +1190,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryKeyName(
     IN  HANDLE              Key,
@@ -1225,6 +1246,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySystemStartOption(
     IN  const CHAR                  *Prefix,
@@ -1303,6 +1325,7 @@ fail1:
     return status;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToSz(
     PANSI_STRING                    Ansi
@@ -1342,6 +1365,7 @@ fail1:
     return NULL;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToMultiSz(
     PANSI_STRING                    Ansi
@@ -1395,6 +1419,7 @@ fail1:
     return NULL;
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateSzValue(
     IN  HANDLE                      Key,
@@ -1485,6 +1510,7 @@ RegistryFreeBinaryValue(
     __RegistryFree(Buffer);
 }
 
+__drv_requiresIRQL(PASSIVE_LEVEL)
 VOID
 RegistryCloseKey(
     IN  HANDLE  Key
