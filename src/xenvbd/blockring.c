@@ -506,12 +506,13 @@ BlockRingDebugCallback(
     BlockRing->Submitted = BlockRing->Received = 0;
 }
 
-VOID
+BOOLEAN
 BlockRingPoll(
     IN  PXENVBD_BLOCKRING           BlockRing
     )
 {
     PXENVBD_TARGET Target = FrontendGetTarget(BlockRing->Frontend);
+    BOOLEAN        Retry = FALSE;
 
     ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
     KeAcquireSpinLockAtDpcLevel(&BlockRing->Lock);
@@ -532,10 +533,10 @@ BlockRingPoll(
 
         KeMemoryBarrier();
 
-        if (rsp_cons == rsp_prod)
+        if (rsp_cons == rsp_prod || Retry)
             break;
 
-        while (rsp_cons != rsp_prod) {
+        while (rsp_cons != rsp_prod && !Retry) {
             blkif_response_t*   Response;
             ULONG               Tag;
 
@@ -548,6 +549,9 @@ BlockRingPoll(
             }
 
             RtlZeroMemory(Response, sizeof(union blkif_sring_entry));
+
+            if (rsp_cons - BlockRing->FrontRing.rsp_cons > RING_SIZE(&BlockRing->FrontRing) / 4)
+                Retry = TRUE;
         }
 
         KeMemoryBarrier();
@@ -558,6 +562,8 @@ BlockRingPoll(
 
 done:
     KeReleaseSpinLockFromDpcLevel(&BlockRing->Lock);
+
+    return Retry;
 }
 
 BOOLEAN

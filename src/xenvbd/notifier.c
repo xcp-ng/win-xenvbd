@@ -50,6 +50,8 @@ struct _XENVBD_NOTIFIER {
     ULONG                           NumInts;
     ULONG                           NumDpcs;
     KDPC                            Dpc;
+    KDPC                            TimerDpc;
+    KTIMER                          Timer;
 };
 
 #define NOTIFIER_POOL_TAG           'yfNX'
@@ -95,6 +97,37 @@ NotifierInterrupt(
     return TRUE;
 }
 
+static FORCEINLINE BOOLEAN
+__NotifierDpcTimeout(
+    IN  PXENVBD_NOTIFIER        Notifier
+    )
+{
+    KDPC_WATCHDOG_INFORMATION   Watchdog;
+    NTSTATUS                    status;
+
+    UNREFERENCED_PARAMETER(Notifier);
+
+    RtlZeroMemory(&Watchdog, sizeof (Watchdog));
+
+    status = KeQueryDpcWatchdogInformation(&Watchdog);
+    ASSERT(NT_SUCCESS(status));
+
+    if (Watchdog.DpcTimeLimit == 0 ||
+        Watchdog.DpcWatchdogLimit == 0)
+        return FALSE;
+
+    if (Watchdog.DpcTimeCount > (Watchdog.DpcTimeLimit / 2) &&
+        Watchdog.DpcWatchdogCount > (Watchdog.DpcWatchdogLimit / 2))
+        return FALSE;
+
+    return TRUE;
+}
+
+#define TIME_US(_us)        ((_us) * 10)
+#define TIME_MS(_ms)        (TIME_US((_ms) * 1000))
+#define TIME_S(_s)          (TIME_MS((_s) * 1000))
+#define TIME_RELATIVE(_t)   (-(_t))
+
 KDEFERRED_ROUTINE NotifierDpc;
 
 VOID 
@@ -116,12 +149,25 @@ NotifierDpc(
     if (!Notifier->Connected)
         return;
 
-    FrontendNotifyResponses(Notifier->Frontend);
+    for (;;) {
+        if (!FrontendNotifyResponses(Notifier->Frontend)) {
+            XENBUS_EVTCHN(Unmask,
+                          &Notifier->EvtchnInterface,
+                          Notifier->Channel,
+                          FALSE);
+            break;
+        }
+        if (__NotifierDpcTimeout(Notifier)) {
+            LARGE_INTEGER   Delay;
 
-    XENBUS_EVTCHN(Unmask,
-                  &Notifier->EvtchnInterface,
-                  Notifier->Channel,
-                  FALSE);
+            Delay.QuadPart = TIME_RELATIVE(TIME_US(100));
+
+            KeSetTimer(&Notifier->Timer,
+                       Delay,
+                       &Notifier->TimerDpc);
+            break;
+        }
+    }
 }
 
 NTSTATUS
@@ -136,6 +182,8 @@ NotifierCreate(
 
     (*Notifier)->Frontend = Frontend;
     KeInitializeDpc(&(*Notifier)->Dpc, NotifierDpc, *Notifier);
+    KeInitializeDpc(&(*Notifier)->TimerDpc, NotifierDpc, *Notifier);
+    KeInitializeTimer(&(*Notifier)->Timer);
 
     return STATUS_SUCCESS;
 
@@ -150,6 +198,8 @@ NotifierDestroy(
 {
     Notifier->Frontend = NULL;
     RtlZeroMemory(&Notifier->Dpc, sizeof(KDPC));
+    RtlZeroMemory(&Notifier->TimerDpc, sizeof(KDPC));
+    RtlZeroMemory(&Notifier->Timer, sizeof(KTIMER));
 
     ASSERT(IsZeroMemory(Notifier, sizeof(XENVBD_NOTIFIER)));
     
@@ -252,6 +302,12 @@ NotifierDisable(
     ASSERT(Notifier->Enabled == TRUE);
 
     Notifier->Enabled = FALSE;
+
+    //
+    // No new timers can be scheduled once Enabled goes to FALSE.
+    // Cancel any existing ones.
+    //
+    (VOID) KeCancelTimer(&Notifier->Timer);
 }
 
 VOID

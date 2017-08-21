@@ -326,13 +326,17 @@ out:
 
 //=============================================================================
 __drv_requiresIRQL(DISPATCH_LEVEL)
-VOID
+BOOLEAN
 FrontendNotifyResponses(
     __in  PXENVBD_FRONTEND        Frontend
     )
 {
-    BlockRingPoll(Frontend->BlockRing);
-    TargetSubmitRequests(Frontend->Target);
+    BOOLEAN     Retry = FALSE;
+
+    Retry |= BlockRingPoll(Frontend->BlockRing);
+    Retry |= TargetSubmitRequests(Frontend->Target);
+
+    return Retry;
 }
 
 //=============================================================================

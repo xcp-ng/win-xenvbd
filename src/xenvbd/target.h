@@ -93,7 +93,7 @@ TargetSetDeviceObject(
     IN  PDEVICE_OBJECT  DeviceObject
     );
 
-extern VOID
+extern BOOLEAN
 TargetSubmitRequests(
     IN  PXENVBD_TARGET  Target
     );

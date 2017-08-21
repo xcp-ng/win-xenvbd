@@ -1254,11 +1254,13 @@ BlkifOperationName(
     }
 }
 
-VOID
+BOOLEAN
 TargetSubmitRequests(
     IN  PXENVBD_TARGET  Target
     )
 {
+    BOOLEAN             Retry = FALSE;
+
     for (;;) {
         // submit all prepared requests (0 or more requests)
         // return TRUE if submitted 0 or more requests from prepared queue
@@ -1271,10 +1273,17 @@ TargetSubmitRequests(
         // return FALSE if prepare failed or fresh queue empty
         if (!TargetPrepareFresh(Target))
             break;
+
+        // back off, check DPC timeout and try again
+        Retry = TRUE;
+        break;
     }
 
     // if no requests/SRBs outstanding, complete any shutdown SRBs
-    TargetCompleteShutdown(Target);
+    if (!Retry)
+        TargetCompleteShutdown(Target);
+
+    return Retry;
 }
 
 VOID

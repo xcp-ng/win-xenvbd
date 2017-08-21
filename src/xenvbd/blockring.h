@@ -83,7 +83,7 @@ BlockRingDebugCallback(
     IN  PXENBUS_DEBUG_INTERFACE     Debug
     );
 
-extern VOID
+extern BOOLEAN
 BlockRingPoll(
     IN  PXENVBD_BLOCKRING           BlockRing
     );

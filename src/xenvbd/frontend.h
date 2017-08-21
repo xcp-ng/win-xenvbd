@@ -149,7 +149,7 @@ FrontendWriteUsage(
 
 // Ring
 __drv_requiresIRQL(DISPATCH_LEVEL)
-extern VOID
+extern BOOLEAN
 FrontendNotifyResponses(
     __in  PXENVBD_FRONTEND        Frontend
     );
