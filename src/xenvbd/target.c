@@ -957,9 +957,7 @@ TargetIssueDeviceEject(
             Reason);
     if (!Target->WrittenEjected) {
         Target->WrittenEjected = TRUE;
-        FrontendStoreWriteFrontend(Target->Frontend,
-                                   "ejected",
-                                   "1");
+        FrontendSetEjected(Target->Frontend);
     }
     if (DoEject) {
         Verbose("Target[%d] : IoRequestDeviceEject(0x%p)\n",
@@ -982,35 +980,14 @@ __TargetDeviceUsageNotification(
     PIO_STACK_LOCATION              StackLocation;
     BOOLEAN                         Value;
     DEVICE_USAGE_NOTIFICATION_TYPE  Type;
-    PXENVBD_CAPS                    Caps = FrontendGetCaps(Target->Frontend);
 
     StackLocation = IoGetCurrentIrpStackLocation(Irp);
     Value = StackLocation->Parameters.UsageNotification.InPath;
     Type  = StackLocation->Parameters.UsageNotification.Type;
 
-    switch (Type) {
-    case DeviceUsageTypePaging:
-        if (Caps->Paging == Value)
-            return;
-        Caps->Paging = Value;
-        break;
-
-    case DeviceUsageTypeHibernation:
-        if (Caps->Hibernation == Value)
-            return;
-        Caps->Hibernation = Value;
-        break;
-
-    case DeviceUsageTypeDumpFile:
-        if (Caps->DumpFile == Value)
-            return;
-        Caps->DumpFile = Value;
-        break;
-
-    default:
-        return;
-    }
-    FrontendWriteUsage(Target->Frontend);
+    FrontendSetDeviceUsage(Target->Frontend,
+                           Type,
+                           Value);
 }
 
 static FORCEINLINE VOID
@@ -1055,9 +1032,7 @@ __TargetCheckEjectFailed(
     if (EjectFailed) {
         Error("Target[%d] : Unplug failed due to open handle(s)!\n",
               TargetGetTargetId(Target));
-        FrontendStoreWriteFrontend(Target->Frontend,
-                                   "error",
-                                   "Unplug failed due to open handle(s)!");
+        FrontendSetEjectFailed(Target->Frontend);
     }
 }
 

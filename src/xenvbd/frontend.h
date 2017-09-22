@@ -88,27 +88,21 @@ FrontendGetInquiryOverride(
     OUT PULONG              Length
     );
 
-extern NTSTATUS
-FrontendStoreWriteFrontend(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Name,
-    __in  PCHAR                 Value
-    );
-extern NTSTATUS
-FrontendStoreReadBackend(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Name,
-    __out PCHAR*                Value
-    );
 extern VOID
-FrontendStoreFree(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Value
-    );    
-__drv_maxIRQL(DISPATCH_LEVEL)
-extern NTSTATUS
-FrontendWriteUsage(
-    __in  PXENVBD_FRONTEND        Frontend
+FrontendSetEjected(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
+extern VOID
+FrontendSetEjectFailed(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
+extern VOID
+FrontendSetDeviceUsage(
+    IN  PXENVBD_FRONTEND                Frontend,
+    IN  DEVICE_USAGE_NOTIFICATION_TYPE  Type,
+    IN  BOOLEAN                         Value
     );
 
 __checkReturn

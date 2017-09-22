@@ -183,103 +183,69 @@ FrontendGetInquiryOverride(
     }
 }
 
-NTSTATUS
-FrontendStoreWriteFrontend(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Name,
-    __in  PCHAR                 Value
+VOID
+FrontendSetEjected(
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    return XENBUS_STORE(Printf,
+    (VOID) XENBUS_STORE(Printf,
                         &Frontend->StoreInterface,
                         NULL,
                         Frontend->FrontendPath,
-                        Name,
-                        Value);
+                        "ejected",
+                        "1");
 }
-NTSTATUS
-FrontendStoreReadBackend(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Name,
-    __out PCHAR*                Value
-    )
-{
-    NTSTATUS    Status;
 
-    Status = STATUS_INVALID_PARAMETER;
-    if (Frontend->BackendPath == NULL)
-        goto fail1;
-
-    Status = XENBUS_STORE(Read,
-                          &Frontend->StoreInterface,
-                          NULL,
-                          Frontend->BackendPath,
-                          Name,
-                          Value);
-    if (!NT_SUCCESS(Status))
-        goto fail2;
-
-    return STATUS_SUCCESS;
-
-fail2:
-fail1:
-    return Status;
-}
 VOID
-FrontendStoreFree(
-    __in  PXENVBD_FRONTEND      Frontend,
-    __in  PCHAR                 Value
+FrontendSetEjectFailed(
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    XENBUS_STORE(Free,
-                 &Frontend->StoreInterface,
-                 Value);
+    (VOID) XENBUS_STORE(Printf,
+                        &Frontend->StoreInterface,
+                        NULL,
+                        Frontend->FrontendPath,
+                        "error",
+                        "Unplug failed due to open handle(s)!");
 }
-__drv_maxIRQL(DISPATCH_LEVEL)
-NTSTATUS
-FrontendWriteUsage(
-    __in  PXENVBD_FRONTEND        Frontend
+
+VOID
+FrontendSetDeviceUsage(
+    IN  PXENVBD_FRONTEND                Frontend,
+    IN  DEVICE_USAGE_NOTIFICATION_TYPE  Type,
+    IN  BOOLEAN                         Value
     )
 {
-    NTSTATUS    Status;
+    PCHAR                               UsageName;
 
-    Status = XENBUS_STORE(Printf,
-                          &Frontend->StoreInterface,
-                          NULL,
-                          Frontend->TargetPath, 
-                          "paging",
-                          "%u",
-                          Frontend->Caps.Paging);
-    if (!NT_SUCCESS(Status))
-        goto out;
+    switch (Type) {
+    case DeviceUsageTypePaging:
+        UsageName = "paging";
+        Frontend->Caps.Paging = Value;
+        break;
+    case DeviceUsageTypeHibernation:
+        UsageName = "hibernation";
+        Frontend->Caps.Hibernation = Value;
+        break;
+    case DeviceUsageTypeDumpFile:
+        UsageName = "dump";
+        Frontend->Caps.DumpFile = Value;
+        break;
+    default:
+        return;
+    }
 
-    Status = XENBUS_STORE(Printf,
-                          &Frontend->StoreInterface,
-                          NULL,
-                          Frontend->TargetPath, 
-                          "hibernation",
-                          "%u",
-                          Frontend->Caps.Hibernation);
-    if (!NT_SUCCESS(Status))
-        goto out;
+    (VOID) XENBUS_STORE(Printf,
+                        &Frontend->StoreInterface,
+                        NULL,
+                        Frontend->TargetPath,
+                        UsageName,
+                        "%u",
+                        Value);
 
-    Status = XENBUS_STORE(Printf,
-                          &Frontend->StoreInterface,
-                          NULL,
-                          Frontend->TargetPath, 
-                          "dump",
-                          "%u",
-                          Frontend->Caps.DumpFile);
-    if (!NT_SUCCESS(Status))
-        goto out;
-
-    Verbose("Target[%d] : %s %s %s\n", Frontend->TargetId,
-            Frontend->Caps.DumpFile ? "DUMP" : "NOT_DUMP", 
-            Frontend->Caps.Hibernation ? "HIBER" : "NOT_HIBER",
-            Frontend->Caps.Paging ? "PAGE" : "NOT_PAGE");
-
-out:
-    return Status;
+    Verbose("Target[%u] %s %s\n",
+            Value ? "ADDING" : "REMOVING",
+            UsageName);
 }
 
 //=============================================================================
@@ -1037,10 +1003,15 @@ FrontendPrepare(
     if (!NT_SUCCESS(Status))
         goto fail2;
 
-    // write targetpath
-    Status = FrontendWriteUsage(Frontend);
-    if (!NT_SUCCESS(Status))
-        goto fail3;
+    FrontendSetDeviceUsage(Frontend,
+                           DeviceUsageTypePaging,
+                           Frontend->Caps.Paging);
+    FrontendSetDeviceUsage(Frontend,
+                           DeviceUsageTypeHibernation,
+                           Frontend->Caps.Hibernation);
+    FrontendSetDeviceUsage(Frontend,
+                           DeviceUsageTypeDumpFile,
+                           Frontend->Caps.DumpFile);
 
     Status = XENBUS_STORE(Printf,
                           &Frontend->StoreInterface,
@@ -1050,7 +1021,7 @@ FrontendPrepare(
                           "%s",
                           Frontend->FrontendPath);
     if (!NT_SUCCESS(Status))
-        goto fail4;
+        goto fail3;
 
     Status = XENBUS_STORE(Printf,
                           &Frontend->StoreInterface,
@@ -1060,24 +1031,24 @@ FrontendPrepare(
                           "%u",
                           Frontend->DeviceId);
     if (!NT_SUCCESS(Status))
-        goto fail5;
+        goto fail4;
 
     // Frontend: -> INITIALIZING
     Status = ___SetState(Frontend, XenbusStateInitialising);
     if (!NT_SUCCESS(Status))
-        goto fail6;
+        goto fail5;
 
     // Backend : -> INITWAIT
     BackendState = XenbusStateUnknown;
     do {
         Status = __WaitState(Frontend, &BackendState);
         if (!NT_SUCCESS(Status))
-            goto fail7;
+            goto fail6;
     } while (BackendState == XenbusStateClosed || 
              BackendState == XenbusStateInitialising);
     Status = STATUS_UNSUCCESSFUL;
     if (BackendState != XenbusStateInitWait)
-        goto fail8;
+        goto fail7;
 
     // read features and caps (removable, ring-order, ...)
     Verbose("Target[%d] : BackendId %d (%s)\n",
@@ -1089,8 +1060,6 @@ FrontendPrepare(
     
     return STATUS_SUCCESS;
 
-fail8:
-    Error("Fail8\n");
 fail7:
     Error("Fail7\n");
 fail6:
