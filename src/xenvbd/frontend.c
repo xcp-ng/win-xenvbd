@@ -1067,7 +1067,7 @@ FrontendConnect(
     XenbusState     BackendState;
 
     // Alloc Ring, Create Evtchn, Gnttab map
-    Status = GranterConnect(Frontend->Granter, Frontend->BackendDomain);
+    Status = GranterConnect(Frontend->Granter);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
@@ -1089,7 +1089,7 @@ FrontendConnect(
         if (!NT_SUCCESS(Status))
             goto abort;
 
-        Status = GranterStoreWrite(Frontend->Granter, Transaction, Frontend->FrontendPath);
+        Status = GranterStoreWrite(Frontend->Granter, Transaction);
         if (!NT_SUCCESS(Status))
             goto abort;
 
@@ -1495,8 +1495,6 @@ FrontendDebugCallback(
                  Frontend->DiskInfo.SectorSize,
                  Frontend->DiskInfo.PhysSectorSize,
                  Frontend->DiskInfo.DiskInfo);
-
-    GranterDebugCallback(Frontend->Granter, &Frontend->DebugInterface);
 }
 
 __checkReturn

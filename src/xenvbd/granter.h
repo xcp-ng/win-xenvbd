@@ -32,75 +32,67 @@
 #ifndef _XENVBD_GRANTER_H
 #define _XENVBD_GRANTER_H
 
+#include <ntddk.h>
+
 typedef struct _XENVBD_GRANTER XENVBD_GRANTER, *PXENVBD_GRANTER;
 
-#include <debug_interface.h>
-#include <store_interface.h>
 #include "frontend.h"
 
 extern NTSTATUS
 GranterCreate(
-    IN  PXENVBD_FRONTEND            Frontend,
-    OUT PXENVBD_GRANTER*            Granter
+    IN  PXENVBD_FRONTEND    Frontend,
+    OUT PXENVBD_GRANTER     *Granter
     );
 
 extern VOID
 GranterDestroy(
-    IN  PXENVBD_GRANTER             Granter
+    IN  PXENVBD_GRANTER     Granter
     );
 
 extern NTSTATUS
 GranterConnect(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  USHORT                      BackendDomain
+    IN  PXENVBD_GRANTER     Granter
     );
 
 extern NTSTATUS
 GranterStoreWrite(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  PXENBUS_STORE_TRANSACTION   Transaction,
-    IN  PCHAR                       FrontendPath
+    IN  PXENVBD_GRANTER Granter,
+    IN  PVOID           Transaction
     );
 
 extern VOID
 GranterEnable(
-    IN  PXENVBD_GRANTER             Granter
+    IN  PXENVBD_GRANTER Granter
     );
 
 extern VOID
 GranterDisable(
-    IN  PXENVBD_GRANTER             Granter
+    IN  PXENVBD_GRANTER Granter
     );
 
 extern VOID
 GranterDisconnect(
-    IN  PXENVBD_GRANTER             Granter
-    );
-
-extern VOID
-GranterDebugCallback(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug
+    IN  PXENVBD_GRANTER Granter
     );
 
 extern NTSTATUS
 GranterGet(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  PFN_NUMBER                  Pfn,
-    IN  BOOLEAN                     ReadOnly,
-    OUT PVOID                       *Handle
+    IN  PXENVBD_GRANTER Granter,
+    IN  PFN_NUMBER      Pfn,
+    IN  BOOLEAN         ReadOnly,
+    OUT PVOID           *Handle
     );
 
 extern VOID
 GranterPut(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  PVOID                       Handle
+    IN  PXENVBD_GRANTER Granter,
+    IN  PVOID           Handle
     );
 
 extern ULONG
 GranterReference(
-    IN  PXENVBD_GRANTER             Granter,
-    IN  PVOID                       Handle
+    IN  PXENVBD_GRANTER Granter,
+    IN  PVOID           Handle
     );
 
 #endif // _XENVBD_GRANTER_H
