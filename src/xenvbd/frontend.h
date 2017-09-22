@@ -74,63 +74,14 @@ typedef struct _XENVBD_DISKINFO {
 
 typedef struct _XENVBD_FRONTEND XENVBD_FRONTEND, *PXENVBD_FRONTEND;
 
-extern ULONG
-FrontendGetDeviceId(
-    IN  PXENVBD_FRONTEND    Frontend
-    );
-
-extern ULONG
-FrontendGetBackendDomain(
-    IN  PXENVBD_FRONTEND    Frontend
-    );
-
-extern PCHAR
-FrontendGetBackendPath(
-    IN  PXENVBD_FRONTEND    Frontend
-    );
-
-extern PCHAR
-FrontendGetFrontendPath(
-    IN  PXENVBD_FRONTEND    Frontend
-    );
-
 extern VOID
 FrontendRemoveFeature(
     IN  PXENVBD_FRONTEND        Frontend,
     IN  UCHAR                   BlkifOperation
     );
-extern PXENVBD_CAPS
-FrontendGetCaps(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-extern PXENVBD_FEATURES
-FrontendGetFeatures(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-extern PXENVBD_DISKINFO
-FrontendGetDiskInfo(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-extern ULONG
-FrontendGetTargetId(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
+
 extern PVOID
 FrontendGetInquiry(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-extern PXENVBD_TARGET
-FrontendGetTarget(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-#include "ring.h"
-extern PXENVBD_RING
-FrontendGetRing(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-#include "granter.h"
-extern PXENVBD_GRANTER
-FrontendGetGranter(
     __in  PXENVBD_FRONTEND      Frontend
     );
 
@@ -204,5 +155,27 @@ FrontendDebugCallback(
     __in  PXENVBD_FRONTEND        Frontend,
     __in  PXENBUS_DEBUG_INTERFACE Debug
     );
+
+#define FRONTEND_GET_PROPERTY(_name, _type)     \
+extern _type                                    \
+FrontendGet ## _name ## (                       \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    );
+
+FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
+#include "ring.h"
+FRONTEND_GET_PROPERTY(Ring, PXENVBD_RING)
+#include "granter.h"
+FRONTEND_GET_PROPERTY(Granter, PXENVBD_GRANTER)
+FRONTEND_GET_PROPERTY(TargetId, ULONG)
+FRONTEND_GET_PROPERTY(DeviceId, ULONG)
+FRONTEND_GET_PROPERTY(BackendDomain, ULONG)
+FRONTEND_GET_PROPERTY(BackendPath, PCHAR)
+FRONTEND_GET_PROPERTY(FrontendPath, PCHAR)
+FRONTEND_GET_PROPERTY(Caps, PXENVBD_CAPS)
+FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
+FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
+
+#undef FRONTEND_GET_PROPERTY
 
 #endif // _XENVBD_FRONTEND_H

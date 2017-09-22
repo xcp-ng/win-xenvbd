@@ -56,7 +56,7 @@ struct _XENVBD_FRONTEND {
     CHAR                        FrontendPath[sizeof("device/vbd/XXXXXXXX")];
     PCHAR                       BackendPath;
     CHAR                        TargetPath[sizeof("data/scsi/target/XXXX")];
-    USHORT                      BackendId;
+    USHORT                      BackendDomain;
     XENVBD_STATE                State;
     KSPIN_LOCK                  StateLock;
 
@@ -123,40 +123,6 @@ __FrontendFree(
         __FreePoolWithTag(Buffer, FRONTEND_POOL_TAG);
 }
 
-//=============================================================================
-// Accessors
-ULONG
-FrontendGetDeviceId(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->DeviceId;
-}
-
-ULONG
-FrontendGetBackendDomain(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->BackendId;
-}
-
-PCHAR
-FrontendGetBackendPath(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->BackendPath;
-}
-
-PCHAR
-FrontendGetFrontendPath(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->FrontendPath;
-}
-
 VOID
 FrontendRemoveFeature(
     IN  PXENVBD_FRONTEND        Frontend,
@@ -184,61 +150,13 @@ FrontendRemoveFeature(
         break;
     }
 }
-PXENVBD_CAPS
-FrontendGetCaps(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return &Frontend->Caps;
-}
-PXENVBD_FEATURES
-FrontendGetFeatures(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return &Frontend->Features;
-}
-PXENVBD_DISKINFO
-FrontendGetDiskInfo(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return &Frontend->DiskInfo;
-}
-ULONG
-FrontendGetTargetId(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return Frontend->TargetId;
-}
+
 PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend
     )
 {
     return Frontend->Inquiry;
-}
-PXENVBD_TARGET
-FrontendGetTarget(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return Frontend->Target;
-}
-PXENVBD_RING
-FrontendGetRing(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return Frontend->Ring;
-}
-PXENVBD_GRANTER
-FrontendGetGranter(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return Frontend->Granter;
 }
 
 NTSTATUS
@@ -373,12 +291,12 @@ __UpdateBackendPath(
                           "backend-id",
                           &Value);
     if (NT_SUCCESS(Status)) {
-        Frontend->BackendId = (USHORT)strtoul(Value, NULL, 10);
+        Frontend->BackendDomain = (USHORT)strtoul(Value, NULL, 10);
         XENBUS_STORE(Free,
                      &Frontend->StoreInterface,
                      Value);
     } else {
-        Frontend->BackendId = 0;
+        Frontend->BackendDomain = 0;
     }
 
     Status = XENBUS_STORE(Read,
@@ -997,7 +915,7 @@ FrontendClose(
                      Frontend->BackendWatch);
     Frontend->BackendWatch = NULL;
     
-    Frontend->BackendId = DOMID_INVALID;
+    Frontend->BackendDomain = DOMID_INVALID;
 
     // get/update backend path
     Status = __UpdateBackendPath(Frontend);
@@ -1119,7 +1037,7 @@ FrontendPrepare(
     // read features and caps (removable, ring-order, ...)
     Verbose("Target[%d] : BackendId %d (%s)\n",
             Frontend->TargetId,
-            Frontend->BackendId,
+            Frontend->BackendDomain,
             Frontend->BackendPath);
 
     FrontendReadFeatures(Frontend);
@@ -1158,7 +1076,7 @@ FrontendConnect(
     XenbusState     BackendState;
 
     // Alloc Ring, Create Evtchn, Gnttab map
-    Status = GranterConnect(Frontend->Granter, Frontend->BackendId);
+    Status = GranterConnect(Frontend->Granter, Frontend->BackendDomain);
     if (!NT_SUCCESS(Status))
         goto fail1;
 
@@ -1680,7 +1598,7 @@ FrontendCreate(
     Frontend->DeviceId = strtoul(DeviceId, NULL, 10);
     Frontend->State = XENVBD_INITIALIZED;
     Frontend->DiskInfo.SectorSize = 512; // default sector size
-    Frontend->BackendId = DOMID_INVALID;
+    Frontend->BackendDomain = DOMID_INVALID;
     
     status = RtlStringCbPrintfA(Frontend->FrontendPath,
                                 sizeof(Frontend->FrontendPath),
@@ -1776,10 +1694,10 @@ FrontendDebugCallback(
     )
 {
     XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: TargetId=%d DeviceId=%d BackendId=%d\n",
+                 "FRONTEND: TargetId=%d DeviceId=%d BackendDomain=%d\n",
                  Frontend->TargetId,
                  Frontend->DeviceId,
-                 Frontend->BackendId);
+                 Frontend->BackendDomain);
     XENBUS_DEBUG(Printf, Debug,
                  "FRONTEND: FrontendPath %s\n",
                  Frontend->FrontendPath);
@@ -1833,3 +1751,53 @@ FrontendDebugCallback(
     GranterDebugCallback(Frontend->Granter, Debug);
 }
 
+#define FRONTEND_GET_PROPERTY(_name, _type)     \
+static FORCEINLINE _type                        \
+__FrontendGet ## _name ## (                     \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return Frontend-> ## _name ## ;             \
+}                                               \
+_type                                           \
+FrontendGet ## _name ## (                       \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return __FrontendGet ## _name ## (Frontend);\
+}
+
+FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
+FRONTEND_GET_PROPERTY(Ring, PXENVBD_RING)
+FRONTEND_GET_PROPERTY(Granter, PXENVBD_GRANTER)
+FRONTEND_GET_PROPERTY(TargetId, ULONG)
+FRONTEND_GET_PROPERTY(DeviceId, ULONG)
+FRONTEND_GET_PROPERTY(BackendDomain, ULONG)
+FRONTEND_GET_PROPERTY(BackendPath, PCHAR)
+FRONTEND_GET_PROPERTY(FrontendPath, PCHAR)
+//FRONTEND_GET_PROPERTY(Caps, PXENVBD_CAPS)
+PXENVBD_CAPS
+FrontendGetCaps(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->Caps;
+}
+//FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
+PXENVBD_FEATURES
+FrontendGetFeatures(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->Features;
+}
+//FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
+PXENVBD_DISKINFO
+FrontendGetDiskInfo(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->DiskInfo;
+}
+
+#undef FRONTEND_GET_PROPERTY
