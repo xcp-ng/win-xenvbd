@@ -29,17 +29,11 @@
  * SUCH DAMAGE.
  */
 
-#include "target.h"
-#include "driver.h"
-#include "adapter.h"
-#include "frontend.h"
-#include "queue.h"
-#include "srbext.h"
-#include "buffer.h"
-#include "pdoinquiry.h"
-#include "debug.h"
-#include "assert.h"
-#include "util.h"
+#include <ntddk.h>
+#include <ntstrsafe.h>
+#include <storport.h>
+#include <stdlib.h>
+
 #include <xencdb.h>
 #include <names.h>
 #include <store_interface.h>
@@ -47,7 +41,18 @@
 #include <gnttab_interface.h>
 #include <debug_interface.h>
 #include <suspend_interface.h>
-#include <stdlib.h>
+
+#include "target.h"
+#include "driver.h"
+#include "adapter.h"
+#include "frontend.h"
+#include "queue.h"
+#include "srbext.h"
+#include "buffer.h"
+
+#include "debug.h"
+#include "assert.h"
+#include "util.h"
 
 #define TARGET_SIGNATURE           'odpX'
 
@@ -586,6 +591,176 @@ TargetReadCapacity16(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
+static FORCEINLINE VOID
+TargetInquiryStd(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PINQUIRYDATA            Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
+
+    UNREFERENCED_PARAMETER(Target);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (Length < INQUIRYDATABUFFERSIZE)
+        return;
+
+    RtlZeroMemory(Data, Length);
+    Data->DeviceType            = DIRECT_ACCESS_DEVICE;
+    Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
+    Data->Versions              = 4;
+    Data->ResponseDataFormat    = 2;
+    Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
+    Data->CommandQueue          = 1;
+    RtlCopyMemory(Data->VendorId,               "XENSRC  ", 8);
+    RtlCopyMemory(Data->ProductId,              "PVDISK          ", 16);
+    RtlCopyMemory(Data->ProductRevisionLevel,   "2.0 ", 4);
+
+    Srb->DataTransferLength = INQUIRYDATABUFFERSIZE;
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
+static FORCEINLINE VOID
+TargetInquiry00(
+    IN  PXENVBD_TARGET          Target,
+    IN  PSCSI_REQUEST_BLOCK     Srb
+    )
+{
+    PVPD_SUPPORTED_PAGES_PAGE   Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+
+    UNREFERENCED_PARAMETER(Target);
+
+    RtlZeroMemory(Data, Length);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (Length < 7)
+        return;
+
+    Data->PageLength = 3;
+    Data->SupportedPageList[0] = 0x00;
+    Data->SupportedPageList[1] = 0x80;
+    Data->SupportedPageList[2] = 0x83;
+
+    Srb->DataTransferLength = 7;
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
+static FORCEINLINE VOID
+TargetInquiry80(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PVPD_SERIAL_NUMBER_PAGE Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
+    PVOID                   Page;
+    ULONG                   Size;
+
+    Page = FrontendGetInquiryOverride(Target->Frontend, 0x80, &Size);
+
+    RtlZeroMemory(Data, Length);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (Page && Size) {
+        if (Length < Size)
+            return;
+
+        RtlCopyMemory(Data, Page, Size);
+
+        Srb->DataTransferLength = Size;
+    } else {
+        CHAR                Serial[5];
+
+        if (Length < sizeof(VPD_SERIAL_NUMBER_PAGE) + 4)
+            return;
+
+        Data->PageCode      = 0x80;
+        Data->PageLength    = 4;
+        (VOID) RtlStringCbPrintfA(Serial,
+                                  sizeof(Serial),
+                                  "%04u",
+                                  TargetGetTargetId(Target));
+        RtlCopyMemory(Data->SerialNumber, Serial, 4);
+
+        Srb->DataTransferLength = sizeof(VPD_SERIAL_NUMBER_PAGE) + 4;
+    }
+
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
+static FORCEINLINE VOID
+TargetInquiry83(
+    IN  PXENVBD_TARGET          Target,
+    IN  PSCSI_REQUEST_BLOCK     Srb
+    )
+{
+    PVPD_IDENTIFICATION_PAGE    Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    PVOID                       Page;
+    ULONG                       Size;
+
+    Page = FrontendGetInquiryOverride(Target->Frontend, 0x83, &Size);
+
+    RtlZeroMemory(Data, Length);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (Page && Size) {
+        if (Length < Size)
+            return;
+
+        RtlCopyMemory(Data, Page, Size);
+
+        Srb->DataTransferLength = Size;
+    } else {
+        PVPD_IDENTIFICATION_DESCRIPTOR  Id = (PVPD_IDENTIFICATION_DESCRIPTOR)&Data->Descriptors[0];
+        CHAR                            Identifier[17];
+
+        if (Length < sizeof(VPD_IDENTIFICATION_PAGE) +
+                     sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16)
+            return;
+
+        Data->PageCode = 0x83;
+        Data->PageLength = sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16;
+
+        Id->CodeSet         = VpdCodeSetAscii;
+        Id->IdentifierType  = VpdIdentifierTypeVendorId;
+        Id->IdentifierLength = 16;
+        (VOID) RtlStringCbPrintfA(Identifier,
+                                  sizeof(Identifier),
+                                  "XENSRC  %08u",
+                                  TargetGetTargetId(Target));
+        RtlCopyMemory(Id->Identifier, Identifier, 16);
+
+        Srb->DataTransferLength = sizeof(VPD_IDENTIFICATION_PAGE) +
+                                  sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16;
+    }
+
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
+static DECLSPEC_NOINLINE VOID
+TargetInquiry(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    if (Cdb_EVPD(Srb)) {
+        switch (Cdb_PageCode(Srb)) {
+        case 0x00:  TargetInquiry00(Target, Srb);       break;
+        case 0x80:  TargetInquiry80(Target, Srb);       break;
+        case 0x83:  TargetInquiry83(Target, Srb);       break;
+        default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
+        }
+    } else {
+        switch (Cdb_PageCode(Srb)) {
+        case 0x00:  TargetInquiryStd(Target, Srb);      break;
+        default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
+        }
+    }
+}
+
 static FORCEINLINE BOOLEAN
 __ValidateSrbForTarget(
     IN  PXENVBD_TARGET      Target,
@@ -682,9 +857,7 @@ TargetStartIo(
     case SCSIOP_INQUIRY:
         AdapterSetDeviceQueueDepth(TargetGetAdapter(Target),
                                    TargetGetTargetId(Target));
-        PdoInquiry(TargetGetTargetId(Target),
-                   FrontendGetInquiry(Target->Frontend),
-                   Srb);
+        TargetInquiry(Target, Srb);
         break;
 
     case SCSIOP_MODE_SENSE:

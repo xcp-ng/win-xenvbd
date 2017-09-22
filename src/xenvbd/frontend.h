@@ -82,8 +82,10 @@ FrontendRemoveFeature(
     );
 
 extern PVOID
-FrontendGetInquiry(
-    __in  PXENVBD_FRONTEND      Frontend
+FrontendGetInquiryOverride(
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  UCHAR               PageCode,
+    OUT PULONG              Length
     );
 
 extern NTSTATUS

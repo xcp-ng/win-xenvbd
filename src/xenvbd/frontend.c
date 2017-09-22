@@ -41,16 +41,21 @@
 #include "registry.h"
 #include "driver.h"
 #include "adapter.h"
-#include "pdoinquiry.h"
 #include "srbext.h"
 #include "names.h"
 #include "ring.h"
 #include "granter.h"
 #include "thread.h"
+#include "base64.h"
 
 #include "debug.h"
 #include "assert.h"
 #include "util.h"
+
+typedef struct _XENVBD_PAGE {
+    PVOID   Data;
+    ULONG   Size;
+} XENVBD_PAGE, *PXENVBD_PAGE;
 
 struct _XENVBD_FRONTEND {
     // Frontend
@@ -67,7 +72,8 @@ struct _XENVBD_FRONTEND {
     XENVBD_CAPS                 Caps;
     XENVBD_FEATURES             Features;
     XENVBD_DISKINFO             DiskInfo;
-    PVOID                       Inquiry;
+    XENVBD_PAGE                 Page80;
+    XENVBD_PAGE                 Page83;
 
     // Interfaces to XenBus
     XENBUS_STORE_INTERFACE      StoreInterface;
@@ -158,11 +164,23 @@ FrontendRemoveFeature(
 }
 
 PVOID
-FrontendGetInquiry(
-    __in  PXENVBD_FRONTEND      Frontend
+FrontendGetInquiryOverride(
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  UCHAR               PageCode,
+    OUT PULONG              Length
     )
 {
-    return Frontend->Inquiry;
+    switch (PageCode) {
+    case 0x80:
+        *Length = Frontend->Page80.Size;
+        return Frontend->Page80.Data;
+    case 0x83:
+        *Length = Frontend->Page83.Size;
+        return Frontend->Page83.Data;
+    default:
+        *Length = 0;
+        return NULL;
+    }
 }
 
 NTSTATUS
@@ -889,6 +907,47 @@ FrontendReadDiskInfo(
     }
 }
 
+static FORCEINLINE VOID
+FrontendReadInquiryOverrides(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    PCHAR                   Buffer;
+    NTSTATUS                status;
+
+    status = XENBUS_STORE(Read,
+                          &Frontend->StoreInterface,
+                          NULL,
+                          Frontend->BackendPath,
+                          "sm-data/scsi/0x12/0x80",
+                          &Buffer);
+    if (NT_SUCCESS(status)) {
+        (VOID) Base64Decode(Buffer,
+                            &Frontend->Page80.Data,
+                            &Frontend->Page80.Size);
+
+        XENBUS_STORE(Free,
+                     &Frontend->StoreInterface,
+                     Buffer);
+    }
+
+    status = XENBUS_STORE(Read,
+                          &Frontend->StoreInterface,
+                          NULL,
+                          Frontend->BackendPath,
+                          "sm-data/scsi/0x12/0x83",
+                          &Buffer);
+    if (NT_SUCCESS(status)) {
+        (VOID) Base64Decode(Buffer,
+                            &Frontend->Page83.Data,
+                            &Frontend->Page83.Size);
+
+        XENBUS_STORE(Free,
+                     &Frontend->StoreInterface,
+                     Buffer);
+    }
+}
+
 //=============================================================================
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static NTSTATUS
@@ -1019,11 +1078,6 @@ FrontendPrepare(
     Status = STATUS_UNSUCCESSFUL;
     if (BackendState != XenbusStateInitWait)
         goto fail8;
-
-    // read inquiry data
-    if (Frontend->Inquiry == NULL)
-        PdoReadInquiryData(Frontend, &Frontend->Inquiry);
-    PdoUpdateInquiryData(Frontend, Frontend->Inquiry);
 
     // read features and caps (removable, ring-order, ...)
     Verbose("Target[%d] : BackendId %d (%s)\n",
@@ -1164,6 +1218,9 @@ abort:
     __ReadDiskInfo(Frontend);
     FrontendReadDiskInfo(Frontend);
 
+    // read inquiry data
+    FrontendReadInquiryOverrides(Frontend);
+
     // blkback doesnt write features before InitWait, blkback writes features before Connected!
     FrontendReadFeatures(Frontend);
 
@@ -1200,6 +1257,14 @@ FrontendDisconnect(
 {
     RingDisconnect(Frontend->Ring);
     GranterDisconnect(Frontend->Granter);
+
+    Base64Free(Frontend->Page80.Data);
+    Frontend->Page80.Data = NULL;
+    Frontend->Page80.Size = 0;
+
+    Base64Free(Frontend->Page83.Data);
+    Frontend->Page83.Data = NULL;
+    Frontend->Page83.Size = 0;
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static FORCEINLINE VOID
@@ -1781,8 +1846,13 @@ FrontendDestroy(
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
-    PdoFreeInquiryData(Frontend->Inquiry);
-    Frontend->Inquiry = NULL;
+    Base64Free(Frontend->Page80.Data);
+    Frontend->Page80.Data = NULL;
+    Frontend->Page80.Size = 0;
+
+    Base64Free(Frontend->Page83.Data);
+    Frontend->Page83.Data = NULL;
+    Frontend->Page83.Size = 0;
 
     ThreadAlert(Frontend->BackendThread);
     ThreadJoin(Frontend->BackendThread);
@@ -1795,7 +1865,6 @@ FrontendDestroy(
     Frontend->Ring = NULL;
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
-    ASSERT3P(Frontend->Inquiry, ==, NULL);
     ASSERT3P(Frontend->BackendWatch, ==, NULL);
 
     __FrontendFree(Frontend);
