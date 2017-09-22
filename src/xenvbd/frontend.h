@@ -108,13 +108,6 @@ FrontendWriteUsage(
     __in  PXENVBD_FRONTEND        Frontend
     );
 
-// Ring
-__drv_requiresIRQL(DISPATCH_LEVEL)
-extern BOOLEAN
-FrontendNotifyResponses(
-    __in  PXENVBD_FRONTEND        Frontend
-    );
-
 // Init/Term
 __checkReturn
 __drv_maxIRQL(DISPATCH_LEVEL)
@@ -134,6 +127,11 @@ extern NTSTATUS
 FrontendSetState(
     __in  PXENVBD_FRONTEND        Frontend,
     __in  XENVBD_STATE            State
+    );
+
+extern NTSTATUS
+FrontendReset(
+    IN  PXENVBD_FRONTEND    Frontend
     );
 
 extern NTSTATUS

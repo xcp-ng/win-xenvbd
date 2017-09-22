@@ -93,18 +93,6 @@ TargetSetDeviceObject(
     IN  PDEVICE_OBJECT  DeviceObject
     );
 
-extern BOOLEAN
-TargetSubmitRequests(
-    IN  PXENVBD_TARGET  Target
-    );
-
-extern VOID
-TargetCompleteResponse(
-    IN  PXENVBD_TARGET  Target,
-    IN  ULONG           Tag,
-    IN  SHORT           Status
-    );
-
 extern VOID
 TargetPrepareIo(
     IN  PXENVBD_TARGET  Target,

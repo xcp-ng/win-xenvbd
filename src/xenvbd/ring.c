@@ -30,9 +30,11 @@
  */
 
 #include <ntddk.h>
+#include <storport.h>
 #include <stdlib.h>
 #include <ntstrsafe.h>
 
+#include <xencdb.h>
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <debug_interface.h>
@@ -44,6 +46,8 @@
 #include "srbext.h"
 #include "driver.h"
 #include "granter.h"
+#include "queue.h"
+#include "buffer.h"
 
 #include "util.h"
 #include "debug.h"
@@ -52,6 +56,14 @@
 #define TAG_HEADER                  'gaTX'
 #define XENVBD_MAX_RING_PAGE_ORDER  (4)
 #define XENVBD_MAX_RING_PAGES       (1 << XENVBD_MAX_RING_PAGE_ORDER)
+
+typedef struct _XENVBD_LOOKASIDE {
+    LONG                        Used;
+    LONG                        Max;
+    ULONG                       Failed;
+    ULONG                       Size;
+    NPAGED_LOOKASIDE_LIST       List;
+} XENVBD_LOOKASIDE, *PXENVBD_LOOKASIDE;
 
 struct _XENVBD_RING {
     PXENVBD_FRONTEND                Frontend;
@@ -75,15 +87,111 @@ struct _XENVBD_RING {
     KDPC                            TimerDpc;
     KTIMER                          Timer;
 
+    XENVBD_LOOKASIDE                RequestList;
+    XENVBD_LOOKASIDE                SegmentList;
+    XENVBD_LOOKASIDE                IndirectList;
+    XENVBD_QUEUE                    FreshSrbs;
+    XENVBD_QUEUE                    PreparedReqs;
+    XENVBD_QUEUE                    SubmittedReqs;
+    XENVBD_QUEUE                    ShutdownSrbs;
+    ULONG                           NextTag;
+
     ULONG                           Submitted;
     ULONG                           Received;
     ULONG                           Events;
     ULONG                           Dpcs;
+    ULONG                           BlkOpRead;
+    ULONG                           BlkOpWrite;
+    ULONG                           BlkOpIndirectRead;
+    ULONG                           BlkOpIndirectWrite;
+    ULONG                           BlkOpBarrier;
+    ULONG                           BlkOpDiscard;
+    ULONG                           BlkOpFlush;
+    ULONG64                         SegsGranted;
+    ULONG64                         SegsBounced;
 };
 
 #define MAX_NAME_LEN                64
 #define RING_POOL_TAG               'gnRX'
+#define REQUEST_POOL_TAG            'qeRX'
+#define SEGMENT_POOL_TAG            'geSX'
+#define INDIRECT_POOL_TAG           'dnIX'
 #define XEN_IO_PROTO_ABI            "x86_64-abi"
+
+static FORCEINLINE VOID
+__LookasideInit(
+    IN OUT  PXENVBD_LOOKASIDE   Lookaside,
+    IN  ULONG                   Size,
+    IN  ULONG                   Tag
+    )
+{
+    RtlZeroMemory(Lookaside, sizeof(XENVBD_LOOKASIDE));
+    Lookaside->Size = Size;
+    ExInitializeNPagedLookasideList(&Lookaside->List, NULL, NULL, 0,
+                                    Size, Tag, 0);
+}
+
+static FORCEINLINE VOID
+__LookasideTerm(
+    IN  PXENVBD_LOOKASIDE       Lookaside
+    )
+{
+    ASSERT3U(Lookaside->Used, ==, 0);
+    ExDeleteNPagedLookasideList(&Lookaside->List);
+    RtlZeroMemory(Lookaside, sizeof(XENVBD_LOOKASIDE));
+}
+
+static FORCEINLINE PVOID
+__LookasideAlloc(
+    IN  PXENVBD_LOOKASIDE       Lookaside
+    )
+{
+    LONG    Result;
+    PVOID   Buffer;
+
+    Buffer = ExAllocateFromNPagedLookasideList(&Lookaside->List);
+    if (Buffer == NULL) {
+        ++Lookaside->Failed;
+        return NULL;
+    }
+
+    RtlZeroMemory(Buffer, Lookaside->Size);
+    Result = InterlockedIncrement(&Lookaside->Used);
+    ASSERT3S(Result, >, 0);
+    if (Result > Lookaside->Max)
+        Lookaside->Max = Result;
+
+    return Buffer;
+}
+
+static FORCEINLINE VOID
+__LookasideFree(
+    IN  PXENVBD_LOOKASIDE       Lookaside,
+    IN  PVOID                   Buffer
+    )
+{
+    LONG            Result;
+
+    ExFreeToNPagedLookasideList(&Lookaside->List, Buffer);
+    Result = InterlockedDecrement(&Lookaside->Used);
+    ASSERT3S(Result, >=, 0);
+}
+
+static FORCEINLINE VOID
+__LookasideDebug(
+    IN  PXENVBD_LOOKASIDE           Lookaside,
+    IN  PXENBUS_DEBUG_INTERFACE     Debug,
+    IN  PCHAR                       Name
+    )
+{
+    XENBUS_DEBUG(Printf, Debug,
+                 "LOOKASIDE: %s: %u / %u (%u failed)\n",
+                 Name, Lookaside->Used,
+                 Lookaside->Max, Lookaside->Failed);
+
+    Lookaside->Max = Lookaside->Used;
+    Lookaside->Failed = 0;
+}
 
 static FORCEINLINE PVOID
 __RingAllocate(
@@ -257,6 +365,1023 @@ __RingInsert(
     ++Ring->Submitted;
 }
 
+static PXENVBD_INDIRECT
+RingGetIndirect(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_INDIRECT    Indirect;
+    NTSTATUS            status;
+    PXENVBD_GRANTER     Granter = FrontendGetGranter(Ring->Frontend);
+
+    Indirect = __LookasideAlloc(&Ring->IndirectList);
+    if (Indirect == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
+
+    Indirect->Mdl = __AllocatePage();
+    if (Indirect->Mdl == NULL)
+        goto fail2;
+
+    Indirect->Page = MmGetSystemAddressForMdlSafe(Indirect->Mdl,
+                                                  NormalPagePriority);
+
+    status = GranterGet(Granter,
+                        MmGetMdlPfnArray(Indirect->Mdl)[0],
+                        TRUE,
+                        &Indirect->Grant);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    return Indirect;
+
+fail3:
+    __FreePage(Indirect->Mdl);
+fail2:
+    __LookasideFree(&Ring->IndirectList, Indirect);
+fail1:
+    return NULL;
+}
+
+static VOID
+RingPutIndirect(
+    IN  PXENVBD_RING        Ring,
+    IN  PXENVBD_INDIRECT    Indirect
+    )
+{
+    PXENVBD_GRANTER         Granter = FrontendGetGranter(Ring->Frontend);
+
+    if (Indirect->Grant)
+        GranterPut(Granter, Indirect->Grant);
+    if (Indirect->Page)
+        __FreePage(Indirect->Mdl);
+
+    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
+    __LookasideFree(&Ring->IndirectList, Indirect);
+}
+
+static PXENVBD_SEGMENT
+RingGetSegment(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_SEGMENT     Segment;
+
+    Segment = __LookasideAlloc(&Ring->SegmentList);
+    if (Segment == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
+    return Segment;
+
+fail1:
+    return NULL;
+}
+
+static VOID
+RingPutSegment(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SEGMENT Segment
+    )
+{
+    PXENVBD_GRANTER     Granter = FrontendGetGranter(Ring->Frontend);
+
+    if (Segment->Grant)
+        GranterPut(Granter, Segment->Grant);
+
+    if (Segment->BufferId)
+        BufferPut(Segment->BufferId);
+
+    if (Segment->Buffer)
+        MmUnmapLockedPages(Segment->Buffer, &Segment->Mdl);
+
+    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
+    __LookasideFree(&Ring->SegmentList, Segment);
+}
+
+static PXENVBD_REQUEST
+RingGetRequest(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_REQUEST     Request;
+
+    Request = __LookasideAlloc(&Ring->RequestList);
+    if (Request == NULL)
+        goto fail1;
+
+    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
+    Request->Id = (ULONG)InterlockedIncrement((PLONG)&Ring->NextTag);
+    InitializeListHead(&Request->Segments);
+    InitializeListHead(&Request->Indirects);
+
+    return Request;
+
+fail1:
+    return NULL;
+}
+
+static VOID
+RingPutRequest(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_REQUEST Request
+    )
+{
+    PLIST_ENTRY         Entry;
+
+    for (;;) {
+        PXENVBD_SEGMENT Segment;
+
+        Entry = RemoveHeadList(&Request->Segments);
+        if (Entry == &Request->Segments)
+            break;
+        Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+        RingPutSegment(Ring, Segment);
+    }
+
+    for (;;) {
+        PXENVBD_INDIRECT    Indirect;
+
+        Entry = RemoveHeadList(&Request->Indirects);
+        if (Entry == &Request->Indirects)
+            break;
+        Indirect = CONTAINING_RECORD(Entry, XENVBD_INDIRECT, Entry);
+        RingPutIndirect(Ring, Indirect);
+    }
+
+    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
+    __LookasideFree(&Ring->RequestList, Request);
+}
+
+static FORCEINLINE PXENVBD_REQUEST
+RingRequestFromTag(
+    IN  PXENVBD_RING    Ring,
+    IN  ULONG           Tag
+    )
+{
+    KIRQL               Irql;
+    PLIST_ENTRY         Entry;
+    PXENVBD_QUEUE       Queue = &Ring->SubmittedReqs;
+
+    KeAcquireSpinLock(&Queue->Lock, &Irql);
+
+    for (Entry = Queue->List.Flink; Entry != &Queue->List; Entry = Entry->Flink) {
+        PXENVBD_REQUEST Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        if (Request->Id == Tag) {
+            RemoveEntryList(&Request->Entry);
+            --Queue->Current;
+            KeReleaseSpinLock(&Queue->Lock, Irql);
+            return Request;
+        }
+    }
+
+    KeReleaseSpinLock(&Queue->Lock, Irql);
+    Warning("Target[%d] : Tag %x not found in submitted list (%u items)\n",
+            FrontendGetTargetId(Ring->Frontend),
+            Tag,
+            QueueCount(Queue));
+    return NULL;
+}
+
+static FORCEINLINE VOID
+__RingIncBlkifOpCount(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_REQUEST Request
+    )
+{
+    switch (Request->Operation) {
+    case BLKIF_OP_READ:
+        if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST)
+            ++Ring->BlkOpIndirectRead;
+        else
+            ++Ring->BlkOpRead;
+        break;
+    case BLKIF_OP_WRITE:
+        if (Request->NrSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST)
+            ++Ring->BlkOpIndirectWrite;
+        else
+            ++Ring->BlkOpWrite;
+        break;
+    case BLKIF_OP_WRITE_BARRIER:
+        ++Ring->BlkOpBarrier;
+        break;
+    case BLKIF_OP_DISCARD:
+        ++Ring->BlkOpDiscard;
+        break;
+    case BLKIF_OP_FLUSH_DISKCACHE:
+        ++Ring->BlkOpFlush;
+        break;
+    default:
+        ASSERT(FALSE);
+        break;
+    }
+}
+
+static FORCEINLINE ULONG
+__RingSectorsPerPage(
+    IN  ULONG   SectorSize
+    )
+{
+    ASSERT3U(SectorSize, !=, 0);
+    return PAGE_SIZE / SectorSize;
+}
+
+static FORCEINLINE VOID
+__RingOperation(
+    IN  UCHAR       CdbOp,
+    OUT PUCHAR      RingOp,
+    OUT PBOOLEAN    ReadOnly
+    )
+{
+    switch (CdbOp) {
+    case SCSIOP_READ:
+        *RingOp     = BLKIF_OP_READ;
+        *ReadOnly   = FALSE;
+        break;
+    case SCSIOP_WRITE:
+        *RingOp     = BLKIF_OP_WRITE;
+        *ReadOnly   = TRUE;
+        break;
+    default:
+        ASSERT(FALSE);
+    }
+}
+
+static FORCEINLINE MM_PAGE_PRIORITY
+__RingPriority(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_CAPS        Caps = FrontendGetCaps(Ring->Frontend);
+    if (!(Caps->Paging ||
+          Caps->Hibernation ||
+          Caps->DumpFile))
+        return NormalPagePriority;
+
+    return HighPagePriority;
+}
+
+static FORCEINLINE VOID
+RingRequestCopyOutput(
+    IN  PXENVBD_REQUEST Request
+    )
+{
+    PLIST_ENTRY         Entry;
+
+    if (Request->Operation != BLKIF_OP_READ)
+        return;
+
+    for (Entry = Request->Segments.Flink;
+            Entry != &Request->Segments;
+            Entry = Entry->Flink) {
+        PXENVBD_SEGMENT Segment = CONTAINING_RECORD(Entry, XENVBD_SEGMENT, Entry);
+
+        if (Segment->BufferId)
+            BufferCopyOut(Segment->BufferId, Segment->Buffer, Segment->Length);
+    }
+}
+
+static BOOLEAN
+RingPrepareSegment(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SEGMENT Segment,
+    IN  PXENVBD_SRBEXT  SrbExt,
+    IN  BOOLEAN         ReadOnly,
+    IN  ULONG           SectorsLeft,
+    OUT PULONG          SectorsNow
+    )
+{
+    PFN_NUMBER          Pfn;
+    ULONG               Offset;
+    ULONG               Length;
+    NTSTATUS            Status;
+    PXENVBD_GRANTER     Granter = FrontendGetGranter(Ring->Frontend);
+    const ULONG         SectorSize = FrontendGetDiskInfo(Ring->Frontend)->SectorSize;
+    const ULONG         SectorsPerPage = __RingSectorsPerPage(SectorSize);
+    PXENVBD_TARGET      Target = FrontendGetTarget(Ring->Frontend);
+
+    Pfn = AdapterGetNextSGEntry(TargetGetAdapter(Target),
+                                SrbExt,
+                                0,
+                                &Offset,
+                                &Length);
+    if ((Offset & (SectorSize - 1)) == 0 &&
+        (Length & (SectorSize - 1)) == 0) {
+        ++Ring->SegsGranted;
+        // get first sector, last sector and count
+        Segment->FirstSector    = (UCHAR)((Offset + SectorSize - 1) / SectorSize);
+        *SectorsNow             = __min(SectorsLeft, SectorsPerPage - Segment->FirstSector);
+        Segment->LastSector     = (UCHAR)(Segment->FirstSector + *SectorsNow - 1);
+        Segment->BufferId       = NULL; // granted, ensure its null
+        Segment->Buffer         = NULL; // granted, ensure its null
+        Segment->Length         = 0;    // granted, ensure its 0
+
+        ASSERT3U((Length / SectorSize), ==, *SectorsNow);
+    } else {
+        PMDL        Mdl;
+
+        ++Ring->SegsBounced;
+        // get first sector, last sector and count
+        Segment->FirstSector    = 0;
+        *SectorsNow             = __min(SectorsLeft, SectorsPerPage);
+        Segment->LastSector     = (UCHAR)(*SectorsNow - 1);
+
+        // map SGList to Virtual Address. Populates Segment->Buffer and Segment->Length
+#pragma warning(push)
+#pragma warning(disable:28145)
+        Mdl = &Segment->Mdl;
+        Mdl->Next           = NULL;
+        Mdl->Size           = (SHORT)(sizeof(MDL) + sizeof(PFN_NUMBER));
+        Mdl->MdlFlags       = MDL_PAGES_LOCKED;
+        Mdl->Process        = NULL;
+        Mdl->MappedSystemVa = NULL;
+        Mdl->StartVa        = NULL;
+        Mdl->ByteCount      = Length;
+        Mdl->ByteOffset     = Offset;
+        Segment->Pfn[0]     = Pfn;
+
+        if (Length < *SectorsNow * SectorSize) {
+            Pfn = AdapterGetNextSGEntry(TargetGetAdapter(Target),
+                                        SrbExt,
+                                        Length,
+                                        &Offset,
+                                        &Length);
+            Mdl->Size       += sizeof(PFN_NUMBER);
+            Mdl->ByteCount  = Mdl->ByteCount + Length;
+            Segment->Pfn[1] = Pfn;
+        }
+#pragma warning(pop)
+
+        ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
+        ASSERT3U(Mdl->ByteCount, <=, PAGE_SIZE);
+        ASSERT3U(*SectorsNow, ==, (Mdl->ByteCount / SectorSize));
+
+        Segment->Length = __min(Mdl->ByteCount, PAGE_SIZE);
+        Segment->Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode,
+                                MmCached, NULL, FALSE, __RingPriority(Ring));
+        if (!Segment->Buffer)
+            goto fail1;
+
+        ASSERT3P(MmGetMdlPfnArray(Mdl)[0], ==, Segment->Pfn[0]);
+        ASSERT3P(MmGetMdlPfnArray(Mdl)[1], ==, Segment->Pfn[1]);
+
+        // get a buffer
+        if (!BufferGet(Segment, &Segment->BufferId, &Pfn))
+            goto fail2;
+
+        // copy contents in
+        if (ReadOnly) { // Operation == BLKIF_OP_WRITE
+            BufferCopyIn(Segment->BufferId, Segment->Buffer, Segment->Length);
+        }
+    }
+
+    // Grant segment's page
+    Status = GranterGet(Granter, Pfn, ReadOnly, &Segment->Grant);
+    if (!NT_SUCCESS(Status))
+        goto fail3;
+
+    return TRUE;
+
+fail3:
+fail2:
+fail1:
+    return FALSE;
+}
+
+static BOOLEAN
+RingPrepareBlkifReadWrite(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_REQUEST Request,
+    IN  PXENVBD_SRBEXT  SrbExt,
+    IN  ULONG           MaxSegments,
+    IN  ULONG64         SectorStart,
+    IN  ULONG           SectorsLeft,
+    OUT PULONG          SectorsDone
+    )
+{
+    UCHAR               Operation;
+    BOOLEAN             ReadOnly;
+    ULONG               Index;
+    __RingOperation(Cdb_OperationEx(Request->Srb), &Operation, &ReadOnly);
+
+    Request->Operation  = Operation;
+    Request->NrSegments = 0;
+    Request->FirstSector = SectorStart;
+
+    for (Index = 0;
+                Index < MaxSegments &&
+                SectorsLeft > 0;
+                        ++Index) {
+        PXENVBD_SEGMENT Segment;
+        ULONG           SectorsNow;
+
+        Segment = RingGetSegment(Ring);
+        if (Segment == NULL)
+            goto fail1;
+
+        InsertTailList(&Request->Segments, &Segment->Entry);
+        ++Request->NrSegments;
+
+        if (!RingPrepareSegment(Ring,
+                                Segment,
+                                SrbExt,
+                                ReadOnly,
+                                SectorsLeft,
+                                &SectorsNow))
+            goto fail2;
+
+        *SectorsDone += SectorsNow;
+        SectorsLeft  -= SectorsNow;
+    }
+    ASSERT3U(Request->NrSegments, >, 0);
+    ASSERT3U(Request->NrSegments, <=, MaxSegments);
+
+    return TRUE;
+
+fail2:
+fail1:
+    return FALSE;
+}
+
+static BOOLEAN
+RingPrepareBlkifIndirect(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_REQUEST Request
+    )
+{
+    ULONG               Index;
+    ULONG               NrSegments = 0;
+
+    for (Index = 0;
+            Index < BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST &&
+            NrSegments < Request->NrSegments;
+                ++Index) {
+        PXENVBD_INDIRECT    Indirect;
+
+        Indirect = RingGetIndirect(Ring);
+        if (Indirect == NULL)
+            goto fail1;
+        InsertTailList(&Request->Indirects, &Indirect->Entry);
+
+        NrSegments += XENVBD_MAX_SEGMENTS_PER_PAGE;
+    }
+
+    return TRUE;
+
+fail1:
+    return FALSE;
+}
+
+static FORCEINLINE ULONG
+RingUseIndirect(
+    IN  PXENVBD_RING    Ring,
+    IN  ULONG           SectorsLeft
+    )
+{
+    const ULONG SectorsPerPage = __RingSectorsPerPage(FrontendGetDiskInfo(Ring->Frontend)->SectorSize);
+    const ULONG MaxIndirectSegs = FrontendGetFeatures(Ring->Frontend)->Indirect;
+
+    if (MaxIndirectSegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST)
+        return BLKIF_MAX_SEGMENTS_PER_REQUEST; // not supported
+
+    if (SectorsLeft < BLKIF_MAX_SEGMENTS_PER_REQUEST * SectorsPerPage)
+        return BLKIF_MAX_SEGMENTS_PER_REQUEST; // first into a single BLKIF_OP_{READ/WRITE}
+
+    return MaxIndirectSegs;
+}
+
+static FORCEINLINE ULONG
+RingQueueRequestList(
+    IN  PXENVBD_RING    Ring,
+    IN  PLIST_ENTRY     List
+    )
+{
+    ULONG               Count = 0;
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(List);
+        if (Entry == List)
+            break;
+
+        ++Count;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        __RingIncBlkifOpCount(Ring, Request);
+        QueueAppend(&Ring->PreparedReqs, &Request->Entry);
+    }
+    return Count;
+}
+
+static FORCEINLINE VOID
+RingCancelRequestList(
+    IN  PXENVBD_RING    Ring,
+    IN  PLIST_ENTRY     List
+    )
+{
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = RemoveHeadList(List);
+        if (Entry == List)
+            break;
+
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        RingPutRequest(Ring, Request);
+    }
+}
+
+static BOOLEAN
+RingPrepareReadWrite(
+    IN  PXENVBD_RING        Ring,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
+    ULONG64                 SectorStart = Cdb_LogicalBlock(Srb);
+    ULONG                   SectorsLeft = Cdb_TransferBlock(Srb);
+    LIST_ENTRY              List;
+    ULONG                   DebugCount;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
+
+    while (SectorsLeft > 0) {
+        ULONG           MaxSegments;
+        ULONG           SectorsDone = 0;
+        PXENVBD_REQUEST Request;
+
+        Request = RingGetRequest(Ring);
+        if (Request == NULL)
+            goto fail1;
+        InsertTailList(&List, &Request->Entry);
+        InterlockedIncrement(&SrbExt->Count);
+
+        Request->Srb    = Srb;
+        MaxSegments = RingUseIndirect(Ring, SectorsLeft);
+
+        if (!RingPrepareBlkifReadWrite(Ring,
+                                       Request,
+                                       SrbExt,
+                                       MaxSegments,
+                                       SectorStart,
+                                       SectorsLeft,
+                                       &SectorsDone))
+            goto fail2;
+
+        if (MaxSegments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
+            if (!RingPrepareBlkifIndirect(Ring, Request))
+                goto fail3;
+        }
+
+        SectorsLeft -= SectorsDone;
+        SectorStart += SectorsDone;
+    }
+
+    DebugCount = RingQueueRequestList(Ring, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n",
+              FrontendGetTargetId(Ring->Frontend),
+              SrbExt->Count,
+              DebugCount);
+    }
+    return TRUE;
+
+fail3:
+fail2:
+fail1:
+    RingCancelRequestList(Ring, &List);
+    SrbExt->Count = 0;
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    return FALSE;
+}
+
+static BOOLEAN
+RingPrepareSyncCache(
+    IN  PXENVBD_RING        Ring,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
+    PXENVBD_REQUEST         Request;
+    LIST_ENTRY              List;
+    UCHAR                   Operation;
+    ULONG                   DebugCount;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+
+    if (FrontendGetDiskInfo(Ring->Frontend)->FlushCache)
+        Operation = BLKIF_OP_FLUSH_DISKCACHE;
+    else
+        Operation = BLKIF_OP_WRITE_BARRIER;
+
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
+
+    Request = RingGetRequest(Ring);
+    if (Request == NULL)
+        goto fail1;
+    InsertTailList(&List, &Request->Entry);
+    InterlockedIncrement(&SrbExt->Count);
+
+    Request->Srb        = Srb;
+    Request->Operation  = Operation;
+    Request->FirstSector = Cdb_LogicalBlock(Srb);
+
+    DebugCount = RingQueueRequestList(Ring, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n",
+              FrontendGetTargetId(Ring->Frontend),
+              SrbExt->Count,
+              DebugCount);
+    }
+    return TRUE;
+
+fail1:
+    RingCancelRequestList(Ring, &List);
+    SrbExt->Count = 0;
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    return FALSE;
+}
+
+static BOOLEAN
+RingPrepareUnmap(
+    IN  PXENVBD_RING        Ring,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
+    PUNMAP_LIST_HEADER      Unmap = Srb->DataBuffer;
+	ULONG                   Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
+    ULONG                   Index;
+    LIST_ENTRY              List;
+    ULONG                   DebugCount;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+
+    InitializeListHead(&List);
+    SrbExt->Count = 0;
+
+    for (Index = 0; Index < Count; ++Index) {
+        PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
+        PXENVBD_REQUEST         Request;
+
+        Request = RingGetRequest(Ring);
+        if (Request == NULL)
+            goto fail1;
+        InsertTailList(&List, &Request->Entry);
+        InterlockedIncrement(&SrbExt->Count);
+
+        Request->Srb            = Srb;
+        Request->Operation      = BLKIF_OP_DISCARD;
+        Request->FirstSector    = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
+        Request->NrSectors      = _byteswap_ulong(*(PULONG)Descr->LbaCount);
+        Request->Flags          = 0;
+    }
+
+    DebugCount = RingQueueRequestList(Ring, &List);
+    if (DebugCount != (ULONG)SrbExt->Count) {
+        Trace("[%u] %d != %u\n",
+              FrontendGetTargetId(Ring->Frontend),
+              SrbExt->Count,
+              DebugCount);
+    }
+    return TRUE;
+
+fail1:
+    RingCancelRequestList(Ring, &List);
+    SrbExt->Count = 0;
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    return FALSE;
+}
+
+static FORCEINLINE BOOLEAN
+RingPrepareFresh(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_SRBEXT      SrbExt;
+    PLIST_ENTRY         Entry;
+
+    Entry = QueuePop(&Ring->FreshSrbs);
+    if (Entry == NULL)
+        return FALSE;   // fresh queue is empty
+
+    SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+
+    switch (Cdb_OperationEx(SrbExt->Srb)) {
+    case SCSIOP_READ:
+    case SCSIOP_WRITE:
+        if (RingPrepareReadWrite(Ring, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
+        break;
+    case SCSIOP_SYNCHRONIZE_CACHE:
+        if (RingPrepareSyncCache(Ring, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
+        break;
+    case SCSIOP_UNMAP:
+        if (RingPrepareUnmap(Ring, SrbExt->Srb))
+            return TRUE;    // prepared this SRB
+        break;
+    default:
+        ASSERT(FALSE);
+        break;
+    }
+    QueueUnPop(&Ring->FreshSrbs, &SrbExt->Entry);
+
+    return FALSE;       // prepare failed
+}
+
+static BOOLEAN
+RingSubmit(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_REQUEST Request
+    )
+{
+    KIRQL               Irql;
+    blkif_request_t*    req;
+    BOOLEAN             Notify;
+
+    KeAcquireSpinLock(&Ring->Lock, &Irql);
+    if (RING_FULL(&Ring->Front)) {
+        KeReleaseSpinLock(&Ring->Lock, Irql);
+        return FALSE;
+    }
+
+    req = RING_GET_REQUEST(&Ring->Front, Ring->Front.req_prod_pvt);
+    __RingInsert(Ring, Request, req);
+    KeMemoryBarrier();
+    ++Ring->Front.req_prod_pvt;
+
+    RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&Ring->Front, Notify);
+    KeReleaseSpinLock(&Ring->Lock, Irql);
+
+    if (Notify) {
+        if (!Ring->Enabled)
+            return TRUE;
+
+        XENBUS_EVTCHN(Send,
+                      &Ring->EvtchnInterface,
+                      Ring->Channel);
+    }
+
+    return TRUE;
+}
+
+static FORCEINLINE BOOLEAN
+RingSubmitPrepared(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    if (!Ring->Enabled) {
+        if (QueueCount(&Ring->PreparedReqs))
+            Warning("Target[%d] : Paused, not submitting new requests (%u)\n",
+                    FrontendGetTargetId(Ring->Frontend),
+                    QueueCount(&Ring->PreparedReqs));
+        return FALSE;
+    }
+
+    for (;;) {
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry;
+
+        Entry = QueuePop(&Ring->PreparedReqs);
+        if (Entry == NULL)
+            break;
+
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+
+        QueueAppend(&Ring->SubmittedReqs, &Request->Entry);
+        KeMemoryBarrier();
+
+        if (RingSubmit(Ring, Request))
+            continue;
+
+        QueueRemove(&Ring->SubmittedReqs, &Request->Entry);
+        QueueUnPop(&Ring->PreparedReqs, &Request->Entry);
+        return FALSE;   // ring full
+    }
+
+    return TRUE;
+}
+
+static FORCEINLINE VOID
+RingCompleteShutdown(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    PXENVBD_TARGET      Target;
+    PXENVBD_ADAPTER     Adapter;
+
+    if (QueueCount(&Ring->ShutdownSrbs) == 0)
+        return;
+
+    if (QueueCount(&Ring->FreshSrbs) ||
+        QueueCount(&Ring->PreparedReqs) ||
+        QueueCount(&Ring->SubmittedReqs))
+        return;
+
+    Target = FrontendGetTarget(Ring->Frontend);
+    Adapter = TargetGetAdapter(Target);
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PLIST_ENTRY     Entry = QueuePop(&Ring->ShutdownSrbs);
+        if (Entry == NULL)
+            break;
+        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+        SrbExt->Srb->SrbStatus = SRB_STATUS_SUCCESS;
+        AdapterCompleteSrb(Adapter, SrbExt);
+    }
+}
+
+static FORCEINLINE PCHAR
+__BlkifOperationName(
+    IN  UCHAR   Operation
+    )
+{
+    switch (Operation) {
+    case BLKIF_OP_READ:             return "READ";
+    case BLKIF_OP_WRITE:            return "WRITE";
+    case BLKIF_OP_WRITE_BARRIER:    return "WRITE_BARRIER";
+    case BLKIF_OP_FLUSH_DISKCACHE:  return "FLUSH_DISKCACHE";
+    case BLKIF_OP_RESERVED_1:       return "RESERVED_1";
+    case BLKIF_OP_DISCARD:          return "DISCARD";
+    case BLKIF_OP_INDIRECT:         return "INDIRECT";
+    default:                        return "<unknown>";
+    }
+}
+
+static BOOLEAN
+RingSubmitRequests(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    BOOLEAN             Retry = FALSE;
+
+    for (;;) {
+        // submit all prepared requests (0 or more requests)
+        // return TRUE if submitted 0 or more requests from prepared queue
+        // return FALSE iff ring is full
+        if (!RingSubmitPrepared(Ring))
+            break;
+
+        // prepare a single SRB (into 1 or more requests)
+        // return TRUE if prepare succeeded
+        // return FALSE if prepare failed or fresh queue empty
+        if (!RingPrepareFresh(Ring))
+            break;
+
+        // back off, check DPC timeout and try again
+        Retry = TRUE;
+        break;
+    }
+
+    // if no requests/SRBs outstanding, complete any shutdown SRBs
+    if (!Retry)
+        RingCompleteShutdown(Ring);
+
+    return Retry;
+}
+
+static VOID
+RingCompleteResponse(
+    IN  PXENVBD_RING    Ring,
+    IN  ULONG           Tag,
+    IN  SHORT           Status
+    )
+{
+    PXENVBD_REQUEST     Request;
+    PSCSI_REQUEST_BLOCK Srb;
+    PXENVBD_SRBEXT      SrbExt;
+
+    Request = RingRequestFromTag(Ring, Tag);
+    if (Request == NULL)
+        return;
+
+    Srb     = Request->Srb;
+    SrbExt  = GetSrbExt(Srb);
+    ASSERT3P(SrbExt, !=, NULL);
+
+    switch (Status) {
+    case BLKIF_RSP_OKAY:
+        RingRequestCopyOutput(Request);
+        break;
+
+    case BLKIF_RSP_EOPNOTSUPP:
+        // Remove appropriate feature support
+        FrontendRemoveFeature(Ring->Frontend, Request->Operation);
+        // Succeed this SRB, subsiquent SRBs will be succeeded instead of being passed to the backend.
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+        break;
+
+    case BLKIF_RSP_ERROR:
+    default:
+        Warning("Target[%d] : %s BLKIF_RSP_ERROR (Tag %x)\n",
+                FrontendGetTargetId(Ring->Frontend),
+                __BlkifOperationName(Request->Operation),
+                Tag);
+        Srb->SrbStatus = SRB_STATUS_ERROR;
+        break;
+    }
+
+    RingPutRequest(Ring, Request);
+
+    // complete srb
+    if (InterlockedDecrement(&SrbExt->Count) == 0) {
+        PXENVBD_TARGET  Target = FrontendGetTarget(Ring->Frontend);
+        PXENVBD_ADAPTER Adapter = TargetGetAdapter(Target);
+
+        if (Srb->SrbStatus == SRB_STATUS_PENDING) {
+            // SRB has not hit a failure condition (BLKIF_RSP_ERROR | BLKIF_RSP_EOPNOTSUPP)
+            // from any of its responses. SRB must have succeeded
+            Srb->SrbStatus = SRB_STATUS_SUCCESS;
+            Srb->ScsiStatus = 0x00; // SCSI_GOOD
+        } else {
+            // Srb->SrbStatus has already been set by 1 or more requests with Status != BLKIF_RSP_OKAY
+            Srb->ScsiStatus = 0x40; // SCSI_ABORTED
+        }
+
+        AdapterCompleteSrb(Adapter, SrbExt);
+    }
+}
+
+static BOOLEAN
+RingPoll(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    BOOLEAN             Retry = FALSE;
+
+    ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
+    KeAcquireSpinLockAtDpcLevel(&Ring->Lock);
+
+    // Guard against this locked region being called after the
+    // lock on FrontendSetState
+    if (Ring->Enabled == FALSE)
+        goto done;
+
+    for (;;) {
+        ULONG   rsp_prod;
+        ULONG   rsp_cons;
+
+        KeMemoryBarrier();
+
+        rsp_prod = Ring->Shared->rsp_prod;
+        rsp_cons = Ring->Front.rsp_cons;
+
+        KeMemoryBarrier();
+
+        if (rsp_cons == rsp_prod || Retry)
+            break;
+
+        while (rsp_cons != rsp_prod && !Retry) {
+            blkif_response_t*   Response;
+            ULONG               Tag;
+
+            Response = RING_GET_RESPONSE(&Ring->Front, rsp_cons);
+            ++rsp_cons;
+
+            if (__RingPutTag(Ring, Response->id, &Tag)) {
+                ++Ring->Received;
+                RingCompleteResponse(Ring, Tag, Response->status);
+            }
+
+            RtlZeroMemory(Response, sizeof(union blkif_sring_entry));
+
+            if (rsp_cons - Ring->Front.rsp_cons > RING_SIZE(&Ring->Front) / 4)
+                Retry = TRUE;
+        }
+
+        KeMemoryBarrier();
+
+        Ring->Front.rsp_cons = rsp_cons;
+        Ring->Shared->rsp_event = rsp_cons + 1;
+    }
+
+done:
+    KeReleaseSpinLockFromDpcLevel(&Ring->Lock);
+
+    return Retry;
+}
+
+__drv_requiresIRQL(DISPATCH_LEVEL)
+static BOOLEAN
+RingNotifyResponses(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    BOOLEAN             Retry = FALSE;
+
+    Retry |= RingPoll(Ring);
+    Retry |= RingSubmitRequests(Ring);
+
+    return Retry;
+}
+
 KSERVICE_ROUTINE    RingInterrupt;
 
 BOOLEAN
@@ -334,7 +1459,7 @@ RingDpc(
         return;
 
     for (;;) {
-        if (!FrontendNotifyResponses(Ring->Frontend)) {
+        if (!RingNotifyResponses(Ring)) {
             XENBUS_EVTCHN(Unmask,
                           &Ring->EvtchnInterface,
                           Ring->Channel,
@@ -425,6 +1550,51 @@ RingDebugCallback(
                      Ring->Channel,
                      Port);
     }
+
+    XENBUS_DEBUG(Printf,
+                 &Ring->DebugInterface,
+                 "TARGET: BLKIF_OPs: READ=%u WRITE=%u\n",
+                 Ring->BlkOpRead,
+                 Ring->BlkOpWrite);
+    XENBUS_DEBUG(Printf,
+                 &Ring->DebugInterface,
+                 "TARGET: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
+                 Ring->BlkOpIndirectRead,
+                 Ring->BlkOpIndirectWrite);
+    XENBUS_DEBUG(Printf,
+                 &Ring->DebugInterface,
+                 "TARGET: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
+                 Ring->BlkOpBarrier,
+                 Ring->BlkOpDiscard,
+                 Ring->BlkOpFlush);
+    XENBUS_DEBUG(Printf,
+                 &Ring->DebugInterface,
+                 "TARGET: Segments Granted=%llu Bounced=%llu\n",
+                 Ring->SegsGranted,
+                 Ring->SegsBounced);
+
+    __LookasideDebug(&Ring->RequestList,
+                     &Ring->DebugInterface,
+                     "REQUESTs");
+    __LookasideDebug(&Ring->SegmentList,
+                     &Ring->DebugInterface,
+                     "SEGMENTs");
+    __LookasideDebug(&Ring->IndirectList,
+                     &Ring->DebugInterface,
+                     "INDIRECTs");
+
+    QueueDebugCallback(&Ring->FreshSrbs,
+                       "Fresh    ",
+                       &Ring->DebugInterface);
+    QueueDebugCallback(&Ring->PreparedReqs,
+                       "Prepared ",
+                       &Ring->DebugInterface);
+    QueueDebugCallback(&Ring->SubmittedReqs,
+                       "Submitted",
+                       &Ring->DebugInterface);
+    QueueDebugCallback(&Ring->ShutdownSrbs,
+                       "Shutdown ",
+                       &Ring->DebugInterface);
 }
 
 NTSTATUS
@@ -447,6 +1617,14 @@ RingCreate(
     KeInitializeDpc(&(*Ring)->TimerDpc, RingDpc, *Ring);
     KeInitializeTimer(&(*Ring)->Timer);
 
+    QueueInit(&(*Ring)->FreshSrbs);
+    QueueInit(&(*Ring)->PreparedReqs);
+    QueueInit(&(*Ring)->SubmittedReqs);
+    QueueInit(&(*Ring)->ShutdownSrbs);
+    __LookasideInit(&(*Ring)->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
+    __LookasideInit(&(*Ring)->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
+    __LookasideInit(&(*Ring)->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
+
     return STATUS_SUCCESS;
 
 fail1:
@@ -459,6 +1637,14 @@ RingDestroy(
     IN  PXENVBD_RING    Ring
     )
 {
+    __LookasideTerm(&Ring->IndirectList);
+    __LookasideTerm(&Ring->SegmentList);
+    __LookasideTerm(&Ring->RequestList);
+    RtlZeroMemory(&Ring->FreshSrbs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&Ring->PreparedReqs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&Ring->SubmittedReqs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&Ring->ShutdownSrbs, sizeof(XENVBD_QUEUE));
+
     RtlZeroMemory(&Ring->Timer, sizeof(KTIMER));
     RtlZeroMemory(&Ring->TimerDpc, sizeof(KDPC));
     RtlZeroMemory(&Ring->Dpc, sizeof(KDPC));
@@ -717,8 +1903,65 @@ RingDisable(
     IN  PXENVBD_RING    Ring
     )
 {
+    ULONG               Count;
+    KIRQL               Irql;
+    PXENVBD_TARGET      Target = FrontendGetTarget(Ring->Frontend);
+    PXENVBD_ADAPTER     Adapter = TargetGetAdapter(Target);
+
     ASSERT(Ring->Enabled == TRUE);
     Ring->Enabled = FALSE;
+
+    // poll ring and send event channel notification every 1ms (for up to 3 minutes)
+    Count = 0;
+    while (QueueCount(&Ring->SubmittedReqs)) {
+        if (Count > 180000)
+            break;
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        RingPoll(Ring);
+        KeLowerIrql(Irql);
+        XENBUS_EVTCHN(Send,
+                      &Ring->EvtchnInterface,
+                      Ring->Channel);
+        StorPortStallExecution(1000);   // 1000 micro-seconds
+        ++Count;
+    }
+
+    Verbose("Target[%d] : %u Submitted requests left (%u iterrations)\n",
+            FrontendGetTargetId(Ring->Frontend),
+            QueueCount(&Ring->SubmittedReqs),
+            Count);
+
+    // Abort Fresh SRBs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PLIST_ENTRY     Entry = QueuePop(&Ring->FreshSrbs);
+        if (Entry == NULL)
+            break;
+        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+
+        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
+        SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
+        AdapterCompleteSrb(Adapter, SrbExt);
+    }
+
+    // Fail PreparedReqs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Ring->PreparedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        SrbExt->Srb->SrbStatus = SRB_STATUS_ABORTED;
+        RingPutRequest(Ring, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            SrbExt->Srb->ScsiStatus = 0x40; // SCSI_ABORTED
+            AdapterCompleteSrb(Adapter, SrbExt);
+        }
+    }
 
     //
     // No new timers can be scheduled once Enabled goes to FALSE.
@@ -782,108 +2025,6 @@ RingDisconnect(
     Ring->Received = 0;
 }
 
-BOOLEAN
-RingPoll(
-    IN  PXENVBD_RING    Ring
-    )
-{
-    PXENVBD_TARGET      Target = FrontendGetTarget(Ring->Frontend);
-    BOOLEAN             Retry = FALSE;
-
-    ASSERT3U(KeGetCurrentIrql(), ==, DISPATCH_LEVEL);
-    KeAcquireSpinLockAtDpcLevel(&Ring->Lock);
-
-    // Guard against this locked region being called after the
-    // lock on FrontendSetState
-    if (Ring->Enabled == FALSE)
-        goto done;
-
-    for (;;) {
-        ULONG   rsp_prod;
-        ULONG   rsp_cons;
-
-        KeMemoryBarrier();
-
-        rsp_prod = Ring->Shared->rsp_prod;
-        rsp_cons = Ring->Front.rsp_cons;
-
-        KeMemoryBarrier();
-
-        if (rsp_cons == rsp_prod || Retry)
-            break;
-
-        while (rsp_cons != rsp_prod && !Retry) {
-            blkif_response_t*   Response;
-            ULONG               Tag;
-
-            Response = RING_GET_RESPONSE(&Ring->Front, rsp_cons);
-            ++rsp_cons;
-
-            if (__RingPutTag(Ring, Response->id, &Tag)) {
-                ++Ring->Received;
-                TargetCompleteResponse(Target, Tag, Response->status);
-            }
-
-            RtlZeroMemory(Response, sizeof(union blkif_sring_entry));
-
-            if (rsp_cons - Ring->Front.rsp_cons > RING_SIZE(&Ring->Front) / 4)
-                Retry = TRUE;
-        }
-
-        KeMemoryBarrier();
-
-        Ring->Front.rsp_cons = rsp_cons;
-        Ring->Shared->rsp_event = rsp_cons + 1;
-    }
-
-done:
-    KeReleaseSpinLockFromDpcLevel(&Ring->Lock);
-
-    return Retry;
-}
-
-BOOLEAN
-RingSubmit(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_REQUEST Request
-    )
-{
-    KIRQL               Irql;
-    blkif_request_t*    req;
-    BOOLEAN             Notify;
-
-    KeAcquireSpinLock(&Ring->Lock, &Irql);
-    if (RING_FULL(&Ring->Front)) {
-        KeReleaseSpinLock(&Ring->Lock, Irql);
-        return FALSE;
-    }
-
-    req = RING_GET_REQUEST(&Ring->Front, Ring->Front.req_prod_pvt);
-    __RingInsert(Ring, Request, req);
-    KeMemoryBarrier();
-    ++Ring->Front.req_prod_pvt;
-
-    RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&Ring->Front, Notify);
-    KeReleaseSpinLock(&Ring->Lock, Irql);
-
-    if (Notify)
-        RingSend(Ring);
-
-    return TRUE;
-}
-
-VOID
-RingKick(
-    IN  PXENVBD_RING    Ring
-    )
-{
-    if (!Ring->Enabled)
-        return;
-
-    if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
-	    ++Ring->Dpcs;
-}
-
 VOID
 RingTrigger(
     IN  PXENVBD_RING    Ring
@@ -898,14 +2039,95 @@ RingTrigger(
 }
 
 VOID
-RingSend(
-    IN  PXENVBD_RING    Ring
+RingQueueRequest(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SRBEXT  SrbExt
     )
 {
+    QueueAppend(&Ring->FreshSrbs,
+                &SrbExt->Entry);
+
     if (!Ring->Enabled)
         return;
 
-    XENBUS_EVTCHN(Send,
-                  &Ring->EvtchnInterface,
-                  Ring->Channel);
+    if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
+	    ++Ring->Dpcs;
+}
+
+VOID
+RingQueueShutdown(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SRBEXT  SrbExt
+    )
+{
+    QueueAppend(&Ring->ShutdownSrbs,
+                &SrbExt->Entry);
+
+    if (!Ring->Enabled)
+        return;
+
+    if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
+	    ++Ring->Dpcs;
+}
+
+VOID
+RingReQueueRequests(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    LIST_ENTRY      List;
+
+    InitializeListHead(&List);
+
+    // pop all submitted requests, cleanup and add associated SRB to a list
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Ring->SubmittedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        RingPutRequest(Ring, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            InsertTailList(&List, &SrbExt->Entry);
+        }
+    }
+
+    // pop all prepared requests, cleanup and add associated SRB to a list
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PXENVBD_REQUEST Request;
+        PLIST_ENTRY     Entry = QueuePop(&Ring->PreparedReqs);
+        if (Entry == NULL)
+            break;
+        Request = CONTAINING_RECORD(Entry, XENVBD_REQUEST, Entry);
+        SrbExt = GetSrbExt(Request->Srb);
+
+        RingPutRequest(Ring, Request);
+
+        if (InterlockedDecrement(&SrbExt->Count) == 0) {
+            InsertTailList(&List, &SrbExt->Entry);
+        }
+    }
+
+    // foreach SRB in list, put on start of FreshSrbs
+    for (;;) {
+        PXENVBD_SRBEXT  SrbExt;
+        PLIST_ENTRY     Entry = RemoveTailList(&List);
+        if (Entry == &List)
+            break;
+        SrbExt = CONTAINING_RECORD(Entry, XENVBD_SRBEXT, Entry);
+
+        QueueUnPop(&Ring->FreshSrbs, &SrbExt->Entry);
+    }
+
+    // now the first set of requests popped off submitted list is the next SRB
+    // to be popped off the fresh list
+
+    Verbose("Target[%d] : %d Fresh SRBs\n",
+            FrontendGetTargetId(Ring->Frontend),
+            QueueCount(&Ring->FreshSrbs));
 }

@@ -74,29 +74,25 @@ RingDisconnect(
     IN  PXENVBD_RING    Ring
     );
 
-extern BOOLEAN
-RingPoll(
-    IN  PXENVBD_RING    Ring
-    );
-
-extern BOOLEAN
-RingSubmit(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_REQUEST Request
-    );
-
-extern VOID
-RingKick(
-    IN  PXENVBD_RING    Ring
-    );
-
 extern VOID
 RingTrigger(
     IN  PXENVBD_RING    Ring
     );
 
 extern VOID
-RingSend(
+RingQueueRequest(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SRBEXT  SrbExt
+    );
+
+extern VOID
+RingQueueShutdown(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SRBEXT  SrbExt
+    );
+
+extern VOID
+RingReQueueRequests(
     IN  PXENVBD_RING    Ring
     );
 

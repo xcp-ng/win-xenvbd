@@ -260,21 +260,6 @@ out:
 
 //=============================================================================
 __drv_requiresIRQL(DISPATCH_LEVEL)
-BOOLEAN
-FrontendNotifyResponses(
-    __in  PXENVBD_FRONTEND        Frontend
-    )
-{
-    BOOLEAN     Retry = FALSE;
-
-    Retry |= RingPoll(Frontend->Ring);
-    Retry |= TargetSubmitRequests(Frontend->Target);
-
-    return Retry;
-}
-
-//=============================================================================
-__drv_requiresIRQL(DISPATCH_LEVEL)
 static NTSTATUS
 __UpdateBackendPath(
     __in  PXENVBD_FRONTEND        Frontend
@@ -1571,6 +1556,33 @@ FrontendBackend(
 
     return STATUS_SUCCESS;
 
+}
+
+NTSTATUS
+FrontendReset(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    XENVBD_STATE            PreviousState = Frontend->State;
+    NTSTATUS                status;
+
+    if (PreviousState != XENVBD_ENABLED)
+        goto done;
+
+    status = FrontendSetState(Frontend, XENVBD_CLOSED);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = FrontendSetState(Frontend, PreviousState);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+done:
+    return STATUS_SUCCESS;
+
+fail2:
+fail1:
+    return status;
 }
 
 NTSTATUS
