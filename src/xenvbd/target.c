@@ -1063,8 +1063,7 @@ __TargetPauseDataPath(
     KIRQL               Irql;
     ULONG               Requests;
     ULONG               Count = 0;
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Target->Frontend);
+    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     ++Target->Paused;
@@ -1080,9 +1079,9 @@ __TargetPauseDataPath(
         if (Timeout && Count > 180000)
             break;
         KeRaiseIrql(DISPATCH_LEVEL, &Irql);
-        BlockRingPoll(BlockRing);
+        RingPoll(Ring);
         KeLowerIrql(Irql);
-        NotifierSend(Notifier);         // let backend know it needs to do some work
+        RingSend(Ring);         // let backend know it needs to do some work
         StorPortStallExecution(1000);   // 1000 micro-seconds
         ++Count;
     }
@@ -1180,7 +1179,7 @@ TargetSubmitPrepared(
     __in PXENVBD_TARGET             Target
     )
 {
-    PXENVBD_BLOCKRING   BlockRing = FrontendGetBlockRing(Target->Frontend);
+    PXENVBD_RING   Ring = FrontendGetRing(Target->Frontend);
     if (TargetIsPaused(Target)) {
         if (QueueCount(&Target->PreparedReqs))
             Warning("Target[%d] : Paused, not submitting new requests (%u)\n",
@@ -1202,7 +1201,7 @@ TargetSubmitPrepared(
         QueueAppend(&Target->SubmittedReqs, &Request->Entry);
         KeMemoryBarrier();
 
-        if (BlockRingSubmit(BlockRing, Request))
+        if (RingSubmit(Ring, Request))
             continue;
 
         QueueRemove(&Target->SubmittedReqs, &Request->Entry);
@@ -1393,7 +1392,7 @@ TargetReadWrite(
 {
     PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
+    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
         Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
@@ -1409,7 +1408,7 @@ TargetReadWrite(
     }
 
     QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
-    NotifierKick(Notifier);
+    RingKick(Ring);
 
     return FALSE;
 }
@@ -1422,7 +1421,7 @@ TargetSyncCache(
     )
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
+    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
         Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
@@ -1439,7 +1438,7 @@ TargetSyncCache(
     }
 
     QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
-    NotifierKick(Notifier);
+    RingKick(Ring);
 
     return FALSE;
 }
@@ -1452,7 +1451,7 @@ TargetUnmap(
     )
 {
     PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    PXENVBD_NOTIFIER    Notifier = FrontendGetNotifier(Target->Frontend);
+    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
         Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
@@ -1468,7 +1467,7 @@ TargetUnmap(
     }
 
     QueueAppend(&Target->FreshSrbs, &SrbExt->Entry);
-    NotifierKick(Notifier);
+    RingKick(Ring);
 
     return FALSE;
 }
@@ -1893,7 +1892,7 @@ TargetFlush(
     )
 {
     QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
-    NotifierKick(FrontendGetNotifier(Target->Frontend));
+    RingKick(FrontendGetRing(Target->Frontend));
 }
 
 VOID
@@ -1903,7 +1902,7 @@ TargetShutdown(
     )
 {
     QueueAppend(&Target->ShutdownSrbs, &SrbExt->Entry);
-    NotifierKick(FrontendGetNotifier(Target->Frontend));
+    RingKick(FrontendGetRing(Target->Frontend));
 }
 
 VOID

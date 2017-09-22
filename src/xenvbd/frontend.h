@@ -74,7 +74,26 @@ typedef struct _XENVBD_DISKINFO {
 
 typedef struct _XENVBD_FRONTEND XENVBD_FRONTEND, *PXENVBD_FRONTEND;
 
-// Accessors
+extern ULONG
+FrontendGetDeviceId(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
+extern ULONG
+FrontendGetBackendDomain(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
+extern PCHAR
+FrontendGetBackendPath(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
+extern PCHAR
+FrontendGetFrontendPath(
+    IN  PXENVBD_FRONTEND    Frontend
+    );
+
 extern VOID
 FrontendRemoveFeature(
     IN  PXENVBD_FRONTEND        Frontend,
@@ -96,10 +115,6 @@ extern ULONG
 FrontendGetTargetId(
     __in  PXENVBD_FRONTEND      Frontend
     );
-extern ULONG
-FrontendGetDeviceId(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
 extern PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend
@@ -108,14 +123,9 @@ extern PXENVBD_TARGET
 FrontendGetTarget(
     __in  PXENVBD_FRONTEND      Frontend
     );
-#include "blockring.h"
-extern PXENVBD_BLOCKRING
-FrontendGetBlockRing(
-    __in  PXENVBD_FRONTEND      Frontend
-    );
-#include "notifier.h"
-extern PXENVBD_NOTIFIER
-FrontendGetNotifier(
+#include "ring.h"
+extern PXENVBD_RING
+FrontendGetRing(
     __in  PXENVBD_FRONTEND      Frontend
     );
 #include "granter.h"

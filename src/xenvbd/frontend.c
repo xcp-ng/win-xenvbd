@@ -39,8 +39,7 @@
 #include "assert.h"
 #include "util.h"
 #include "names.h"
-#include "notifier.h"
-#include "blockring.h"
+#include "ring.h"
 #include "granter.h"
 #include "thread.h"
 #include <store_interface.h>
@@ -73,8 +72,7 @@ struct _XENVBD_FRONTEND {
     PXENBUS_SUSPEND_CALLBACK    SuspendLateCallback;
 
     // Ring
-    PXENVBD_NOTIFIER            Notifier;
-    PXENVBD_BLOCKRING           BlockRing;
+    PXENVBD_RING                Ring;
     PXENVBD_GRANTER             Granter;
 
     // Backend State Watch
@@ -127,6 +125,38 @@ __FrontendFree(
 
 //=============================================================================
 // Accessors
+ULONG
+FrontendGetDeviceId(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DeviceId;
+}
+
+ULONG
+FrontendGetBackendDomain(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->BackendId;
+}
+
+PCHAR
+FrontendGetBackendPath(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->BackendPath;
+}
+
+PCHAR
+FrontendGetFrontendPath(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->FrontendPath;
+}
+
 VOID
 FrontendRemoveFeature(
     IN  PXENVBD_FRONTEND        Frontend,
@@ -182,13 +212,6 @@ FrontendGetTargetId(
 {
     return Frontend->TargetId;
 }
-ULONG
-FrontendGetDeviceId(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-     return Frontend->DeviceId;
-}
 PVOID
 FrontendGetInquiry(
     __in  PXENVBD_FRONTEND      Frontend
@@ -203,19 +226,12 @@ FrontendGetTarget(
 {
     return Frontend->Target;
 }
-PXENVBD_BLOCKRING
-FrontendGetBlockRing(
+PXENVBD_RING
+FrontendGetRing(
     __in  PXENVBD_FRONTEND      Frontend
     )
 {
-    return Frontend->BlockRing;
-}
-PXENVBD_NOTIFIER
-FrontendGetNotifier(
-    __in  PXENVBD_FRONTEND      Frontend
-    )
-{
-    return Frontend->Notifier;
+    return Frontend->Ring;
 }
 PXENVBD_GRANTER
 FrontendGetGranter(
@@ -333,7 +349,7 @@ FrontendNotifyResponses(
 {
     BOOLEAN     Retry = FALSE;
 
-    Retry |= BlockRingPoll(Frontend->BlockRing);
+    Retry |= RingPoll(Frontend->Ring);
     Retry |= TargetSubmitRequests(Frontend->Target);
 
     return Retry;
@@ -1146,13 +1162,9 @@ FrontendConnect(
     if (!NT_SUCCESS(Status))
         goto fail1;
 
-    Status = BlockRingConnect(Frontend->BlockRing);
+    Status = RingConnect(Frontend->Ring);
     if (!NT_SUCCESS(Status))
         goto fail2;
-
-    Status = NotifierConnect(Frontend->Notifier, Frontend->BackendId);
-    if (!NT_SUCCESS(Status))
-        goto fail3;
 
     // write evtchn/gnttab details in xenstore
     for (;;) {
@@ -1164,11 +1176,7 @@ FrontendConnect(
         if (!NT_SUCCESS(Status))
             break;
 
-        Status = NotifierStoreWrite(Frontend->Notifier, Transaction, Frontend->FrontendPath);
-        if (!NT_SUCCESS(Status))
-            goto abort;
-
-        Status = BlockRingStoreWrite(Frontend->BlockRing, Transaction, Frontend->FrontendPath);
+        Status = RingStoreWrite(Frontend->Ring, Transaction);
         if (!NT_SUCCESS(Status))
             goto abort;
 
@@ -1223,25 +1231,25 @@ abort:
         break;
     }
     if (!NT_SUCCESS(Status))
-        goto fail4;
+        goto fail3;
 
     // Frontend: -> INITIALIZED
     Status = ___SetState(Frontend, XenbusStateInitialised);
     if (!NT_SUCCESS(Status))
-        goto fail5;
+        goto fail4;
 
     // Backend : -> CONNECTED
     BackendState = XenbusStateUnknown;
     do {
         Status = __WaitState(Frontend, &BackendState);
         if (!NT_SUCCESS(Status))
-            goto fail6;
+            goto fail5;
     } while (BackendState == XenbusStateInitWait ||
              BackendState == XenbusStateInitialising ||
              BackendState == XenbusStateInitialised);
     Status = STATUS_UNSUCCESSFUL;
     if (BackendState != XenbusStateConnected)
-        goto fail7;
+        goto fail6;
 
     // read disk info
     __ReadDiskInfo(Frontend);
@@ -1253,12 +1261,10 @@ abort:
     // Frontend: -> CONNECTED
     Status = ___SetState(Frontend, XenbusStateConnected);
     if (!NT_SUCCESS(Status))
-        goto fail8;
+        goto fail7;
 
     return STATUS_SUCCESS;
 
-fail8:
-    Error("Fail8\n");
 fail7:
     Error("Fail7\n");
 fail6:
@@ -1267,10 +1273,9 @@ fail5:
     Error("Fail5\n");
 fail4:
     Error("Fail4\n");
-    NotifierDisconnect(Frontend->Notifier);
 fail3:
     Error("Fail3\n");
-    BlockRingDisconnect(Frontend->BlockRing);
+    RingDisconnect(Frontend->Ring);
 fail2:
     Error("Fail2\n");
     GranterDisconnect(Frontend->Granter);
@@ -1284,8 +1289,7 @@ FrontendDisconnect(
     __in  PXENVBD_FRONTEND        Frontend
     )
 {
-    NotifierDisconnect(Frontend->Notifier);
-    BlockRingDisconnect(Frontend->BlockRing);
+    RingDisconnect(Frontend->Ring);
     GranterDisconnect(Frontend->Granter);
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
@@ -1298,8 +1302,7 @@ FrontendEnable(
     KeMemoryBarrier();
 
     GranterEnable(Frontend->Granter);
-    BlockRingEnable(Frontend->BlockRing);
-    NotifierEnable(Frontend->Notifier);
+    RingEnable(Frontend->Ring);
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static FORCEINLINE VOID
@@ -1309,8 +1312,7 @@ FrontendDisable(
 {
     Frontend->Caps.Connected = FALSE;
 
-    NotifierDisable(Frontend->Notifier);
-    BlockRingDisable(Frontend->BlockRing);
+    RingDisable(Frontend->Ring);
     GranterDisable(Frontend->Granter);
 }
 
@@ -1505,7 +1507,7 @@ FrontendSuspendLateCallback(
         ASSERT(FALSE);
     }
 
-    NotifierTrigger(Frontend->Notifier);
+    RingTrigger(Frontend->Ring);
 
     Verbose("Target[%d] : <=== restored %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
 }
@@ -1694,21 +1696,17 @@ FrontendCreate(
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    status = NotifierCreate(Frontend, &Frontend->Notifier);
+    status = RingCreate(Frontend, &Frontend->Ring);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    status = BlockRingCreate(Frontend, Frontend->DeviceId, &Frontend->BlockRing);
+    status = GranterCreate(Frontend, &Frontend->Granter);
     if (!NT_SUCCESS(status))
         goto fail5;
 
-    status = GranterCreate(Frontend, &Frontend->Granter);
-    if (!NT_SUCCESS(status))
-        goto fail6;
-
     status = ThreadCreate(FrontendBackend, Frontend, &Frontend->BackendThread);
     if (!NT_SUCCESS(status))
-        goto fail7;
+        goto fail6;
 
     // kernel objects
     KeInitializeSpinLock(&Frontend->StateLock);
@@ -1717,18 +1715,14 @@ FrontendCreate(
     *_Frontend = Frontend;
     return STATUS_SUCCESS;
 
-fail7:
-    Error("fail7\n");
-    GranterDestroy(Frontend->Granter);
-    Frontend->Granter = NULL;
 fail6:
     Error("fail6\n");
-    BlockRingDestroy(Frontend->BlockRing);
-    Frontend->BlockRing = NULL;
+    GranterDestroy(Frontend->Granter);
+    Frontend->Granter = NULL;
 fail5:
     Error("fail5\n");
-    NotifierDestroy(Frontend->Notifier);
-    Frontend->Notifier = NULL;
+    RingDestroy(Frontend->Ring);
+    Frontend->Ring = NULL;
 fail4:
     Error("fail4\n");
 fail3:
@@ -1761,11 +1755,8 @@ FrontendDestroy(
     GranterDestroy(Frontend->Granter);
     Frontend->Granter = NULL;
 
-    BlockRingDestroy(Frontend->BlockRing);
-    Frontend->BlockRing = NULL;
-
-    NotifierDestroy(Frontend->Notifier);
-    Frontend->Notifier = NULL;
+    RingDestroy(Frontend->Ring);
+    Frontend->Ring = NULL;
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->Inquiry, ==, NULL);
@@ -1840,7 +1831,5 @@ FrontendDebugCallback(
                  Frontend->DiskInfo.DiskInfo);
 
     GranterDebugCallback(Frontend->Granter, Debug);
-    BlockRingDebugCallback(Frontend->BlockRing, Debug);
-    NotifierDebugCallback(Frontend->Notifier, Debug);
 }
 
