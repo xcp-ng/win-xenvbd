@@ -29,24 +29,28 @@
  * SUCH DAMAGE.
  */ 
 
+#include <ntddk.h>
+#include <ntstrsafe.h>
+#include <stdlib.h>
+
+#include <store_interface.h>
+#include <debug_interface.h>
+#include <suspend_interface.h>
+
 #include "frontend.h"
 #include "registry.h"
 #include "driver.h"
 #include "adapter.h"
 #include "pdoinquiry.h"
 #include "srbext.h"
-#include "debug.h"
-#include "assert.h"
-#include "util.h"
 #include "names.h"
 #include "ring.h"
 #include "granter.h"
 #include "thread.h"
-#include <store_interface.h>
-#include <suspend_interface.h>
-#include <ntstrsafe.h>
 
-#include <stdlib.h>
+#include "debug.h"
+#include "assert.h"
+#include "util.h"
 
 struct _XENVBD_FRONTEND {
     // Frontend
@@ -67,9 +71,11 @@ struct _XENVBD_FRONTEND {
 
     // Interfaces to XenBus
     XENBUS_STORE_INTERFACE      StoreInterface;
+    XENBUS_DEBUG_INTERFACE      DebugInterface;
     XENBUS_SUSPEND_INTERFACE    SuspendInterface;
 
-    PXENBUS_SUSPEND_CALLBACK    SuspendLateCallback;
+    PXENBUS_DEBUG_CALLBACK      DebugCallback;
+    PXENBUS_SUSPEND_CALLBACK    SuspendCallback;
 
     // Ring
     PXENVBD_RING                Ring;
@@ -1384,29 +1390,29 @@ __FrontendSetState(
 
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static DECLSPEC_NOINLINE VOID
-FrontendSuspendLateCallback(
-    __in  PVOID                   Argument
+FrontendSuspendCallback(
+    IN  PVOID           Argument
     )
 {
-    NTSTATUS            Status;
+    PXENVBD_FRONTEND    Frontend = Argument;
     XENVBD_STATE        State;
-    PXENVBD_FRONTEND    Frontend = (PXENVBD_FRONTEND)Argument;
+    NTSTATUS            status;
 
     Verbose("Target[%d] : ===> from %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
     State = Frontend->State;
 
     // dont acquire state lock - called at DISPATCH on 1 vCPU with interrupts enabled
 #pragma warning(suppress: 26110) // warning C26110: Caller failing to hold lock <lock> before calling function <func>.
-    Status = __FrontendSetState(Frontend, XENVBD_CLOSED);
-    if (!NT_SUCCESS(Status)) {
-        Error("Target[%d] : SetState CLOSED (%08x)\n", Frontend->TargetId, Status);
+    status = __FrontendSetState(Frontend, XENVBD_CLOSED);
+    if (!NT_SUCCESS(status)) {
+        Error("Target[%d] : SetState CLOSED (%08x)\n", Frontend->TargetId, status);
         ASSERT(FALSE);
     }
 
     // dont acquire state lock - called at DISPATCH on 1 vCPU with interrupts enabled
-    Status = __FrontendSetState(Frontend, State);
-    if (!NT_SUCCESS(Status)) {
-        Error("Target[%d] : SetState %s (%08x)\n", Frontend->TargetId, __XenvbdStateName(State), Status);
+    status = __FrontendSetState(Frontend, State);
+    if (!NT_SUCCESS(status)) {
+        Error("Target[%d] : SetState %s (%08x)\n", Frontend->TargetId, __XenvbdStateName(State), status);
         ASSERT(FALSE);
     }
 
@@ -1415,99 +1421,201 @@ FrontendSuspendLateCallback(
     Verbose("Target[%d] : <=== restored %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
 }
 
+static DECLSPEC_NOINLINE VOID
+FrontendDebugCallback(
+    IN  PVOID           Argument,
+    IN  BOOLEAN         Crashing
+    )
+{
+    PXENVBD_FRONTEND    Frontend = Argument;
+
+    UNREFERENCED_PARAMETER(Crashing);
+
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "TargetId=%d DeviceId=%d BackendDomain=%d\n",
+                 Frontend->TargetId,
+                 Frontend->DeviceId,
+                 Frontend->BackendDomain);
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "FrontendPath: %s\n",
+                 Frontend->FrontendPath);
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "BackendPath: %s\n",
+                 Frontend->BackendPath ? Frontend->BackendPath : "NULL");
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "TargetPath: %s\n",
+                 Frontend->TargetPath);
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "State: %s\n",
+                 __XenvbdStateName(Frontend->State));
+
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "Caps: %s%s%s%s%s%s\n",
+                 Frontend->Caps.Connected ? "CONNECTED " : "",
+                 Frontend->Caps.Removable ? "REMOVABLE " : "",
+                 Frontend->Caps.SurpriseRemovable ? "SURPRISE " : "",
+                 Frontend->Caps.Paging ? "PAGING " : "",
+                 Frontend->Caps.Hibernation ? "HIBER " : "",
+                 Frontend->Caps.DumpFile ? "DUMP " : "");
+
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "Features: %s%s%s%s%s\n",
+                 Frontend->Features.Persistent ? "PERSISTENT " : "",
+                 Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
+                 Frontend->DiskInfo.Barrier ? "BARRIER " : "",
+                 Frontend->DiskInfo.FlushCache ? "FLUSH " : "",
+                 Frontend->DiskInfo.Discard ? "DISCARD " : "");
+
+    if (Frontend->Features.Indirect > 0) {
+        XENBUS_DEBUG(Printf,
+                     &Frontend->DebugInterface,
+                     "INDIRECT %x\n",
+                     Frontend->Features.Indirect);
+    }
+    if (Frontend->DiskInfo.Discard) {
+        XENBUS_DEBUG(Printf,
+                     &Frontend->DebugInterface,
+                     "DISCARD %s%x/%x\n",
+                     Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
+                     Frontend->DiskInfo.DiscardAlignment,
+                     Frontend->DiskInfo.DiscardGranularity);
+    }
+
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "DiskInfo: %llu @ %u (%u) %08x\n",
+                 Frontend->DiskInfo.SectorCount,
+                 Frontend->DiskInfo.SectorSize,
+                 Frontend->DiskInfo.PhysSectorSize,
+                 Frontend->DiskInfo.DiskInfo);
+
+    GranterDebugCallback(Frontend->Granter, &Frontend->DebugInterface);
+}
+
 __checkReturn
 __drv_maxIRQL(DISPATCH_LEVEL)
 NTSTATUS
 FrontendD3ToD0(
-    __in  PXENVBD_FRONTEND        Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    PXENVBD_ADAPTER Adapter = TargetGetAdapter(Frontend->Target);
-    NTSTATUS    Status;
-    KIRQL       Irql;
+    PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Frontend->Target);
+    KIRQL                   Irql;
+    NTSTATUS                status;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
-    // acquire interfaces
     AdapterGetStoreInterface(Adapter, &Frontend->StoreInterface);
+    AdapterGetDebugInterface(Adapter, &Frontend->DebugInterface);
     AdapterGetSuspendInterface(Adapter, &Frontend->SuspendInterface);
 
-    Status = XENBUS_STORE(Acquire, &Frontend->StoreInterface);
-    if (!NT_SUCCESS(Status))
+    status = XENBUS_STORE(Acquire, &Frontend->StoreInterface);
+    if (!NT_SUCCESS(status))
         goto fail1;
 
-    Status = XENBUS_SUSPEND(Acquire, &Frontend->SuspendInterface);
-    if (!NT_SUCCESS(Status))
+    status = XENBUS_DEBUG(Acquire, &Frontend->DebugInterface);
+    if (!NT_SUCCESS(status))
         goto fail2;
 
-    // register suspend callback
-    ASSERT3P(Frontend->SuspendLateCallback, ==, NULL);
-    Status = XENBUS_SUSPEND(Register,
-                            &Frontend->SuspendInterface,
-                            SUSPEND_CALLBACK_LATE,
-                            FrontendSuspendLateCallback,
-                            Frontend,
-                            &Frontend->SuspendLateCallback);
-    if (!NT_SUCCESS(Status))
+    status = XENBUS_SUSPEND(Acquire, &Frontend->SuspendInterface);
+    if (!NT_SUCCESS(status))
         goto fail3;
 
-    // update state
+    status = XENBUS_SUSPEND(Register,
+                            &Frontend->SuspendInterface,
+                            SUSPEND_CALLBACK_LATE,
+                            FrontendSuspendCallback,
+                            Frontend,
+                            &Frontend->SuspendCallback);
+    if (!NT_SUCCESS(status))
+        goto fail4;
+
+    status = XENBUS_DEBUG(Register,
+                          &Frontend->DebugInterface,
+                          __MODULE__"|FRONTEND",
+                          FrontendDebugCallback,
+                          Frontend,
+                          &Frontend->DebugCallback);
+    if (!NT_SUCCESS(status))
+        goto fail5;
+
     Frontend->Active = TRUE;
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
     return STATUS_SUCCESS;
 
-fail3:
-    Error("Fail3\n");
-
+fail5:
+    Error("fail5\n");
+    XENBUS_SUSPEND(Deregister,
+                   &Frontend->SuspendInterface,
+                   Frontend->SuspendCallback);
+    Frontend->SuspendCallback = NULL;
+fail4:
+    Error("fail4\n");
     XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
-    RtlZeroMemory(&Frontend->SuspendInterface, sizeof(XENBUS_SUSPEND_INTERFACE));
-
+fail3:
+    Error("fail3\n");
+    XENBUS_DEBUG(Release, &Frontend->DebugInterface);
 fail2:
-    Error("Fail2\n");
-
+    Error("fail2\n");
     XENBUS_STORE(Release, &Frontend->StoreInterface);
-    RtlZeroMemory(&Frontend->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
-
 fail1:
-    Error("Fail1 (%08x)\n", Status);
+    Error("fail1 (%08x)\n", status);
+
+    RtlZeroMemory(&Frontend->SuspendInterface,
+                  sizeof(XENBUS_SUSPEND_INTERFACE));
+    RtlZeroMemory(&Frontend->DebugInterface,
+                  sizeof(XENBUS_DEBUG_INTERFACE));
+    RtlZeroMemory(&Frontend->StoreInterface,
+                  sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
-    return Status;
+    return status;
 }
 
 __drv_maxIRQL(DISPATCH_LEVEL)
 VOID
 FrontendD0ToD3(
-    __in  PXENVBD_FRONTEND        Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    KIRQL       Irql;
+    KIRQL                   Irql;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
-    // update state
     Frontend->Active = FALSE;
 
-    // deregister suspend callback
-    if (Frontend->SuspendLateCallback != NULL) {
-        XENBUS_SUSPEND(Deregister,
-                       &Frontend->SuspendInterface,
-                       Frontend->SuspendLateCallback);
-        Frontend->SuspendLateCallback = NULL;
-    }
-    // Free backend path before dropping store interface
-    if (Frontend->BackendPath) {
-        __FrontendFree(Frontend->BackendPath);
-        Frontend->BackendPath = NULL;
-    }
+    XENBUS_DEBUG(Deregister,
+                 &Frontend->DebugInterface,
+                 Frontend->DebugCallback);
+    Frontend->DebugCallback = NULL;
 
-    // release interfaces
+    XENBUS_SUSPEND(Deregister,
+                   &Frontend->SuspendInterface,
+                   Frontend->SuspendCallback);
+    Frontend->SuspendCallback = NULL;
+
+    if (Frontend->BackendPath)
+        __FrontendFree(Frontend->BackendPath);
+    Frontend->BackendPath = NULL;
+
     XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
-    RtlZeroMemory(&Frontend->SuspendInterface, sizeof(XENBUS_SUSPEND_INTERFACE));
-    
+    XENBUS_DEBUG(Release, &Frontend->DebugInterface);
     XENBUS_STORE(Release, &Frontend->StoreInterface);
-    RtlZeroMemory(&Frontend->StoreInterface, sizeof(XENBUS_STORE_INTERFACE));
+
+    RtlZeroMemory(&Frontend->SuspendInterface,
+                  sizeof(XENBUS_SUSPEND_INTERFACE));
+    RtlZeroMemory(&Frontend->DebugInterface,
+                  sizeof(XENBUS_DEBUG_INTERFACE));
+    RtlZeroMemory(&Frontend->StoreInterface,
+                  sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
 }
@@ -1515,19 +1623,19 @@ FrontendD0ToD3(
 __checkReturn
 NTSTATUS
 FrontendSetState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  XENVBD_STATE            State
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  XENVBD_STATE        State
     )
 {
-    NTSTATUS    Status;
-    KIRQL       Irql;
+    KIRQL                   Irql;
+    NTSTATUS                status;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
-    Status = __FrontendSetState(Frontend, State);
+    status = __FrontendSetState(Frontend, State);
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
-    return Status;
+    return status;
 }
 
 __checkReturn
@@ -1587,14 +1695,14 @@ fail1:
 
 NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_TARGET          Target,
-    IN  PCHAR                   DeviceId,
-    IN  ULONG                   TargetId,
-    OUT PXENVBD_FRONTEND*       _Frontend
+    IN  PXENVBD_TARGET      Target,
+    IN  PCHAR               DeviceId,
+    IN  ULONG               TargetId,
+    OUT PXENVBD_FRONTEND*   _Frontend
     )
 {
-    NTSTATUS            status;
-    PXENVBD_FRONTEND    Frontend;
+    PXENVBD_FRONTEND        Frontend;
+    NTSTATUS                status;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -1668,10 +1776,10 @@ fail1:
 
 VOID
 FrontendDestroy(
-    __in  PXENVBD_FRONTEND        Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    const ULONG TargetId = Frontend->TargetId;
+    const ULONG             TargetId = Frontend->TargetId;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -1690,77 +1798,10 @@ FrontendDestroy(
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->Inquiry, ==, NULL);
-    ASSERT3P(Frontend->SuspendLateCallback, ==, NULL);
     ASSERT3P(Frontend->BackendWatch, ==, NULL);
 
     __FrontendFree(Frontend);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
-}
-
-//=============================================================================
-// Debug
-VOID
-FrontendDebugCallback(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  PXENBUS_DEBUG_INTERFACE Debug
-    )
-{
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: TargetId=%d DeviceId=%d BackendDomain=%d\n",
-                 Frontend->TargetId,
-                 Frontend->DeviceId,
-                 Frontend->BackendDomain);
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: FrontendPath %s\n",
-                 Frontend->FrontendPath);
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: BackendPath  %s\n",
-                 Frontend->BackendPath ? Frontend->BackendPath : "NULL");
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: TargetPath   %s\n",
-                 Frontend->TargetPath);
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: State   : %s\n",
-                 __XenvbdStateName(Frontend->State));
-
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: Caps    : %s%s%s%s%s%s\n",
-                 Frontend->Caps.Connected ? "CONNECTED " : "",
-                 Frontend->Caps.Removable ? "REMOVABLE " : "",
-                 Frontend->Caps.SurpriseRemovable ? "SURPRISE " : "",
-                 Frontend->Caps.Paging ? "PAGING " : "",
-                 Frontend->Caps.Hibernation ? "HIBER " : "",
-                 Frontend->Caps.DumpFile ? "DUMP " : "");
-
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: Features: %s%s%s%s%s\n",
-                 Frontend->Features.Persistent ? "PERSISTENT " : "",
-                 Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
-                 Frontend->DiskInfo.Barrier ? "BARRIER " : "",
-                 Frontend->DiskInfo.FlushCache ? "FLUSH " : "",
-                 Frontend->DiskInfo.Discard ? "DISCARD " : "");
-
-    if (Frontend->Features.Indirect > 0) {
-        XENBUS_DEBUG(Printf, Debug,
-                     "FRONTEND: INDIRECT %x\n",
-                     Frontend->Features.Indirect);
-    }
-    if (Frontend->DiskInfo.Discard) {
-        XENBUS_DEBUG(Printf, Debug,
-                     "FRONTEND: DISCARD %s%x/%x\n",
-                     Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
-                     Frontend->DiskInfo.DiscardAlignment,
-                     Frontend->DiskInfo.DiscardGranularity);
-    }
-
-    XENBUS_DEBUG(Printf, Debug,
-                 "FRONTEND: DiskInfo: %llu @ %u (%u) %08x\n",
-                 Frontend->DiskInfo.SectorCount,
-                 Frontend->DiskInfo.SectorSize,
-                 Frontend->DiskInfo.PhysSectorSize,
-                 Frontend->DiskInfo.DiskInfo);
-
-    GranterDebugCallback(Frontend->Granter, Debug);
 }
 
 #define FRONTEND_GET_PROPERTY(_name, _type)     \

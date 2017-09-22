@@ -1010,9 +1010,6 @@ TargetDebugCallback(
                  &Target->DebugInterface,
                  "TARGET: %s\n",
                  Target->Missing ? Target->Reason : "Not Missing");
-
-    FrontendDebugCallback(Target->Frontend,
-                          &Target->DebugInterface);
 }
 
 static DECLSPEC_NOINLINE VOID

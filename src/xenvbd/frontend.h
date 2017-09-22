@@ -32,8 +32,7 @@
 #ifndef _XENVBD_FRONTEND_H
 #define _XENVBD_FRONTEND_H
 
-#include "target.h"
-#include <debug_interface.h>
+#include <ntddk.h>
 
 typedef enum _XENVBD_STATE {
     XENVBD_STATE_INVALID,
@@ -74,6 +73,8 @@ typedef struct _XENVBD_DISKINFO {
 
 typedef struct _XENVBD_FRONTEND XENVBD_FRONTEND, *PXENVBD_FRONTEND;
 
+#include "target.h"
+
 extern VOID
 FrontendRemoveFeature(
     IN  PXENVBD_FRONTEND        Frontend,
@@ -108,25 +109,24 @@ FrontendWriteUsage(
     __in  PXENVBD_FRONTEND        Frontend
     );
 
-// Init/Term
 __checkReturn
 __drv_maxIRQL(DISPATCH_LEVEL)
 extern NTSTATUS
 FrontendD3ToD0(
-    __in  PXENVBD_FRONTEND        Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     );
 
 __drv_maxIRQL(DISPATCH_LEVEL)
 extern VOID
 FrontendD0ToD3(
-    __in  PXENVBD_FRONTEND        Frontend
+    IN  PXENVBD_FRONTEND    Frontend
     );
 
 __checkReturn
 extern NTSTATUS
 FrontendSetState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  XENVBD_STATE            State
+    IN  PXENVBD_FRONTEND    Frontend,
+    IN  XENVBD_STATE        State
     );
 
 extern NTSTATUS
@@ -136,22 +136,15 @@ FrontendReset(
 
 extern NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_TARGET          Target,
-    IN  PCHAR                   DeviceId,
-    IN  ULONG                   TargetId,
-    OUT PXENVBD_FRONTEND*       _Frontend
+    IN  PXENVBD_TARGET      Target,
+    IN  PCHAR               DeviceId,
+    IN  ULONG               TargetId,
+    OUT PXENVBD_FRONTEND*   _Frontend
     );
 
 extern VOID
 FrontendDestroy(
-    __in  PXENVBD_FRONTEND        Frontend
-    );
-
-// Debug
-extern VOID
-FrontendDebugCallback(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  PXENBUS_DEBUG_INTERFACE Debug
+    IN  PXENVBD_FRONTEND    Frontend
     );
 
 #define FRONTEND_GET_PROPERTY(_name, _type)     \
