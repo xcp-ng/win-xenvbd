@@ -244,6 +244,7 @@ FrontendSetDeviceUsage(
                         Value);
 
     Verbose("Target[%u] %s %s\n",
+            FrontendGetTargetId(Frontend),
             Value ? "ADDING" : "REMOVING",
             UsageName);
 }
