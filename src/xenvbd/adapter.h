@@ -36,6 +36,7 @@
 
 typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 
+#include <cache_interface.h>
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <gnttab_interface.h>
@@ -51,6 +52,7 @@ AdapterGet ## _name ## Interface(               \
     OUT _type           _name ## Interface      \
     );
 
+ADAPTER_GET_INTERFACE(Cache, PXENBUS_CACHE_INTERFACE)
 ADAPTER_GET_INTERFACE(Store, PXENBUS_STORE_INTERFACE)
 ADAPTER_GET_INTERFACE(Debug, PXENBUS_DEBUG_INTERFACE)
 ADAPTER_GET_INTERFACE(Evtchn, PXENBUS_EVTCHN_INTERFACE)
