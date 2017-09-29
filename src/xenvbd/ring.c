@@ -1711,9 +1711,17 @@ RingConnect(
                           "max-ring-page-order",
                           &Buffer);
     if (NT_SUCCESS(status)) {
+        ULONG           MaxOrder;
+
+        if (DriverGetFeatureOverride(FeatureMaxRingPageOrder,
+                                     &MaxOrder)) {
+            MaxOrder = min(MaxOrder, XENVBD_MAX_RING_PAGE_ORDER);
+        } else {
+            MaxOrder = XENVBD_MAX_RING_PAGE_ORDER;
+        }
+
         Ring->Order = strtoul(Buffer, NULL, 10);
-        if (Ring->Order > XENVBD_MAX_RING_PAGE_ORDER)
-            Ring->Order = XENVBD_MAX_RING_PAGE_ORDER;
+        Ring->Order = min(Ring->Order, MaxOrder);
 
         XENBUS_STORE(Free,
                      &Ring->StoreInterface,

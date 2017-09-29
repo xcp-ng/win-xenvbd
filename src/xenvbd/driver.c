@@ -266,7 +266,8 @@ __DriverInitializeOverrides(
               { "discard-enable", FeatureDiscardEnable },
               { "discard-secure", FeatureDiscardSecure },
               { "discard-alignment", FeatureDiscardAlignment },
-              { "discard-granularity", FeatureDiscardGranularity }
+              { "discard-granularity", FeatureDiscardGranularity },
+              { "max-ring-page-order", FeatureMaxRingPageOrder }
           };
 
     for (Index = 0; Index < ARRAYSIZE(Mapping); Index++) {

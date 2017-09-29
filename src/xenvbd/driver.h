@@ -79,6 +79,7 @@ typedef enum _XENVBD_FEATURE {
     FeatureDiscardSecure,
     FeatureDiscardAlignment,
     FeatureDiscardGranularity,
+    FeatureMaxRingPageOrder,
 
     // Add any new features before this enum
     NumberOfFeatures
