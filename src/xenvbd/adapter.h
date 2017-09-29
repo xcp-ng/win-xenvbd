@@ -93,6 +93,17 @@ AdapterGetNextSGEntry(
     OUT PULONG          Length
     );
 
+extern PXENVBD_BOUNCE
+AdapterGetBounce(
+    IN  PXENVBD_ADAPTER Adapter
+    );
+
+extern VOID
+AdapterPutBounce(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_BOUNCE  Bounce
+    );
+
 extern NTSTATUS
 AdapterDispatchPnp(
     IN  PXENVBD_ADAPTER Adapter,

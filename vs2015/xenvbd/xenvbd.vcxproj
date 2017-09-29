@@ -64,7 +64,6 @@
     <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="../../src/xenvbd/buffer.c" />
     <ClCompile Include="../../src/xenvbd/driver.c" />
     <ClCompile Include="../../src/xenvbd/registry.c" />
     <ClCompile Include="../../src/xenvbd/adapter.c" />

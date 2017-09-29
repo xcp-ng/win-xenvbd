@@ -41,7 +41,6 @@
 #include "adapter.h"
 #include "registry.h"
 #include "srbext.h"
-#include "buffer.h"
 
 #include "util.h"
 #include "debug.h"
@@ -240,8 +239,6 @@ DriverUnload(
     Driver.StorPortDispatchPnp = NULL;
     Driver.StorPortDispatchPower = NULL;
 
-    BufferTerminate();
-
     RegistryCloseKey(Driver.ParametersKey);
     Driver.ParametersKey = NULL;
 
@@ -366,7 +363,6 @@ DriverEntry(
 
     Driver.ParametersKey = ParametersKey;
     Driver.Adapter = NULL;
-    BufferInitialize();
 
     __DriverInitializeOverrides();
 
@@ -390,8 +386,6 @@ DriverEntry(
 
 fail4:
     Error("fail4\n");
-
-    BufferTerminate();
 
     RegistryCloseKey(Driver.ParametersKey);
     Driver.ParametersKey = NULL;

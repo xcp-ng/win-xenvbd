@@ -48,7 +48,6 @@
 #include "frontend.h"
 #include "queue.h"
 #include "srbext.h"
-#include "buffer.h"
 
 #include "debug.h"
 #include "assert.h"

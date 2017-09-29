@@ -53,7 +53,6 @@
 #include "target.h"
 #include "srbext.h"
 #include "thread.h"
-#include "buffer.h"
 
 #include "util.h"
 #include "debug.h"
@@ -81,6 +80,7 @@ struct _XENVBD_ADAPTER {
     XENBUS_UNPLUG_INTERFACE     UnplugInterface;
     XENFILT_EMULATED_INTERFACE  EmulatedInterface;
 
+    PXENBUS_CACHE               BounceCache;
     PXENBUS_DEBUG_CALLBACK      DebugCallback;
     PXENBUS_SUSPEND_CALLBACK    SuspendCallback;
 
@@ -910,8 +910,6 @@ AdapterDebugCallback(
                  Adapter->BuildIo,
                  Adapter->StartIo,
                  Adapter->Completed);
-
-    BufferDebugCallback(&Adapter->DebugInterface);
 }
 
 static NTSTATUS
@@ -1097,6 +1095,89 @@ AdapterDevicePowerThread(
     return STATUS_SUCCESS;
 }
 
+PXENVBD_BOUNCE
+AdapterGetBounce(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    return XENBUS_CACHE(Get,
+                        &Adapter->CacheInterface,
+                        Adapter->BounceCache,
+                        FALSE);
+}
+
+VOID
+AdapterPutBounce(
+    IN  PXENVBD_ADAPTER Adapter,
+    IN  PXENVBD_BOUNCE  Bounce
+    )
+{
+    XENBUS_CACHE(Put,
+                 &Adapter->CacheInterface,
+                 Adapter->BounceCache,
+                 Bounce,
+                 FALSE);
+}
+
+static DECLSPEC_NOINLINE NTSTATUS
+AdapterBounceCtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    PXENVBD_BOUNCE  Bounce = Object;
+    NTSTATUS        status;
+
+    UNREFERENCED_PARAMETER(Argument);
+
+    status = STATUS_NO_MEMORY;
+    Bounce->BounceMdl = __AllocatePage();
+    if (Bounce->BounceMdl == NULL)
+        goto fail1;
+
+    Bounce->BouncePtr = MmGetSystemAddressForMdlSafe(Bounce->BounceMdl,
+                                                     NormalPagePriority);
+    return STATUS_SUCCESS;
+
+fail1:
+    Error("fail1\n");
+    return status;
+}
+
+static DECLSPEC_NOINLINE VOID
+AdapterBounceDtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    PXENVBD_BOUNCE  Bounce = Object;
+
+    UNREFERENCED_PARAMETER(Argument);
+
+    Bounce->BouncePtr = NULL;
+
+    __FreePages(Bounce->BounceMdl);
+    Bounce->BounceMdl = NULL;
+}
+
+static DECLSPEC_NOINLINE VOID
+AdapterAcquireLock(
+    IN  PVOID       Argument
+    )
+{
+    PXENVBD_ADAPTER Adapter = Argument;
+    KeAcquireSpinLockAtDpcLevel(&Adapter->Lock);
+}
+
+static DECLSPEC_NOINLINE VOID
+AdapterReleaseLock(
+    IN  PVOID       Argument
+    )
+{
+    PXENVBD_ADAPTER Adapter = Argument;
+    KeReleaseSpinLockFromDpcLevel(&Adapter->Lock);
+}
+
 __drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 __AdapterQueryInterface(
@@ -1256,25 +1337,52 @@ AdapterInitialize(
     if (!NT_SUCCESS(status))
         goto fail8;
 
+    status = XENBUS_CACHE(Acquire, &Adapter->CacheInterface);
+    if (!NT_SUCCESS(status))
+        goto fail9;
+
+    status = XENBUS_CACHE(Create,
+                          &Adapter->CacheInterface,
+                          "vbd_bounce",
+                          sizeof(XENVBD_BOUNCE),
+                          32,
+                          AdapterBounceCtor,
+                          AdapterBounceDtor,
+                          AdapterAcquireLock,
+                          AdapterReleaseLock,
+                          Adapter,
+                          &Adapter->BounceCache);
+    if (!NT_SUCCESS(status))
+        goto fail10;
+
     status = ThreadCreate(AdapterScanThread,
                           Adapter,
                           &Adapter->ScanThread);
     if (!NT_SUCCESS(status))
-        goto fail9;
+        goto fail11;
 
     status = ThreadCreate(AdapterDevicePowerThread,
                           Adapter,
                           &Adapter->DevicePowerThread);
     if (!NT_SUCCESS(status))
-        goto fail10;
+        goto fail12;
 
     return STATUS_SUCCESS;
 
-fail10:
-    Error("fail10\n");
+fail12:
+    Error("fail12\n");
     ThreadAlert(Adapter->ScanThread);
     ThreadJoin(Adapter->ScanThread);
     Adapter->ScanThread = NULL;
+fail11:
+    Error("fail11\n");
+    XENBUS_CACHE(Destroy,
+                 &Adapter->CacheInterface,
+                 Adapter->BounceCache);
+    Adapter->BounceCache = NULL;
+fail10:
+    Error("fail10\n");
+    XENBUS_CACHE(Release, &Adapter->CacheInterface);
 fail9:
     Error("fail9\n");
     RtlZeroMemory(&Adapter->EmulatedInterface,
@@ -1352,6 +1460,13 @@ AdapterTeardown(
         // drop ref-count acquired in __AdapterGetTarget *before* destroying Target
         TargetDestroy(Target);
     }
+
+    XENBUS_CACHE(Destroy,
+                 &Adapter->CacheInterface,
+                 Adapter->BounceCache);
+    Adapter->BounceCache = NULL;
+
+    XENBUS_CACHE(Release, &Adapter->CacheInterface);
 
     RtlZeroMemory(&Adapter->EmulatedInterface,
                   sizeof (XENFILT_EMULATED_INTERFACE));
