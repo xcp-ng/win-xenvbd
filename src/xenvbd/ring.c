@@ -35,6 +35,7 @@
 #include <ntstrsafe.h>
 
 #include <xencdb.h>
+#include <cache_interface.h>
 #include <store_interface.h>
 #include <evtchn_interface.h>
 #include <debug_interface.h>
@@ -55,19 +56,12 @@
 #define XENVBD_MAX_RING_PAGE_ORDER  (4)
 #define XENVBD_MAX_RING_PAGES       (1 << XENVBD_MAX_RING_PAGE_ORDER)
 
-typedef struct _XENVBD_LOOKASIDE {
-    LONG                        Used;
-    LONG                        Max;
-    ULONG                       Failed;
-    ULONG                       Size;
-    NPAGED_LOOKASIDE_LIST       List;
-} XENVBD_LOOKASIDE, *PXENVBD_LOOKASIDE;
-
 struct _XENVBD_RING {
     PXENVBD_FRONTEND                Frontend;
     BOOLEAN                         Connected;
     BOOLEAN                         Enabled;
 
+    XENBUS_CACHE_INTERFACE          CacheInterface;
     XENBUS_STORE_INTERFACE          StoreInterface;
     XENBUS_EVTCHN_INTERFACE         EvtchnInterface;
     XENBUS_DEBUG_INTERFACE          DebugInterface;
@@ -85,9 +79,9 @@ struct _XENVBD_RING {
     KDPC                            TimerDpc;
     KTIMER                          Timer;
 
-    XENVBD_LOOKASIDE                RequestList;
-    XENVBD_LOOKASIDE                SegmentList;
-    XENVBD_LOOKASIDE                IndirectList;
+    PXENBUS_CACHE                   RequestCache;
+    PXENBUS_CACHE                   SegmentCache;
+    PXENBUS_CACHE                   IndirectCache;
     XENVBD_QUEUE                    FreshSrbs;
     XENVBD_QUEUE                    PreparedReqs;
     XENVBD_QUEUE                    SubmittedReqs;
@@ -110,85 +104,7 @@ struct _XENVBD_RING {
 
 #define MAX_NAME_LEN                64
 #define RING_POOL_TAG               'gnRX'
-#define REQUEST_POOL_TAG            'qeRX'
-#define SEGMENT_POOL_TAG            'geSX'
-#define INDIRECT_POOL_TAG           'dnIX'
 #define XEN_IO_PROTO_ABI            "x86_64-abi"
-
-static FORCEINLINE VOID
-__LookasideInit(
-    IN OUT  PXENVBD_LOOKASIDE   Lookaside,
-    IN  ULONG                   Size,
-    IN  ULONG                   Tag
-    )
-{
-    RtlZeroMemory(Lookaside, sizeof(XENVBD_LOOKASIDE));
-    Lookaside->Size = Size;
-    ExInitializeNPagedLookasideList(&Lookaside->List, NULL, NULL, 0,
-                                    Size, Tag, 0);
-}
-
-static FORCEINLINE VOID
-__LookasideTerm(
-    IN  PXENVBD_LOOKASIDE       Lookaside
-    )
-{
-    ASSERT3U(Lookaside->Used, ==, 0);
-    ExDeleteNPagedLookasideList(&Lookaside->List);
-    RtlZeroMemory(Lookaside, sizeof(XENVBD_LOOKASIDE));
-}
-
-static FORCEINLINE PVOID
-__LookasideAlloc(
-    IN  PXENVBD_LOOKASIDE       Lookaside
-    )
-{
-    LONG    Result;
-    PVOID   Buffer;
-
-    Buffer = ExAllocateFromNPagedLookasideList(&Lookaside->List);
-    if (Buffer == NULL) {
-        ++Lookaside->Failed;
-        return NULL;
-    }
-
-    RtlZeroMemory(Buffer, Lookaside->Size);
-    Result = InterlockedIncrement(&Lookaside->Used);
-    ASSERT3S(Result, >, 0);
-    if (Result > Lookaside->Max)
-        Lookaside->Max = Result;
-
-    return Buffer;
-}
-
-static FORCEINLINE VOID
-__LookasideFree(
-    IN  PXENVBD_LOOKASIDE       Lookaside,
-    IN  PVOID                   Buffer
-    )
-{
-    LONG            Result;
-
-    ExFreeToNPagedLookasideList(&Lookaside->List, Buffer);
-    Result = InterlockedDecrement(&Lookaside->Used);
-    ASSERT3S(Result, >=, 0);
-}
-
-static FORCEINLINE VOID
-__LookasideDebug(
-    IN  PXENVBD_LOOKASIDE           Lookaside,
-    IN  PXENBUS_DEBUG_INTERFACE     Debug,
-    IN  PCHAR                       Name
-    )
-{
-    XENBUS_DEBUG(Printf, Debug,
-                 "LOOKASIDE: %s: %u / %u (%u failed)\n",
-                 Name, Lookaside->Used,
-                 Lookaside->Max, Lookaside->Failed);
-
-    Lookaside->Max = Lookaside->Used;
-    Lookaside->Failed = 0;
-}
 
 static FORCEINLINE PVOID
 __RingAllocate(
@@ -341,32 +257,30 @@ RingGetIndirect(
     NTSTATUS            status;
     PXENVBD_GRANTER     Granter = FrontendGetGranter(Ring->Frontend);
 
-    Indirect = __LookasideAlloc(&Ring->IndirectList);
+    Indirect = XENBUS_CACHE(Get,
+                            &Ring->CacheInterface,
+                            Ring->IndirectCache,
+                            FALSE);
     if (Indirect == NULL)
         goto fail1;
 
-    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
-
-    Indirect->Mdl = __AllocatePage();
-    if (Indirect->Mdl == NULL)
-        goto fail2;
-
-    Indirect->Page = MmGetSystemAddressForMdlSafe(Indirect->Mdl,
-                                                  NormalPagePriority);
-
+    ASSERT3P(Indirect->Mdl, !=, NULL);
+    ASSERT3P(Indirect->Page, !=, NULL);
     status = GranterGet(Granter,
                         MmGetMdlPfnArray(Indirect->Mdl)[0],
                         TRUE,
                         &Indirect->Grant);
     if (!NT_SUCCESS(status))
-        goto fail3;
+        goto fail2;
 
     return Indirect;
 
-fail3:
-    __FreePage(Indirect->Mdl);
 fail2:
-    __LookasideFree(&Ring->IndirectList, Indirect);
+    XENBUS_CACHE(Put,
+                 &Ring->CacheInterface,
+                 Ring->IndirectCache,
+                 Indirect,
+                 FALSE);
 fail1:
     return NULL;
 }
@@ -381,11 +295,15 @@ RingPutIndirect(
 
     if (Indirect->Grant)
         GranterPut(Granter, Indirect->Grant);
-    if (Indirect->Page)
-        __FreePage(Indirect->Mdl);
+    Indirect->Grant = NULL;
 
-    RtlZeroMemory(Indirect, sizeof(XENVBD_INDIRECT));
-    __LookasideFree(&Ring->IndirectList, Indirect);
+    RtlZeroMemory(&Indirect->ListEntry, sizeof(LIST_ENTRY));
+
+    XENBUS_CACHE(Put,
+                 &Ring->CacheInterface,
+                 Ring->IndirectCache,
+                 Indirect,
+                 FALSE);
 }
 
 static PXENVBD_SEGMENT
@@ -393,17 +311,10 @@ RingGetSegment(
     IN  PXENVBD_RING    Ring
     )
 {
-    PXENVBD_SEGMENT     Segment;
-
-    Segment = __LookasideAlloc(&Ring->SegmentList);
-    if (Segment == NULL)
-        goto fail1;
-
-    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
-    return Segment;
-
-fail1:
-    return NULL;
+    return XENBUS_CACHE(Get,
+                        &Ring->CacheInterface,
+                        Ring->SegmentCache,
+                        FALSE);
 }
 
 static VOID
@@ -417,6 +328,7 @@ RingPutSegment(
 
     if (Segment->Grant)
         GranterPut(Granter, Segment->Grant);
+    Segment->Grant = NULL;
 
     if (Bounce) {
         if (Bounce->SourcePtr) {
@@ -433,8 +345,15 @@ RingPutSegment(
     }
     Segment->Bounce = NULL;
 
-    RtlZeroMemory(Segment, sizeof(XENVBD_SEGMENT));
-    __LookasideFree(&Ring->SegmentList, Segment);
+    Segment->FirstSector = 0;
+    Segment->LastSector = 0;
+    RtlZeroMemory(&Segment->ListEntry, sizeof(LIST_ENTRY));
+
+    XENBUS_CACHE(Put,
+                 &Ring->CacheInterface,
+                 Ring->SegmentCache,
+                 Segment,
+                 FALSE);
 }
 
 static PXENVBD_REQUEST
@@ -442,20 +361,10 @@ RingGetRequest(
     IN  PXENVBD_RING    Ring
     )
 {
-    PXENVBD_REQUEST     Request;
-
-    Request = __LookasideAlloc(&Ring->RequestList);
-    if (Request == NULL)
-        goto fail1;
-
-    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
-    InitializeListHead(&Request->Segments);
-    InitializeListHead(&Request->Indirects);
-
-    return Request;
-
-fail1:
-    return NULL;
+    return XENBUS_CACHE(Get,
+                        &Ring->CacheInterface,
+                        Ring->RequestCache,
+                        FALSE);
 }
 
 static VOID
@@ -486,8 +395,19 @@ RingPutRequest(
         RingPutIndirect(Ring, Indirect);
     }
 
-    RtlZeroMemory(Request, sizeof(XENVBD_REQUEST));
-    __LookasideFree(&Ring->RequestList, Request);
+    Request->SrbExt = NULL;
+    Request->Operation = 0;
+    Request->Flags = 0;
+    Request->NrSegments = 0;
+    Request->FirstSector = 0;
+    Request->NrSectors = 0;
+    RtlZeroMemory(&Request->ListEntry, sizeof(LIST_ENTRY));
+
+    XENBUS_CACHE(Put,
+                 &Ring->CacheInterface,
+                 Ring->RequestCache,
+                 Request,
+                 FALSE);
 }
 
 static FORCEINLINE PXENVBD_REQUEST
@@ -1563,16 +1483,6 @@ RingDebugCallback(
                  Ring->SegsGranted,
                  Ring->SegsBounced);
 
-    __LookasideDebug(&Ring->RequestList,
-                     &Ring->DebugInterface,
-                     "REQUESTs");
-    __LookasideDebug(&Ring->SegmentList,
-                     &Ring->DebugInterface,
-                     "SEGMENTs");
-    __LookasideDebug(&Ring->IndirectList,
-                     &Ring->DebugInterface,
-                     "INDIRECTs");
-
     QueueDebugCallback(&Ring->FreshSrbs,
                        "Fresh    ",
                        &Ring->DebugInterface);
@@ -1587,12 +1497,121 @@ RingDebugCallback(
                        &Ring->DebugInterface);
 }
 
+static DECLSPEC_NOINLINE VOID
+RingAcquireLock(
+    IN  PVOID       Argument
+    )
+{
+    PXENVBD_RING    Ring = Argument;
+    KeAcquireSpinLockAtDpcLevel(&Ring->Lock);
+}
+
+static DECLSPEC_NOINLINE VOID
+RingReleaseLock(
+    IN  PVOID       Argument
+    )
+{
+    PXENVBD_RING    Ring = Argument;
+    KeReleaseSpinLockFromDpcLevel(&Ring->Lock);
+}
+
+static DECLSPEC_NOINLINE NTSTATUS
+RingRequestCtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    PXENVBD_REQUEST Request = Object;
+
+    UNREFERENCED_PARAMETER(Argument);
+
+    InitializeListHead(&Request->Segments);
+    InitializeListHead(&Request->Indirects);
+    return STATUS_SUCCESS;
+}
+
+static DECLSPEC_NOINLINE VOID
+RingRequestDtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    UNREFERENCED_PARAMETER(Argument);
+    UNREFERENCED_PARAMETER(Object);
+}
+
+static DECLSPEC_NOINLINE NTSTATUS
+RingSegmentCtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    UNREFERENCED_PARAMETER(Argument);
+    UNREFERENCED_PARAMETER(Object);
+    return STATUS_SUCCESS;
+}
+
+static DECLSPEC_NOINLINE VOID
+RingSegmentDtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    UNREFERENCED_PARAMETER(Argument);
+    UNREFERENCED_PARAMETER(Object);
+}
+
+static DECLSPEC_NOINLINE NTSTATUS
+RingIndirectCtor(
+    IN  PVOID           Argument,
+    IN  PVOID           Object
+    )
+{
+    PXENVBD_INDIRECT    Indirect = Object;
+    NTSTATUS            status;
+
+    UNREFERENCED_PARAMETER(Argument);
+
+    status = STATUS_NO_MEMORY;
+    Indirect->Mdl = __AllocatePage();
+    if (Indirect->Mdl == NULL)
+        goto fail1;
+
+    Indirect->Page = MmGetSystemAddressForMdlSafe(Indirect->Mdl,
+                                                  NormalPagePriority);
+    ASSERT(Indirect->Page);
+
+    return STATUS_SUCCESS;
+
+fail1:
+    Error("fail1 %08x\n", status);
+    return status;
+}
+
+static DECLSPEC_NOINLINE VOID
+RingIndirectDtor(
+    IN  PVOID       Argument,
+    IN  PVOID       Object
+    )
+{
+    PXENVBD_INDIRECT    Indirect = Object;
+
+    UNREFERENCED_PARAMETER(Argument);
+
+    __FreePages(Indirect->Mdl);
+    Indirect->Page = NULL;
+    Indirect->Mdl = NULL;
+}
+
 NTSTATUS
 RingCreate(
     IN  PXENVBD_FRONTEND    Frontend,
     OUT PXENVBD_RING*       Ring
     )
 {
+    PXENVBD_TARGET          Target = FrontendGetTarget(Frontend);
+    PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Target);
+    CHAR                    Name[MAX_NAME_LEN];
     NTSTATUS                status;
 
     *Ring = __RingAllocate(sizeof(XENVBD_RING));
@@ -1611,12 +1630,120 @@ RingCreate(
     QueueInit(&(*Ring)->PreparedReqs);
     QueueInit(&(*Ring)->SubmittedReqs);
     QueueInit(&(*Ring)->ShutdownSrbs);
-    __LookasideInit(&(*Ring)->RequestList, sizeof(XENVBD_REQUEST), REQUEST_POOL_TAG);
-    __LookasideInit(&(*Ring)->SegmentList, sizeof(XENVBD_SEGMENT), SEGMENT_POOL_TAG);
-    __LookasideInit(&(*Ring)->IndirectList, sizeof(XENVBD_INDIRECT), INDIRECT_POOL_TAG);
+
+    AdapterGetCacheInterface(Adapter, &(*Ring)->CacheInterface);
+
+    status = XENBUS_CACHE(Acquire, &(*Ring)->CacheInterface);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_req",
+                                FrontendGetTargetId(Frontend));
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    status = XENBUS_CACHE(Create,
+                          &(*Ring)->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_REQUEST),
+                          32,
+                          RingRequestCtor,
+                          RingRequestDtor,
+                          RingAcquireLock,
+                          RingReleaseLock,
+                          *Ring,
+                          &(*Ring)->RequestCache);
+    if (!NT_SUCCESS(status))
+        goto fail4;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_seg",
+                                FrontendGetTargetId(Frontend));
+    if (!NT_SUCCESS(status))
+        goto fail5;
+
+    status = XENBUS_CACHE(Create,
+                          &(*Ring)->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_SEGMENT),
+                          32,
+                          RingSegmentCtor,
+                          RingSegmentDtor,
+                          RingAcquireLock,
+                          RingReleaseLock,
+                          *Ring,
+                          &(*Ring)->SegmentCache);
+    if (!NT_SUCCESS(status))
+        goto fail6;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_ind",
+                                FrontendGetTargetId(Frontend));
+    if (!NT_SUCCESS(status))
+        goto fail7;
+
+    status = XENBUS_CACHE(Create,
+                          &(*Ring)->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_INDIRECT),
+                          1,
+                          RingIndirectCtor,
+                          RingIndirectDtor,
+                          RingAcquireLock,
+                          RingReleaseLock,
+                          *Ring,
+                          &(*Ring)->IndirectCache);
+    if (!NT_SUCCESS(status))
+        goto fail8;
 
     return STATUS_SUCCESS;
 
+fail8:
+    Error("fail8\n");
+fail7:
+    Error("fail7\n");
+    XENBUS_CACHE(Destroy,
+                 &(*Ring)->CacheInterface,
+                 (*Ring)->SegmentCache);
+    (*Ring)->SegmentCache = NULL;
+fail6:
+    Error("fail6\n");
+fail5:
+    Error("fail5\n");
+    XENBUS_CACHE(Destroy,
+                 &(*Ring)->CacheInterface,
+                 (*Ring)->RequestCache);
+    (*Ring)->RequestCache = NULL;
+fail4:
+    Error("fail4\n");
+fail3:
+    Error("fail3\n");
+    XENBUS_CACHE(Release,
+                 &(*Ring)->CacheInterface);
+fail2:
+    Error("fail2\n");
+
+    RtlZeroMemory(&(*Ring)->CacheInterface,
+                  sizeof (XENBUS_CACHE_INTERFACE));
+
+    RtlZeroMemory(&(*Ring)->FreshSrbs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&(*Ring)->PreparedReqs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&(*Ring)->SubmittedReqs, sizeof(XENVBD_QUEUE));
+    RtlZeroMemory(&(*Ring)->ShutdownSrbs, sizeof(XENVBD_QUEUE));
+
+    RtlZeroMemory(&(*Ring)->Timer, sizeof(KTIMER));
+    RtlZeroMemory(&(*Ring)->TimerDpc, sizeof(KDPC));
+    RtlZeroMemory(&(*Ring)->Dpc, sizeof(KDPC));
+    RtlZeroMemory(&(*Ring)->Lock, sizeof(KSPIN_LOCK));
+    (*Ring)->Frontend = NULL;
+
+    ASSERT(IsZeroMemory(*Ring, sizeof(XENVBD_RING)));
+    __RingFree(*Ring);
+    *Ring = NULL;
 fail1:
     Error("fail1 %08x\n", status);
     return status;
@@ -1627,9 +1754,27 @@ RingDestroy(
     IN  PXENVBD_RING    Ring
     )
 {
-    __LookasideTerm(&Ring->IndirectList);
-    __LookasideTerm(&Ring->SegmentList);
-    __LookasideTerm(&Ring->RequestList);
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 Ring->IndirectCache);
+    Ring->IndirectCache = NULL;
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 Ring->SegmentCache);
+    Ring->SegmentCache = NULL;
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 Ring->RequestCache);
+    Ring->RequestCache = NULL;
+
+    XENBUS_CACHE(Release,
+                 &Ring->CacheInterface);
+
+    RtlZeroMemory(&Ring->CacheInterface,
+                  sizeof (XENBUS_CACHE_INTERFACE));
+
     RtlZeroMemory(&Ring->FreshSrbs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->PreparedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->SubmittedReqs, sizeof(XENVBD_QUEUE));
