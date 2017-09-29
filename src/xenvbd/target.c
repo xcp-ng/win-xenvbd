@@ -266,7 +266,7 @@ TargetReadWrite(
     )
 {
     PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
     PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
@@ -293,7 +293,7 @@ TargetSyncCache(
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
     PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
@@ -321,7 +321,7 @@ TargetUnmap(
     __in PSCSI_REQUEST_BLOCK     Srb
     )
 {
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
     PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
 
     if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {

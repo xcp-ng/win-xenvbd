@@ -1911,7 +1911,9 @@ AdapterHwBuildIo(
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
     PXENVBD_TARGET          Target;
 
-    InitSrbExt(Srb);
+    RtlZeroMemory(SrbExt, sizeof(XENVBD_SRBEXT));
+    SrbExt->Srb = Srb;
+    Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
 
     InterlockedIncrement((PLONG)&Adapter->BuildIo);
     switch (Srb->Function) {
