@@ -60,7 +60,8 @@ Base64Free(
     IN  PVOID   Buffer
     )
 {
-    ExFreePoolWithTag(Buffer, BASE64_POOL_TAG);
+    if (Buffer)
+        ExFreePoolWithTag(Buffer, BASE64_POOL_TAG);
 }
 
 static FORCEINLINE UCHAR
