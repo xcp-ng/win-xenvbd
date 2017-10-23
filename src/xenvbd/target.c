@@ -1387,7 +1387,7 @@ TargetCreate(
 
     *_Target = Target;
 
-    Verbose("Target[%d] : Created (%s)\n", TargetId, Target);
+    Verbose("Target[%d] : Created (%p)\n", TargetId, Target);
     return STATUS_SUCCESS;
 
 fail3:
