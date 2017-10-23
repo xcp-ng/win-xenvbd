@@ -1754,6 +1754,16 @@ RingDestroy(
     RtlZeroMemory(&Ring->Lock, sizeof(KSPIN_LOCK));
     Ring->Frontend = NULL;
 
+    Ring->BlkOpRead = 0;
+    Ring->BlkOpWrite = 0;
+    Ring->BlkOpIndirectRead = 0;
+    Ring->BlkOpIndirectWrite = 0;
+    Ring->BlkOpBarrier = 0;
+    Ring->BlkOpDiscard = 0;
+    Ring->BlkOpFlush = 0;
+    Ring->SegsGranted = 0;
+    Ring->SegsBounced = 0;
+
     ASSERT(IsZeroMemory(Ring, sizeof(XENVBD_RING)));
     __RingFree(Ring);
 }
