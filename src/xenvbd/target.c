@@ -669,15 +669,16 @@ TargetInquiry00(
         return;
     RtlZeroMemory(Data, Length);
 
-    if (Length < 7)
+    if (Length < 8)
         return;
 
-    Data->PageLength = 3;
+    Data->PageLength = 4;
     Data->SupportedPageList[0] = 0x00;
     Data->SupportedPageList[1] = 0x80;
     Data->SupportedPageList[2] = 0x83;
+    Data->SupportedPageList[3] = 0xB0;
 
-    Srb->DataTransferLength = 7;
+    Srb->DataTransferLength = 8;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
@@ -776,6 +777,37 @@ TargetInquiry83(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
+static FORCEINLINE VOID
+TargetInquiryB0(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    PVPD_BLOCK_LIMITS_PAGE  Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(VPD_BLOCK_LIMITS_PAGE))
+        return;
+
+    Data->PageCode = 0xB0;
+    Data->PageLength[1] = 0x3C; // as per spec
+
+    *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(DiskInfo->DiscardGranularity);
+    *(PULONG)Data->UnmapGranularityAlignment = _byteswap_ulong(DiskInfo->DiscardAlignment);
+    // alignment is only valid if a granularity has been set
+    Data->UGAValid = (DiskInfo->DiscardGranularity != 0) ? 1 : 0;
+
+    Srb->DataTransferLength = sizeof(VPD_BLOCK_LIMITS_PAGE);
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
 static DECLSPEC_NOINLINE VOID
 TargetInquiry(
     IN  PXENVBD_TARGET      Target,
@@ -787,6 +819,7 @@ TargetInquiry(
         case 0x00:  TargetInquiry00(Target, Srb);       break;
         case 0x80:  TargetInquiry80(Target, Srb);       break;
         case 0x83:  TargetInquiry83(Target, Srb);       break;
+        case 0xB0:  TargetInquiryB0(Target, Srb);       break;
         default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
         }
     } else {
