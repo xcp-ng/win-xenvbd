@@ -209,323 +209,354 @@ TargetSetDeviceObject(
     Target->DeviceObject = DeviceObject;
 }
 
-__checkReturn
-static FORCEINLINE BOOLEAN
-__ValidateSectors(
-    __in ULONG64                 SectorCount,
-    __in ULONG64                 Start,
-    __in ULONG                   Length
+static DECLSPEC_NOINLINE BOOLEAN
+TargetReadWrite(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    // Deal with overflow
-    return (Start < SectorCount) && ((Start + Length) <= SectorCount);
-}
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND        Frontend = Target->Frontend;
+    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
+    ULONG64                 SectorCount;
+    ULONG64                 SectorStart;
+    ULONG                   NumSectors;
 
-__checkReturn
-static FORCEINLINE BOOLEAN
-__ValidateSrbBuffer(
-    __in PCHAR                  Caller,
-    __in PSCSI_REQUEST_BLOCK    Srb,
-    __in ULONG                  MinLength
-    )
-{
-    if (Srb->DataBuffer == NULL) {
-        Error("%s: Srb[0x%p].DataBuffer = NULL\n", Caller, Srb);
-        return FALSE;
-    }
-    if (MinLength) {
-        if (Srb->DataTransferLength < MinLength) {
-            Error("%s: Srb[0x%p].DataTransferLength < %d\n", Caller, Srb, MinLength);
-            return FALSE;
-        }
-    } else {
-        if (Srb->DataTransferLength == 0) {
-            Error("%s: Srb[0x%p].DataTransferLength = 0\n", Caller, Srb);
-            return FALSE;
-        }
-    }
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (!FrontendGetConnected(Frontend))
+        goto fail1;
 
+    // disallow writes to read-only disks
+    if (FrontendGetReadOnly(Frontend) &&
+        Cdb_OperationEx(Srb) == SCSIOP_WRITE)
+        goto fail2;
+
+    // check Sectors requested is on the disk
+    SectorCount = FrontendGetDiskInfo(Frontend)->SectorCount;
+    SectorStart = Cdb_LogicalBlock(Srb);
+    NumSectors = Cdb_TransferBlock(Srb);
+
+    if (SectorStart >= SectorCount)
+        goto fail3;
+    if ((SectorStart + NumSectors) > SectorCount)
+        goto fail4;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
+    RingQueueRequest(Ring, SrbExt);
+    return FALSE;
+
+fail4:
+     Error("fail4\n");
+fail3:
+    Error("fail3\n");
+fail2:
+    Error("fail2\n");
+fail1:
+    Error("fail1\n");
     return TRUE;
 }
 
-__checkReturn
-static DECLSPEC_NOINLINE BOOLEAN
-TargetReadWrite(
-    __in PXENVBD_TARGET            Target,
-    __in PSCSI_REQUEST_BLOCK    Srb
-    )
-{
-    PXENVBD_DISKINFO    DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
-    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
-
-    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
-        Srb->ScsiStatus = 0x40; // SCSI_ABORT;
-        return TRUE;
-    }
-
-    // check valid sectors
-    if (!__ValidateSectors(DiskInfo->SectorCount, Cdb_LogicalBlock(Srb), Cdb_TransferBlock(Srb))) {
-        Trace("Target[%d] : Invalid Sector (%d @ %lld < %lld)\n", TargetGetTargetId(Target), Cdb_TransferBlock(Srb), Cdb_LogicalBlock(Srb), DiskInfo->SectorCount);
-        Srb->ScsiStatus = 0x40; // SCSI_ABORT
-        return TRUE; // Complete now
-    }
-
-    RingQueueRequest(Ring, SrbExt);
-    return FALSE;
-}
-
-__checkReturn
 static DECLSPEC_NOINLINE BOOLEAN
 TargetSyncCache(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
-    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND        Frontend = Target->Frontend;
+    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
 
-    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
-        Srb->ScsiStatus = 0x40; // SCSI_ABORT;
-        return TRUE;
-    }
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (!FrontendGetConnected(Frontend))
+        goto fail1;
 
-    if (FrontendGetDiskInfo(Target->Frontend)->FlushCache == FALSE &&
-        FrontendGetDiskInfo(Target->Frontend)->Barrier == FALSE) {
-        Trace("Target[%d] : FLUSH and BARRIER not supported, suppressing\n", TargetGetTargetId(Target));
-        Srb->ScsiStatus = 0x00; // SCSI_GOOD
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        return TRUE;
-    }
+    if (FrontendGetReadOnly(Frontend))
+        goto fail2;
 
+    // If neither FLUSH or BARRIER is supported, just succceed the SRB
+    if (!(FrontendGetFlushCache(Frontend) ||
+          FrontendGetBarrier(Frontend)))
+        goto succeed;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     RingQueueRequest(Ring, SrbExt);
     return FALSE;
+
+succeed:
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+    return TRUE;
+
+fail2:
+    Error("fail2\n");
+fail1:
+    Error("fail1\n");
+    return TRUE;
 }
 
-__checkReturn
 static DECLSPEC_NOINLINE BOOLEAN
 TargetUnmap(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PXENVBD_SRBEXT      SrbExt = Srb->SrbExtension;
-    PXENVBD_RING        Ring = FrontendGetRing(Target->Frontend);
+    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND        Frontend = Target->Frontend;
+    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
 
-    if (FrontendGetCaps(Target->Frontend)->Connected == FALSE) {
-        Trace("Target[%d] : Not Ready, fail SRB\n", TargetGetTargetId(Target));
-        Srb->ScsiStatus = 0x40; // SCSI_ABORT;
-        return TRUE;
-    }
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+    if (!FrontendGetConnected(Frontend))
+        goto fail1;
 
-    if (FrontendGetDiskInfo(Target->Frontend)->Discard == FALSE) {
-        Trace("Target[%d] : DISCARD not supported, suppressing\n", TargetGetTargetId(Target));
-        Srb->ScsiStatus = 0x00; // SCSI_GOOD
-        Srb->SrbStatus = SRB_STATUS_SUCCESS;
-        return TRUE;
-    }
+    if (FrontendGetReadOnly(Frontend))
+        goto fail2;
 
+    if (!FrontendGetDiscard(Frontend))
+        goto succeed;
+
+    Srb->SrbStatus = SRB_STATUS_PENDING;
     RingQueueRequest(Ring, SrbExt);
     return FALSE;
+
+succeed:
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+    return TRUE;
+
+fail2:
+    Error("fail2\n");
+fail1:
+    Error("fail1\n");
+    return TRUE;
 }
 
-#define MODE_CACHING_PAGE_LENGTH 20
-static DECLSPEC_NOINLINE VOID
-TargetModeSense(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+static FORCEINLINE VOID
+__TargetModeSense(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb,
+    IN  PVOID               Data,
+    IN  ULONG               Length,
+    OUT PULONG              Size,
+    OUT PULONG              ModeDataLength,
+    OUT PULONG              BlockDescrLength
     )
 {
-    PMODE_PARAMETER_HEADER  Header  = Srb->DataBuffer;
-    const UCHAR PageCode            = Cdb_PageCode(Srb);
-    ULONG LengthLeft                = Cdb_AllocationLength(Srb);
-    PVOID CurrentPage               = Srb->DataBuffer;
-
-    UNREFERENCED_PARAMETER(Target);
-
-    RtlZeroMemory(Srb->DataBuffer, Srb->DataTransferLength);
-
-    if (!__ValidateSrbBuffer(__FUNCTION__, Srb, (ULONG)sizeof(struct _MODE_SENSE))) {
-        Srb->ScsiStatus = 0x40;
-        Srb->SrbStatus = SRB_STATUS_DATA_OVERRUN;
-        Srb->DataTransferLength = 0;
-        return;
-    }
-
-    // TODO : CDROM requires more ModePage entries
-    // Header
-    Header->ModeDataLength  = sizeof(MODE_PARAMETER_HEADER) - 1;
-    Header->MediumType      = 0;
-    Header->DeviceSpecificParameter = 0;
-    Header->BlockDescriptorLength   = 0;
-    LengthLeft -= sizeof(MODE_PARAMETER_HEADER);
-    CurrentPage = ((PUCHAR)CurrentPage + sizeof(MODE_PARAMETER_HEADER));
+    const UCHAR             PageCode = Cdb_PageCode(Srb);
 
     // Fill in Block Parameters (if Specified and space)
     // when the DBD (Disable Block Descriptor) is set, ignore the block page
     if (Cdb_Dbd(Srb) == 0 &&
-        LengthLeft >= sizeof(MODE_PARAMETER_BLOCK)) {
-        PMODE_PARAMETER_BLOCK Block = (PMODE_PARAMETER_BLOCK)CurrentPage;
-        // Fill in BlockParams
-        Block->DensityCode                  =   0;
-        Block->NumberOfBlocks[0]            =   0;
-        Block->NumberOfBlocks[1]            =   0;
-        Block->NumberOfBlocks[2]            =   0;
-        Block->BlockLength[0]               =   0;
-        Block->BlockLength[1]               =   0;
-        Block->BlockLength[2]               =   0;
+        Length - *Size >= sizeof(MODE_PARAMETER_BLOCK)) {
+        // PMODE_PARAMETER_BLOCK Block = (PMODE_PARAMETER_BLOCK)((PUCHAR)Data + *Size);
 
-        Header->BlockDescriptorLength = sizeof(MODE_PARAMETER_BLOCK);
-        Header->ModeDataLength += sizeof(MODE_PARAMETER_BLOCK);
-        LengthLeft -= sizeof(MODE_PARAMETER_BLOCK);
-        CurrentPage = ((PUCHAR)CurrentPage + sizeof(MODE_PARAMETER_BLOCK));
+        // Fill in BlockParams - All Zeroes
+
+        *BlockDescrLength   = sizeof(MODE_PARAMETER_BLOCK);
+        *ModeDataLength     += sizeof(MODE_PARAMETER_BLOCK);
+        *Size               += sizeof(MODE_PARAMETER_BLOCK);
     }
 
     // Fill in Cache Parameters (if Specified and space)
     if ((PageCode == MODE_PAGE_CACHING || PageCode == MODE_SENSE_RETURN_ALL) &&
-        LengthLeft >= MODE_CACHING_PAGE_LENGTH) {
-        PMODE_CACHING_PAGE Caching = (PMODE_CACHING_PAGE)CurrentPage;
-        // Fill in CachingParams
-        Caching->PageCode                   = MODE_PAGE_CACHING;
-        Caching->PageSavable                = 0;
-        Caching->PageLength                 = MODE_CACHING_PAGE_LENGTH;
-        Caching->ReadDisableCache           = 0;
-        Caching->MultiplicationFactor       = 0;
-        Caching->WriteCacheEnable           = FrontendGetDiskInfo(Target->Frontend)->FlushCache ? 1 : 0;
-        Caching->WriteRetensionPriority     = 0;
-        Caching->ReadRetensionPriority      = 0;
-        Caching->DisablePrefetchTransfer[0] = 0;
-        Caching->DisablePrefetchTransfer[1] = 0;
-        Caching->MinimumPrefetch[0]         = 0;
-        Caching->MinimumPrefetch[1]         = 0;
-        Caching->MaximumPrefetch[0]         = 0;
-        Caching->MaximumPrefetch[1]         = 0;
-        Caching->MaximumPrefetchCeiling[0]  = 0;
-        Caching->MaximumPrefetchCeiling[1]  = 0;
+        Length - *Size >= sizeof(MODE_CACHING_PAGE)) {
+        PMODE_CACHING_PAGE Caching = (PMODE_CACHING_PAGE)((PUCHAR)Data + *Size);
 
-        Header->ModeDataLength += MODE_CACHING_PAGE_LENGTH;
-        LengthLeft -= MODE_CACHING_PAGE_LENGTH;
-        CurrentPage = ((PUCHAR)CurrentPage + MODE_CACHING_PAGE_LENGTH);
+        // Fill in CachingParams
+        Caching->PageCode           = MODE_PAGE_CACHING;
+        Caching->PageLength         = sizeof(MODE_CACHING_PAGE);
+        Caching->WriteCacheEnable   = FrontendGetFlushCache(Target->Frontend) ? 1 : 0;
+
+        *ModeDataLength += sizeof(MODE_CACHING_PAGE);
+        *Size           += sizeof(MODE_CACHING_PAGE);
     }
 
     // Fill in Informational Exception Parameters (if Specified and space)
     if ((PageCode == MODE_PAGE_FAULT_REPORTING || PageCode == MODE_SENSE_RETURN_ALL) &&
-        LengthLeft >= sizeof(MODE_INFO_EXCEPTIONS)) {
-        PMODE_INFO_EXCEPTIONS Exceptions = (PMODE_INFO_EXCEPTIONS)CurrentPage;
+        Length - *Size >= sizeof(MODE_INFO_EXCEPTIONS)) {
+        PMODE_INFO_EXCEPTIONS Exceptions = (PMODE_INFO_EXCEPTIONS)((PUCHAR)Data + *Size);
+
         // Fill in Exceptions
-        Exceptions->PageCode                = MODE_PAGE_FAULT_REPORTING;
-        Exceptions->PSBit                   = 0;
-        Exceptions->PageLength              = sizeof(MODE_INFO_EXCEPTIONS);
-        Exceptions->Flags                   = 0;
-        Exceptions->Dexcpt                  = 1; // disabled
-        Exceptions->ReportMethod            = 0;
-        Exceptions->IntervalTimer[0]        = 0;
-        Exceptions->IntervalTimer[1]        = 0;
-        Exceptions->IntervalTimer[2]        = 0;
-        Exceptions->IntervalTimer[3]        = 0;
-        Exceptions->ReportCount[0]          = 0;
-        Exceptions->ReportCount[1]          = 0;
-        Exceptions->ReportCount[2]          = 0;
-        Exceptions->ReportCount[3]          = 0;
+        Exceptions->PageCode    = MODE_PAGE_FAULT_REPORTING;
+        Exceptions->PageLength  = sizeof(MODE_INFO_EXCEPTIONS);
+        Exceptions->Dexcpt      = 1; // disabled
 
-        Header->ModeDataLength += sizeof(MODE_INFO_EXCEPTIONS);
-        LengthLeft -= sizeof(MODE_INFO_EXCEPTIONS);
-        CurrentPage = ((PUCHAR)CurrentPage + sizeof(MODE_INFO_EXCEPTIONS));
+        *ModeDataLength += sizeof(MODE_INFO_EXCEPTIONS);
+        *Size           += sizeof(MODE_INFO_EXCEPTIONS);
     }
+}
 
-    // Finish this SRB
+static DECLSPEC_NOINLINE VOID
+TargetModeSense(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    PMODE_PARAMETER_HEADER  Data  = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
+    ULONG                   BlockDescrLength = 0;
+    ULONG                   ModeDataLength = 0;
+    ULONG                   Size;
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(MODE_PARAMETER_HEADER))
+        return;
+
+    // Header
+    Data->MediumType                = 0;
+    Data->DeviceSpecificParameter   = FrontendGetReadOnly(Target->Frontend) ? 
+                                                    MODE_DSP_WRITE_PROTECT : 0;
+    Size = sizeof(MODE_PARAMETER_HEADER);
+
+    __TargetModeSense(Target,
+                      Srb,
+                      Data,
+                      Length,
+                      &Size,
+                      &ModeDataLength,
+                      &BlockDescrLength);
+    ASSERT3U(ModeDataLength, <=, 255 - (sizeof(MODE_PARAMETER_HEADER) - 1));
+    ASSERT3U(BlockDescrLength, <=, 255);
+
+    Data->ModeDataLength = (UCHAR)(ModeDataLength + sizeof(MODE_PARAMETER_HEADER) - 1);
+    Data->BlockDescriptorLength = (UCHAR)BlockDescrLength;
+
+    ASSERT3U(Size, <=, Length);
+    Srb->DataTransferLength = Size;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
-    Srb->DataTransferLength = __min(Cdb_AllocationLength(Srb), (ULONG)(Header->ModeDataLength + 1));
+}
+
+static DECLSPEC_NOINLINE VOID
+TargetModeSense10(
+    IN  PXENVBD_TARGET          Target,
+    IN  PSCSI_REQUEST_BLOCK     Srb
+    )
+{
+    PMODE_PARAMETER_HEADER10    Data  = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    ULONG                       BlockDescrLength = 0;
+    ULONG                       ModeDataLength = 0;
+    ULONG                       Size;
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(MODE_PARAMETER_HEADER10))
+        return;
+
+    // Header
+    Data->MediumType                = 0;
+    Data->DeviceSpecificParameter   = FrontendGetReadOnly(Target->Frontend) ? 
+                                                    MODE_DSP_WRITE_PROTECT : 0;
+    Size = sizeof(MODE_PARAMETER_HEADER10);
+
+    __TargetModeSense(Target,
+                      Srb,
+                      Data,
+                      Length,
+                      &Size,
+                      &ModeDataLength,
+                      &BlockDescrLength);
+    ASSERT3U(ModeDataLength, <=, 65535 - (sizeof(MODE_PARAMETER_HEADER10) - 2));
+    ASSERT3U(BlockDescrLength, <=, 65535);
+
+    *(PUSHORT)Data->ModeDataLength = _byteswap_ushort((USHORT)ModeDataLength + 
+                                                      sizeof(MODE_PARAMETER_HEADER10) - 2);
+    *(PUSHORT)Data->BlockDescriptorLength = _byteswap_ushort((USHORT)BlockDescrLength);
+
+    ASSERT3U(Size, <=, Length);
+    Srb->DataTransferLength = Size;
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
 static DECLSPEC_NOINLINE VOID
 TargetRequestSense(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PSENSE_DATA         Sense = Srb->DataBuffer;
+    PSENSE_DATA             Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
 
     UNREFERENCED_PARAMETER(Target);
 
-    if (!__ValidateSrbBuffer(__FUNCTION__, Srb, (ULONG)sizeof(SENSE_DATA))) {
-        Srb->ScsiStatus = 0x40;
-        Srb->SrbStatus = SRB_STATUS_DATA_OVERRUN;
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
         return;
-    }
+    RtlZeroMemory(Data, Length);
 
-    RtlZeroMemory(Sense, sizeof(SENSE_DATA));
+    if (Length < sizeof(SENSE_DATA))
+        return;
 
-    Sense->ErrorCode            = 0x70;
-    Sense->Valid                = 1;
-    Sense->AdditionalSenseCodeQualifier = 0;
-    Sense->SenseKey             = SCSI_SENSE_NO_SENSE;
-    Sense->AdditionalSenseCode  = SCSI_ADSENSE_NO_SENSE;
+    Data->ErrorCode            = 0x70;
+    Data->Valid                = 1;
+    Data->AdditionalSenseCodeQualifier = 0;
+    Data->SenseKey             = SCSI_SENSE_NO_SENSE;
+    Data->AdditionalSenseCode  = SCSI_ADSENSE_NO_SENSE;
+
     Srb->DataTransferLength     = sizeof(SENSE_DATA);
     Srb->SrbStatus              = SRB_STATUS_SUCCESS;
 }
 
 static DECLSPEC_NOINLINE VOID
 TargetReportLuns(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    ULONG           Length;
-    ULONG           Offset;
-    ULONG           AllocLength = Cdb_AllocationLength(Srb);
-    PUCHAR          Buffer = Srb->DataBuffer;
+    PLUN_LIST               Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
 
     UNREFERENCED_PARAMETER(Target);
 
-    if (!__ValidateSrbBuffer(__FUNCTION__, Srb, 8)) {
-        Srb->ScsiStatus = 0x40;
-        Srb->SrbStatus = SRB_STATUS_DATA_OVERRUN;
-        Srb->DataTransferLength = 0;
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
         return;
-    }
+    RtlZeroMemory(Data, Length);
 
-    RtlZeroMemory(Buffer, AllocLength);
+    if (Length < 16)
+        return;
 
-    Length = 0;
-    Offset = 8;
+    // UCHAR[4] @ Data
+    *(PULONG)Data->LunListLength = _byteswap_ulong(8);
+    // UCHAR[8] @ Data + 8
+    *(PULONG64)Data->Lun[0] = _byteswap_uint64(XENVBD_MAX_TARGETS);
 
-    if (Offset + 8 <= AllocLength) {
-        Buffer[Offset] = 0;
-        Offset += 8;
-        Length += 8;
-    }
-
-    if (Offset + 8 <= AllocLength) {
-        Buffer[Offset] = XENVBD_MAX_TARGETS;
-        Offset += 8;
-        Length += 8;
-    }
-
-    REVERSE_BYTES(Buffer, &Length);
-
-    Srb->DataTransferLength = __min(Length, AllocLength);
+    Srb->DataTransferLength = 16;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
 static DECLSPEC_NOINLINE VOID
 TargetReadCapacity(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PREAD_CAPACITY_DATA     Capacity = Srb->DataBuffer;
+    PREAD_CAPACITY_DATA     Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
     PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
     ULONG                   LastBlock;
 
-    if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0) {
-        Srb->ScsiStatus = 0x02; // CHECK_CONDITION
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
         return;
-    }
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(READ_CAPACITY_DATA))
+        return;
+
+    if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
+        return;
 
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
@@ -535,21 +566,21 @@ TargetReadCapacity(
     else
         LastBlock = ~(ULONG)0;
 
-    if (Capacity) {
-        Capacity->LogicalBlockAddress = _byteswap_ulong(LastBlock);
-        Capacity->BytesPerBlock = _byteswap_ulong(SectorSize);
-    }
+    Data->LogicalBlockAddress = _byteswap_ulong(LastBlock);
+    Data->BytesPerBlock = _byteswap_ulong(SectorSize);
 
+    Srb->DataTransferLength = sizeof(READ_CAPACITY_DATA);
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
 static DECLSPEC_NOINLINE VOID
 TargetReadCapacity16(
-    __in PXENVBD_TARGET             Target,
-    __in PSCSI_REQUEST_BLOCK     Srb
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PREAD_CAPACITY16_DATA   Capacity = Srb->DataBuffer;
+    PREAD_CAPACITY16_DATA   Data = Srb->DataBuffer;
+    ULONG                   Length = Srb->DataTransferLength;
     PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
@@ -557,10 +588,17 @@ TargetReadCapacity16(
     ULONG                   LogicalPerPhysical;
     ULONG                   LogicalPerPhysicalExponent;
 
-    if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0) {
-        Srb->ScsiStatus = 0x02; // CHECK_CONDITION
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
         return;
-    }
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(READ_CAPACITY16_DATA))
+        return;
+
+    if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
+        return;
 
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
@@ -571,12 +609,11 @@ TargetReadCapacity16(
     if (!_BitScanReverse(&LogicalPerPhysicalExponent, LogicalPerPhysical))
         LogicalPerPhysicalExponent = 0;
 
-    if (Capacity) {
-        Capacity->LogicalBlockAddress.QuadPart = _byteswap_uint64(SectorCount - 1);
-        Capacity->BytesPerBlock = _byteswap_ulong(SectorSize);
-        Capacity->LogicalPerPhysicalExponent = (UCHAR)LogicalPerPhysicalExponent;
-    }
+    Data->LogicalBlockAddress.QuadPart = _byteswap_uint64(SectorCount - 1);
+    Data->BytesPerBlock = _byteswap_ulong(SectorSize);
+    Data->LogicalPerPhysicalExponent = (UCHAR)LogicalPerPhysicalExponent;
 
+    Srb->DataTransferLength = sizeof(READ_CAPACITY16_DATA);
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
@@ -592,6 +629,11 @@ TargetInquiryStd(
     UNREFERENCED_PARAMETER(Target);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+    RtlZeroMemory(Data, Length);
+
     if (Length < INQUIRYDATABUFFERSIZE)
         return;
 
@@ -621,9 +663,12 @@ TargetInquiry00(
 
     UNREFERENCED_PARAMETER(Target);
 
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
     RtlZeroMemory(Data, Length);
 
-    Srb->SrbStatus = SRB_STATUS_ERROR;
     if (Length < 7)
         return;
 
@@ -647,18 +692,18 @@ TargetInquiry80(
     PVOID                   Page;
     ULONG                   Size;
 
-    Page = FrontendGetInquiryOverride(Target->Frontend, 0x80, &Size);
+    Srb->SrbStatus = SRB_STATUS_ERROR;
 
+    if (Data == NULL)
+        return;
     RtlZeroMemory(Data, Length);
 
-    Srb->SrbStatus = SRB_STATUS_ERROR;
+    Page = FrontendGetInquiryOverride(Target->Frontend, 0x80, &Size);
     if (Page && Size) {
         if (Length < Size)
             return;
 
         RtlCopyMemory(Data, Page, Size);
-
-        Srb->DataTransferLength = Size;
     } else {
         CHAR                Serial[5];
 
@@ -673,9 +718,10 @@ TargetInquiry80(
                                   TargetGetTargetId(Target));
         RtlCopyMemory(Data->SerialNumber, Serial, 4);
 
-        Srb->DataTransferLength = sizeof(VPD_SERIAL_NUMBER_PAGE) + 4;
+        Size = sizeof(VPD_SERIAL_NUMBER_PAGE) + 4;
     }
 
+    Srb->DataTransferLength = Size;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
@@ -690,18 +736,18 @@ TargetInquiry83(
     PVOID                       Page;
     ULONG                       Size;
 
-    Page = FrontendGetInquiryOverride(Target->Frontend, 0x83, &Size);
+    Srb->SrbStatus = SRB_STATUS_ERROR;
 
+    if (Data == NULL)
+        return;
     RtlZeroMemory(Data, Length);
 
-    Srb->SrbStatus = SRB_STATUS_ERROR;
+    Page = FrontendGetInquiryOverride(Target->Frontend, 0x83, &Size);
     if (Page && Size) {
         if (Length < Size)
             return;
 
         RtlCopyMemory(Data, Page, Size);
-
-        Srb->DataTransferLength = Size;
     } else {
         PVPD_IDENTIFICATION_DESCRIPTOR  Id = (PVPD_IDENTIFICATION_DESCRIPTOR)&Data->Descriptors[0];
         CHAR                            Identifier[17];
@@ -722,10 +768,11 @@ TargetInquiry83(
                                   TargetGetTargetId(Target));
         RtlCopyMemory(Id->Identifier, Identifier, 16);
 
-        Srb->DataTransferLength = sizeof(VPD_IDENTIFICATION_PAGE) +
-                                  sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16;
+        Size = sizeof(VPD_IDENTIFICATION_PAGE) +
+               sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16;
     }
 
+    Srb->DataTransferLength = Size;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
@@ -843,6 +890,10 @@ TargetStartIo(
 
     case SCSIOP_MODE_SENSE:
         TargetModeSense(Target, Srb);
+        break;
+
+    case SCSIOP_MODE_SENSE10:
+        TargetModeSense10(Target, Srb);
         break;
 
     case SCSIOP_REQUEST_SENSE:

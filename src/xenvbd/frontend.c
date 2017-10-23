@@ -1889,5 +1889,45 @@ FrontendGetDiskInfo(
 {
     return &Frontend->DiskInfo;
 }
+//FRONTEND_GET_PROPERTY(Connected, BOOLEAN)
+BOOLEAN
+FrontendGetConnected(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->Caps.Connected;
+}
+//FRONTEND_GET_PROPERTY(ReadOnly, BOOLEAN)
+BOOLEAN
+FrontendGetReadOnly(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return !!(Frontend->DiskInfo.DiskInfo & VDISK_READONLY);
+}
+//FRONTEND_GET_PROPERTY(Discard, BOOLEAN)
+BOOLEAN
+FrontendGetDiscard(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.Discard;
+}
+//FRONTEND_GET_PROPERTY(FlushCache, BOOLEAN)
+BOOLEAN
+FrontendGetFlushCache(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.FlushCache;
+}
+//FRONTEND_GET_PROPERTY(Barrier, BOOLEAN)
+BOOLEAN
+FrontendGetBarrier(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.Barrier;
+}
 
 #undef FRONTEND_GET_PROPERTY
