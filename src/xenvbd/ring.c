@@ -140,14 +140,6 @@ xen_wmb()
     _WriteBarrier();
 }
 
-static FORCEINLINE PFN_NUMBER
-__Pfn(
-    __in  PVOID                   VirtAddr
-    )
-{
-    return (PFN_NUMBER)(ULONG_PTR)(MmGetPhysicalAddress(VirtAddr).QuadPart >> PAGE_SHIFT);
-}
-
 static FORCEINLINE VOID
 __RingInsert(
     IN  PXENVBD_RING        Ring,
@@ -761,13 +753,12 @@ RingUseIndirect(
     return MaxIndirectSegs;
 }
 
-static FORCEINLINE ULONG
+static FORCEINLINE VOID
 RingQueueRequestList(
     IN  PXENVBD_RING    Ring,
     IN  PLIST_ENTRY     List
     )
 {
-    ULONG               Count = 0;
     for (;;) {
         PXENVBD_REQUEST Request;
         PLIST_ENTRY     ListEntry;
@@ -776,12 +767,10 @@ RingQueueRequestList(
         if (ListEntry == List)
             break;
 
-        ++Count;
         Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
         __RingIncBlkifOpCount(Ring, Request);
         QueueAppend(&Ring->PreparedReqs, &Request->ListEntry);
     }
-    return Count;
 }
 
 static FORCEINLINE VOID
@@ -813,7 +802,6 @@ RingPrepareReadWrite(
     ULONG64                 SectorStart = Cdb_LogicalBlock(Srb);
     ULONG                   SectorsLeft = Cdb_TransferBlock(Srb);
     LIST_ENTRY              List;
-    ULONG                   DebugCount;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
@@ -852,13 +840,7 @@ RingPrepareReadWrite(
         SectorStart += SectorsDone;
     }
 
-    DebugCount = RingQueueRequestList(Ring, &List);
-    if (DebugCount != (ULONG)SrbExt->RequestCount) {
-        Trace("[%u] %d != %u\n",
-              FrontendGetTargetId(Ring->Frontend),
-              SrbExt->RequestCount,
-              DebugCount);
-    }
+    RingQueueRequestList(Ring, &List);
     return TRUE;
 
 fail3:
@@ -880,7 +862,6 @@ RingPrepareSyncCache(
     PXENVBD_REQUEST         Request;
     LIST_ENTRY              List;
     UCHAR                   Operation;
-    ULONG                   DebugCount;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
@@ -902,13 +883,7 @@ RingPrepareSyncCache(
     Request->Operation  = Operation;
     Request->FirstSector = Cdb_LogicalBlock(Srb);
 
-    DebugCount = RingQueueRequestList(Ring, &List);
-    if (DebugCount != (ULONG)SrbExt->RequestCount) {
-        Trace("[%u] %d != %u\n",
-              FrontendGetTargetId(Ring->Frontend),
-              SrbExt->RequestCount,
-              DebugCount);
-    }
+    RingQueueRequestList(Ring, &List);
     return TRUE;
 
 fail1:
@@ -929,7 +904,6 @@ RingPrepareUnmap(
 	ULONG                   Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
     ULONG                   Index;
     LIST_ENTRY              List;
-    ULONG                   DebugCount;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
@@ -953,13 +927,7 @@ RingPrepareUnmap(
         Request->Flags          = 0;
     }
 
-    DebugCount = RingQueueRequestList(Ring, &List);
-    if (DebugCount != (ULONG)SrbExt->RequestCount) {
-        Trace("[%u] %d != %u\n",
-              FrontendGetTargetId(Ring->Frontend),
-              SrbExt->RequestCount,
-              DebugCount);
-    }
+    RingQueueRequestList(Ring, &List);
     return TRUE;
 
 fail1:
@@ -1113,23 +1081,6 @@ RingCompleteShutdown(
     }
 }
 
-static FORCEINLINE PCHAR
-__BlkifOperationName(
-    IN  UCHAR   Operation
-    )
-{
-    switch (Operation) {
-    case BLKIF_OP_READ:             return "READ";
-    case BLKIF_OP_WRITE:            return "WRITE";
-    case BLKIF_OP_WRITE_BARRIER:    return "WRITE_BARRIER";
-    case BLKIF_OP_FLUSH_DISKCACHE:  return "FLUSH_DISKCACHE";
-    case BLKIF_OP_RESERVED_1:       return "RESERVED_1";
-    case BLKIF_OP_DISCARD:          return "DISCARD";
-    case BLKIF_OP_INDIRECT:         return "INDIRECT";
-    default:                        return "<unknown>";
-    }
-}
-
 static BOOLEAN
 RingSubmitRequests(
     IN  PXENVBD_RING    Ring
@@ -1160,6 +1111,23 @@ RingSubmitRequests(
         RingCompleteShutdown(Ring);
 
     return Retry;
+}
+
+static FORCEINLINE PCHAR
+__BlkifOperationName(
+    IN  UCHAR   Operation
+    )
+{
+    switch (Operation) {
+    case BLKIF_OP_READ:             return "READ";
+    case BLKIF_OP_WRITE:            return "WRITE";
+    case BLKIF_OP_WRITE_BARRIER:    return "WRITE_BARRIER";
+    case BLKIF_OP_FLUSH_DISKCACHE:  return "FLUSH_DISKCACHE";
+    case BLKIF_OP_RESERVED_1:       return "RESERVED_1";
+    case BLKIF_OP_DISCARD:          return "DISCARD";
+    case BLKIF_OP_INDIRECT:         return "INDIRECT";
+    default:                        return "<unknown>";
+    }
 }
 
 static VOID
@@ -1463,23 +1431,23 @@ RingDebugCallback(
 
     XENBUS_DEBUG(Printf,
                  &Ring->DebugInterface,
-                 "TARGET: BLKIF_OPs: READ=%u WRITE=%u\n",
+                 "BLKIF_OPs: READ=%u WRITE=%u\n",
                  Ring->BlkOpRead,
                  Ring->BlkOpWrite);
     XENBUS_DEBUG(Printf,
                  &Ring->DebugInterface,
-                 "TARGET: BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
+                 "BLKIF_OPs: INDIRECT_READ=%u INDIRECT_WRITE=%u\n",
                  Ring->BlkOpIndirectRead,
                  Ring->BlkOpIndirectWrite);
     XENBUS_DEBUG(Printf,
                  &Ring->DebugInterface,
-                 "TARGET: BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
+                 "BLKIF_OPs: BARRIER=%u DISCARD=%u FLUSH=%u\n",
                  Ring->BlkOpBarrier,
                  Ring->BlkOpDiscard,
                  Ring->BlkOpFlush);
     XENBUS_DEBUG(Printf,
                  &Ring->DebugInterface,
-                 "TARGET: Segments Granted=%llu Bounced=%llu\n",
+                 "Segments Granted=%llu Bounced=%llu\n",
                  Ring->SegsGranted,
                  Ring->SegsBounced);
 

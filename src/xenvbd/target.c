@@ -53,11 +53,8 @@
 #include "assert.h"
 #include "util.h"
 
-#define TARGET_SIGNATURE           'odpX'
-
 struct _XENVBD_TARGET {
-    ULONG                       Signature;
-    PXENVBD_ADAPTER                 Adapter;
+    PXENVBD_ADAPTER             Adapter;
     PDEVICE_OBJECT              DeviceObject;
     DEVICE_PNP_STATE            DevicePnpState;
     DEVICE_PNP_STATE            PrevPnpState;
@@ -77,7 +74,6 @@ struct _XENVBD_TARGET {
     const CHAR*                 Reason;
 };
 
-//=============================================================================
 #define TARGET_POOL_TAG            'odPX'
 
 __checkReturn
@@ -102,8 +98,6 @@ __TargetFree(
         __FreePoolWithTag(Buffer, TARGET_POOL_TAG);
 }
 
-//=============================================================================
-// Debug
 static FORCEINLINE PCHAR
 __PnpStateName(
     __in DEVICE_PNP_STATE        State
@@ -215,8 +209,6 @@ TargetSetDeviceObject(
     Target->DeviceObject = DeviceObject;
 }
 
-//=============================================================================
-// SRBs
 __checkReturn
 static FORCEINLINE BOOLEAN
 __ValidateSectors(
@@ -766,14 +758,6 @@ __ValidateSrbForTarget(
 {
     const UCHAR             Operation = Cdb_OperationEx(Srb);
 
-    if (Target == NULL) {
-        Error("Invalid Target(NULL) (%02x:%s)\n",
-              Operation,
-              Cdb_OperationName(Operation));
-        Srb->SrbStatus = SRB_STATUS_INVALID_TARGET_ID;
-        return FALSE;
-    }
-
     if (Srb->PathId != 0) {
         Error("Target[%d] : Invalid PathId(%d) (%02x:%s)\n",
               TargetGetTargetId(Target),
@@ -1302,7 +1286,6 @@ TargetCreate(
         goto fail1;
 
     Verbose("Target[%d] : Creating\n", TargetId);
-    Target->Signature       = TARGET_SIGNATURE;
     Target->Adapter         = Adapter;
     Target->DeviceObject    = NULL; // filled in later
     Target->DevicePnpState  = Present;
