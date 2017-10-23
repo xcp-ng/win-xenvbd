@@ -67,9 +67,7 @@ struct _XENVBD_TARGET {
     // Frontend (Ring, includes XenBus interfaces)
     PXENVBD_FRONTEND            Frontend;
     XENBUS_DEBUG_INTERFACE      DebugInterface;
-    XENBUS_SUSPEND_INTERFACE    SuspendInterface;
     PXENBUS_DEBUG_CALLBACK      DebugCallback;
-    PXENBUS_SUSPEND_CALLBACK    SuspendCallback;
 
     // Eject
     BOOLEAN                     WrittenEjected;
@@ -1159,23 +1157,6 @@ TargetDebugCallback(
                  Target->Missing ? Target->Reason : "Not Missing");
 }
 
-static DECLSPEC_NOINLINE VOID
-TargetSuspendCallback(
-    IN  PVOID       Argument
-    )
-{
-    PXENVBD_TARGET  Target = Argument;
-
-    RingReQueueRequests(FrontendGetRing(Target->Frontend));
-
-    Verbose("Target[%d] : %s (%s)\n",
-            TargetGetTargetId(Target),
-            Target->Missing ? "MISSING" : "NOT_MISSING",
-            Target->Reason);
-    Target->Missing = FALSE;
-    Target->Reason = NULL;
-}
-
 NTSTATUS
 TargetD3ToD0(
     IN  PXENVBD_TARGET  Target
@@ -1191,8 +1172,6 @@ TargetD3ToD0(
 
     AdapterGetDebugInterface(TargetGetAdapter(Target),
                              &Target->DebugInterface);
-    AdapterGetSuspendInterface(TargetGetAdapter(Target),
-                               &Target->SuspendInterface);
 
     status = XENBUS_DEBUG(Acquire, &Target->DebugInterface);
     if (!NT_SUCCESS(status))
@@ -1207,44 +1186,19 @@ TargetD3ToD0(
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = XENBUS_SUSPEND(Acquire, &Target->SuspendInterface);
+    status = FrontendD3ToD0(Target->Frontend);
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    status = XENBUS_SUSPEND(Register,
-                            &Target->SuspendInterface,
-                            SUSPEND_CALLBACK_LATE,
-                            TargetSuspendCallback,
-                            Target,
-                            &Target->SuspendCallback);
+    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    status = FrontendD3ToD0(Target->Frontend);
-    if (!NT_SUCCESS(status))
-        goto fail5;
-
-    status = FrontendSetState(Target->Frontend, XENVBD_ENABLED);
-    if (!NT_SUCCESS(status))
-        goto fail6;
-
     return STATUS_SUCCESS;
-
-fail6:
-    Error("fail6\n");
-    FrontendD0ToD3(Target->Frontend);
-
-fail5:
-    Error("fail5\n");
-    XENBUS_SUSPEND(Deregister,
-                   &Target->SuspendInterface,
-                   Target->SuspendCallback);
-    Target->SuspendCallback = NULL;
 
 fail4:
     Error("fail4\n");
-    XENBUS_SUSPEND(Release,
-                   &Target->SuspendInterface);
+    FrontendD0ToD3(Target->Frontend);
 
 fail3:
     Error("fail3\n");
@@ -1261,8 +1215,6 @@ fail2:
 fail1:
     Error("Fail1 (%08x)\n", status);
 
-    RtlZeroMemory(&Target->SuspendInterface,
-                  sizeof(XENBUS_SUSPEND_INTERFACE));
     RtlZeroMemory(&Target->DebugInterface,
                   sizeof(XENBUS_DEBUG_INTERFACE));
     Target->DevicePowerState = PowerDeviceD3;
@@ -1286,14 +1238,6 @@ TargetD0ToD3(
 
     FrontendD0ToD3(Target->Frontend);
 
-    XENBUS_SUSPEND(Deregister,
-                   &Target->SuspendInterface,
-                   Target->SuspendCallback);
-    Target->SuspendCallback = NULL;
-
-    XENBUS_SUSPEND(Release,
-                   &Target->SuspendInterface);
-
     XENBUS_DEBUG(Deregister,
                  &Target->DebugInterface,
                  Target->DebugCallback);
@@ -1302,8 +1246,6 @@ TargetD0ToD3(
     XENBUS_DEBUG(Release,
                  &Target->DebugInterface);
 
-    RtlZeroMemory(&Target->SuspendInterface,
-                  sizeof(XENBUS_SUSPEND_INTERFACE));
     RtlZeroMemory(&Target->DebugInterface,
                   sizeof(XENBUS_DEBUG_INTERFACE));
 }

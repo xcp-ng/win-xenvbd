@@ -91,9 +91,4 @@ RingQueueShutdown(
     IN  PXENVBD_SRBEXT  SrbExt
     );
 
-extern VOID
-RingReQueueRequests(
-    IN  PXENVBD_RING    Ring
-    );
-
 #endif // _XENVBD_RING_H
