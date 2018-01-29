@@ -22,8 +22,9 @@
     <ClCompile>
       <AdditionalIncludeDirectories>$(WindowsSdkDir)\include\km;..\..\include;..\..\src\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__MODULE__="XENVBD";POOL_NX_OPTIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
       <WarningLevel>EnableAllWarnings</WarningLevel>
-      <DisableSpecificWarnings>4464;4548;4711;4820;4668;4255;6001;6054;28160;28196;30030;30029;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4464;4548;4770;4711;4820;4668;4255;6001;6054;28160;28196;30030;30029;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <EnablePREfast>true</EnablePREfast>
     </ClCompile>
@@ -33,7 +34,7 @@
     <Link>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <AdditionalDependencies>$(ProjectDir)..\$(ConfigurationName)\$(Platform)\xencrsh.lib;$(DDK_LIB_PATH)/storport.lib;$(DDK_LIB_PATH)/libcntpr.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Inf>
       <SpecifyArchitecture>true</SpecifyArchitecture>
@@ -57,6 +58,13 @@
     <Inf>
       <Architecture>amd64</Architecture>
     </Inf>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Windows 8 Release'">
+    <ClCompile>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+      <AdditionalOptions>/Qspectre %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
