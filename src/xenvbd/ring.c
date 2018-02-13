@@ -76,8 +76,6 @@ struct _XENVBD_RING {
     PVOID                           Grants[XENVBD_MAX_RING_PAGES];
     PXENBUS_EVTCHN_CHANNEL          Channel;
     KDPC                            Dpc;
-    KDPC                            TimerDpc;
-    KTIMER                          Timer;
 
     PXENBUS_CACHE                   RequestCache;
     PXENBUS_CACHE                   SegmentCache;
@@ -1254,6 +1252,9 @@ RingNotifyResponses(
 {
     BOOLEAN             Retry = FALSE;
 
+    if (!Ring->Enabled)
+        return FALSE;
+
     Retry |= RingPoll(Ring);
     Retry |= RingSubmitRequests(Ring);
 
@@ -1284,37 +1285,6 @@ RingInterrupt(
     return TRUE;
 }
 
-static FORCEINLINE BOOLEAN
-__RingDpcTimeout(
-    IN  PXENVBD_RING            Ring
-    )
-{
-    KDPC_WATCHDOG_INFORMATION   Watchdog;
-    NTSTATUS                    status;
-
-    UNREFERENCED_PARAMETER(Ring);
-
-    RtlZeroMemory(&Watchdog, sizeof (Watchdog));
-
-    status = KeQueryDpcWatchdogInformation(&Watchdog);
-    ASSERT(NT_SUCCESS(status));
-
-    if (Watchdog.DpcTimeLimit == 0 ||
-        Watchdog.DpcWatchdogLimit == 0)
-        return FALSE;
-
-    if (Watchdog.DpcTimeCount > (Watchdog.DpcTimeLimit / 2) &&
-        Watchdog.DpcWatchdogCount > (Watchdog.DpcWatchdogLimit / 2))
-        return FALSE;
-
-    return TRUE;
-}
-
-#define TIME_US(_us)        ((_us) * 10)
-#define TIME_MS(_ms)        (TIME_US((_ms) * 1000))
-#define TIME_S(_s)          (TIME_MS((_s) * 1000))
-#define TIME_RELATIVE(_t)   (-(_t))
-
 KDEFERRED_ROUTINE RingDpc;
 
 VOID
@@ -1333,28 +1303,22 @@ RingDpc(
 
     ASSERT(Ring != NULL);
 
-    if (!Ring->Connected)
-        return;
-
     for (;;) {
-        if (!RingNotifyResponses(Ring)) {
-            XENBUS_EVTCHN(Unmask,
-                          &Ring->EvtchnInterface,
-                          Ring->Channel,
-                          FALSE);
-            break;
-        }
-        if (__RingDpcTimeout(Ring)) {
-            LARGE_INTEGER   Delay;
+        KIRQL       Irql;
+        BOOLEAN     Retry;
 
-            Delay.QuadPart = TIME_RELATIVE(TIME_US(100));
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        Retry = RingNotifyResponses(Ring);
+        KeLowerIrql(Irql);
 
-            KeSetTimer(&Ring->Timer,
-                       Delay,
-                       &Ring->TimerDpc);
+        if (!Retry)
             break;
-        }
     }
+
+    XENBUS_EVTCHN(Unmask,
+                  &Ring->EvtchnInterface,
+                  Ring->Channel,
+                  FALSE);
 }
 
 static DECLSPEC_NOINLINE VOID
@@ -1590,9 +1554,8 @@ RingCreate(
 
     (*Ring)->Frontend = Frontend;
     KeInitializeSpinLock(&(*Ring)->Lock);
-    KeInitializeDpc(&(*Ring)->Dpc, RingDpc, *Ring);
-    KeInitializeDpc(&(*Ring)->TimerDpc, RingDpc, *Ring);
-    KeInitializeTimer(&(*Ring)->Timer);
+    KeInitializeThreadedDpc(&(*Ring)->Dpc, RingDpc, *Ring);
+    KeSetImportanceDpc(&(*Ring)->Dpc, MediumHighImportance);
 
     QueueInit(&(*Ring)->FreshSrbs);
     QueueInit(&(*Ring)->PreparedReqs);
@@ -1703,8 +1666,6 @@ fail2:
     RtlZeroMemory(&(*Ring)->SubmittedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&(*Ring)->ShutdownSrbs, sizeof(XENVBD_QUEUE));
 
-    RtlZeroMemory(&(*Ring)->Timer, sizeof(KTIMER));
-    RtlZeroMemory(&(*Ring)->TimerDpc, sizeof(KDPC));
     RtlZeroMemory(&(*Ring)->Dpc, sizeof(KDPC));
     RtlZeroMemory(&(*Ring)->Lock, sizeof(KSPIN_LOCK));
     (*Ring)->Frontend = NULL;
@@ -1748,8 +1709,6 @@ RingDestroy(
     RtlZeroMemory(&Ring->SubmittedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->ShutdownSrbs, sizeof(XENVBD_QUEUE));
 
-    RtlZeroMemory(&Ring->Timer, sizeof(KTIMER));
-    RtlZeroMemory(&Ring->TimerDpc, sizeof(KDPC));
     RtlZeroMemory(&Ring->Dpc, sizeof(KDPC));
     RtlZeroMemory(&Ring->Lock, sizeof(KSPIN_LOCK));
     Ring->Frontend = NULL;
@@ -2091,12 +2050,6 @@ RingDisable(
             AdapterCompleteSrb(Adapter, SrbExt);
         }
     }
-
-    //
-    // No new timers can be scheduled once Enabled goes to FALSE.
-    // Cancel any existing ones.
-    //
-    (VOID) KeCancelTimer(&Ring->Timer);
 }
 
 VOID
