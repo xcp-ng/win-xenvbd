@@ -79,7 +79,7 @@ RingTrigger(
     IN  PXENVBD_RING    Ring
     );
 
-extern VOID
+extern BOOLEAN
 RingQueueRequest(
     IN  PXENVBD_RING    Ring,
     IN  PXENVBD_SRBEXT  SrbExt

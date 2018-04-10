@@ -2120,20 +2120,28 @@ RingTrigger(
                   Ring->Channel);
 }
 
-VOID
+BOOLEAN
 RingQueueRequest(
     IN  PXENVBD_RING    Ring,
     IN  PXENVBD_SRBEXT  SrbExt
     )
 {
+    PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+
+    if (!Ring->Enabled)
+        goto fail1;
+
     QueueAppend(&Ring->FreshSrbs,
                 &SrbExt->ListEntry);
 
-    if (!Ring->Enabled)
-        return;
-
     if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
 	    ++Ring->Dpcs;
+
+    return TRUE;
+
+fail1:
+    Srb->SrbStatus = SRB_STATUS_BUSY;
+    return FALSE;
 }
 
 VOID

@@ -242,8 +242,7 @@ TargetReadWrite(
         goto fail4;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
-    RingQueueRequest(Ring, SrbExt);
-    return FALSE;
+    return RingQueueRequest(Ring, SrbExt);
 
 fail4:
      Error("fail4\n");
@@ -253,7 +252,7 @@ fail2:
     Error("fail2\n");
 fail1:
     Error("fail1\n");
-    return TRUE;
+    return FALSE; // not-queued
 }
 
 static DECLSPEC_NOINLINE BOOLEAN
@@ -279,18 +278,17 @@ TargetSyncCache(
         goto succeed;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
-    RingQueueRequest(Ring, SrbExt);
-    return FALSE;
+    return RingQueueRequest(Ring, SrbExt);
 
 succeed:
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
-    return TRUE;
+    return FALSE; // not-queued
 
 fail2:
     Error("fail2\n");
 fail1:
     Error("fail1\n");
-    return TRUE;
+    return FALSE; // not-queued
 }
 
 static DECLSPEC_NOINLINE BOOLEAN
@@ -314,18 +312,17 @@ TargetUnmap(
         goto succeed;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
-    RingQueueRequest(Ring, SrbExt);
-    return FALSE;
+    return RingQueueRequest(Ring, SrbExt);
 
 succeed:
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
-    return TRUE;
+    return FALSE; // not-queued
 
 fail2:
     Error("fail2\n");
 fail1:
     Error("fail1\n");
-    return TRUE;
+    return FALSE; // not-queued
 }
 
 static FORCEINLINE VOID
@@ -901,18 +898,15 @@ TargetStartIo(
     switch (Operation) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        if (!TargetReadWrite(Target, Srb))
-            WasQueued = TRUE;
+        WasQueued = TargetReadWrite(Target, Srb);
         break;
 
     case SCSIOP_UNMAP:
-        if (!TargetUnmap(Target, Srb))
-            WasQueued = TRUE;
+        WasQueued = TargetUnmap(Target, Srb);
         break;
 
     case SCSIOP_SYNCHRONIZE_CACHE:
-        if (!TargetSyncCache(Target, Srb))
-            WasQueued = TRUE;
+        WasQueued = TargetSyncCache(Target, Srb);
         break;
 
     case SCSIOP_INQUIRY:
