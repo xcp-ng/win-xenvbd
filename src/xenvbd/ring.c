@@ -793,10 +793,10 @@ RingCancelRequestList(
 static BOOLEAN
 RingPrepareReadWrite(
     IN  PXENVBD_RING        Ring,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    IN  PXENVBD_SRBEXT      SrbExt
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
     ULONG64                 SectorStart = Cdb_LogicalBlock(Srb);
     ULONG                   SectorsLeft = Cdb_TransferBlock(Srb);
     LIST_ENTRY              List;
@@ -853,10 +853,10 @@ fail1:
 static BOOLEAN
 RingPrepareSyncCache(
     IN  PXENVBD_RING        Ring,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    IN  PXENVBD_SRBEXT      SrbExt
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
     PXENVBD_REQUEST         Request;
     LIST_ENTRY              List;
     UCHAR                   Operation;
@@ -894,10 +894,10 @@ fail1:
 static BOOLEAN
 RingPrepareUnmap(
     IN  PXENVBD_RING        Ring,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    IN  PXENVBD_SRBEXT      SrbExt
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
+    PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
     PUNMAP_LIST_HEADER      Unmap = Srb->DataBuffer;
 	ULONG                   Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
     ULONG                   Index;
@@ -952,15 +952,15 @@ RingPrepareFresh(
     switch (Cdb_OperationEx(SrbExt->Srb)) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        if (RingPrepareReadWrite(Ring, SrbExt->Srb))
+        if (RingPrepareReadWrite(Ring, SrbExt))
             return TRUE;    // prepared this SRB
         break;
     case SCSIOP_SYNCHRONIZE_CACHE:
-        if (RingPrepareSyncCache(Ring, SrbExt->Srb))
+        if (RingPrepareSyncCache(Ring, SrbExt))
             return TRUE;    // prepared this SRB
         break;
     case SCSIOP_UNMAP:
-        if (RingPrepareUnmap(Ring, SrbExt->Srb))
+        if (RingPrepareUnmap(Ring, SrbExt))
             return TRUE;    // prepared this SRB
         break;
     default:
