@@ -80,7 +80,6 @@ struct _XENVBD_RING {
     PXENBUS_CACHE                   RequestCache;
     PXENBUS_CACHE                   SegmentCache;
     PXENBUS_CACHE                   IndirectCache;
-    XENVBD_QUEUE                    FreshSrbs;
     XENVBD_QUEUE                    PreparedReqs;
     XENVBD_QUEUE                    SubmittedReqs;
     XENVBD_QUEUE                    ShutdownSrbs;
@@ -936,40 +935,26 @@ fail1:
 }
 
 static FORCEINLINE BOOLEAN
-RingPrepareFresh(
-    IN  PXENVBD_RING    Ring
+RingPrepareRequest(
+    IN  PXENVBD_RING    Ring,
+    IN  PXENVBD_SRBEXT  SrbExt
     )
 {
-    PXENVBD_SRBEXT      SrbExt;
-    PLIST_ENTRY         ListEntry;
-
-    ListEntry = QueuePop(&Ring->FreshSrbs);
-    if (ListEntry == NULL)
-        return FALSE;   // fresh queue is empty
-
-    SrbExt = CONTAINING_RECORD(ListEntry, XENVBD_SRBEXT, ListEntry);
-
     switch (Cdb_OperationEx(SrbExt->Srb)) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        if (RingPrepareReadWrite(Ring, SrbExt))
-            return TRUE;    // prepared this SRB
-        break;
+        return RingPrepareReadWrite(Ring, SrbExt);
+
     case SCSIOP_SYNCHRONIZE_CACHE:
-        if (RingPrepareSyncCache(Ring, SrbExt))
-            return TRUE;    // prepared this SRB
-        break;
+        return RingPrepareSyncCache(Ring, SrbExt);
+
     case SCSIOP_UNMAP:
-        if (RingPrepareUnmap(Ring, SrbExt))
-            return TRUE;    // prepared this SRB
-        break;
+        return RingPrepareUnmap(Ring, SrbExt);
+
     default:
         ASSERT(FALSE);
-        break;
+        return FALSE;
     }
-    QueueUnPop(&Ring->FreshSrbs, &SrbExt->ListEntry);
-
-    return FALSE;       // prepare failed
 }
 
 static BOOLEAN
@@ -1009,7 +994,7 @@ RingSubmit(
 }
 
 static FORCEINLINE BOOLEAN
-RingSubmitPrepared(
+RingSubmitRequests(
     IN  PXENVBD_RING    Ring
     )
 {
@@ -1039,10 +1024,10 @@ RingSubmitPrepared(
 
         QueueRemove(&Ring->SubmittedReqs, &Request->ListEntry);
         QueueUnPop(&Ring->PreparedReqs, &Request->ListEntry);
-        return FALSE;   // ring full
+        break;
     }
 
-    return TRUE;
+    return QueueCount(&Ring->PreparedReqs) != 0;
 }
 
 static FORCEINLINE VOID
@@ -1056,8 +1041,7 @@ RingCompleteShutdown(
     if (QueueCount(&Ring->ShutdownSrbs) == 0)
         return;
 
-    if (QueueCount(&Ring->FreshSrbs) ||
-        QueueCount(&Ring->PreparedReqs) ||
+    if (QueueCount(&Ring->PreparedReqs) ||
         QueueCount(&Ring->SubmittedReqs))
         return;
 
@@ -1077,38 +1061,6 @@ RingCompleteShutdown(
         Srb->SrbStatus = SRB_STATUS_SUCCESS;
         AdapterCompleteSrb(Adapter, SrbExt);
     }
-}
-
-static BOOLEAN
-RingSubmitRequests(
-    IN  PXENVBD_RING    Ring
-    )
-{
-    BOOLEAN             Retry = FALSE;
-
-    for (;;) {
-        // submit all prepared requests (0 or more requests)
-        // return TRUE if submitted 0 or more requests from prepared queue
-        // return FALSE iff ring is full
-        if (!RingSubmitPrepared(Ring))
-            break;
-
-        // prepare a single SRB (into 1 or more requests)
-        // return TRUE if prepare succeeded
-        // return FALSE if prepare failed or fresh queue empty
-        if (!RingPrepareFresh(Ring))
-            break;
-
-        // back off, check DPC timeout and try again
-        Retry = TRUE;
-        break;
-    }
-
-    // if no requests/SRBs outstanding, complete any shutdown SRBs
-    if (!Retry)
-        RingCompleteShutdown(Ring);
-
-    return Retry;
 }
 
 static FORCEINLINE PCHAR
@@ -1258,6 +1210,7 @@ RingNotifyResponses(
     Retry |= RingPoll(Ring);
     Retry |= RingSubmitRequests(Ring);
 
+    RingCompleteShutdown(Ring);
     return Retry;
 }
 
@@ -1415,9 +1368,6 @@ RingDebugCallback(
                  Ring->SegsGranted,
                  Ring->SegsBounced);
 
-    QueueDebugCallback(&Ring->FreshSrbs,
-                       "Fresh    ",
-                       &Ring->DebugInterface);
     QueueDebugCallback(&Ring->PreparedReqs,
                        "Prepared ",
                        &Ring->DebugInterface);
@@ -1557,7 +1507,6 @@ RingCreate(
     KeInitializeThreadedDpc(&(*Ring)->Dpc, RingDpc, *Ring);
     KeSetImportanceDpc(&(*Ring)->Dpc, MediumHighImportance);
 
-    QueueInit(&(*Ring)->FreshSrbs);
     QueueInit(&(*Ring)->PreparedReqs);
     QueueInit(&(*Ring)->SubmittedReqs);
     QueueInit(&(*Ring)->ShutdownSrbs);
@@ -1661,7 +1610,6 @@ fail2:
     RtlZeroMemory(&(*Ring)->CacheInterface,
                   sizeof (XENBUS_CACHE_INTERFACE));
 
-    RtlZeroMemory(&(*Ring)->FreshSrbs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&(*Ring)->PreparedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&(*Ring)->SubmittedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&(*Ring)->ShutdownSrbs, sizeof(XENVBD_QUEUE));
@@ -1704,7 +1652,6 @@ RingDestroy(
     RtlZeroMemory(&Ring->CacheInterface,
                   sizeof (XENBUS_CACHE_INTERFACE));
 
-    RtlZeroMemory(&Ring->FreshSrbs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->PreparedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->SubmittedReqs, sizeof(XENVBD_QUEUE));
     RtlZeroMemory(&Ring->ShutdownSrbs, sizeof(XENVBD_QUEUE));
@@ -2011,23 +1958,6 @@ RingDisable(
             QueueCount(&Ring->SubmittedReqs),
             Count);
 
-    // Abort Fresh SRBs
-    for (;;) {
-        PXENVBD_SRBEXT      SrbExt;
-        PSCSI_REQUEST_BLOCK Srb;
-        PLIST_ENTRY         ListEntry;
-
-        ListEntry = QueuePop(&Ring->FreshSrbs);
-        if (ListEntry == NULL)
-            break;
-        SrbExt = CONTAINING_RECORD(ListEntry, XENVBD_SRBEXT, ListEntry);
-        Srb = SrbExt->Srb;
-
-        Srb->SrbStatus = SRB_STATUS_ABORTED;
-        Srb->ScsiStatus = 0x40; // SCSI_ABORTED;
-        AdapterCompleteSrb(Adapter, SrbExt);
-    }
-
     // Fail PreparedReqs
     for (;;) {
         PXENVBD_SRBEXT      SrbExt;
@@ -2131,14 +2061,18 @@ RingQueueRequest(
     if (!Ring->Enabled)
         goto fail1;
 
-    QueueAppend(&Ring->FreshSrbs,
-                &SrbExt->ListEntry);
+    if (!RingPrepareRequest(Ring, SrbExt))
+        goto fail2;
 
-    if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
-	    ++Ring->Dpcs;
+    if (RingSubmitRequests(Ring)) {
+        // more prepared-reqs to submit
+        if (KeInsertQueueDpc(&Ring->Dpc, NULL, NULL))
+            ++Ring->Dpcs;
+    }
 
     return TRUE;
 
+fail2:
 fail1:
     Srb->SrbStatus = SRB_STATUS_BUSY;
     return FALSE;
