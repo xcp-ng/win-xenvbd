@@ -1972,13 +1972,13 @@ RingDisable(
         SrbExt = Request->SrbExt;
         Srb = SrbExt->Srb;
 
+        Srb->SrbStatus = SRB_STATUS_ABORTED;
+        Srb->ScsiStatus = 0x40; // SCSI_ABORTED
+
         RingPutRequest(Ring, Request);
 
-        if (InterlockedDecrement(&SrbExt->RequestCount) == 0) {
-            Srb->SrbStatus = SRB_STATUS_ABORTED;
-            Srb->ScsiStatus = 0x40; // SCSI_ABORTED
+        if (InterlockedDecrement(&SrbExt->RequestCount) == 0)
             AdapterCompleteSrb(Adapter, SrbExt);
-        }
     }
 }
 
