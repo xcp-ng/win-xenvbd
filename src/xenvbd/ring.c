@@ -2037,19 +2037,6 @@ RingDisconnect(
     Ring->Received = 0;
 }
 
-VOID
-RingTrigger(
-    IN  PXENVBD_RING    Ring
-    )
-{
-    if (!Ring->Enabled)
-        return;
-
-    XENBUS_EVTCHN(Trigger,
-                  &Ring->EvtchnInterface,
-                  Ring->Channel);
-}
-
 BOOLEAN
 RingQueueRequest(
     IN  PXENVBD_RING    Ring,

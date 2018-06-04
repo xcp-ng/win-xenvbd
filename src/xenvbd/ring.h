@@ -74,11 +74,6 @@ RingDisconnect(
     IN  PXENVBD_RING    Ring
     );
 
-extern VOID
-RingTrigger(
-    IN  PXENVBD_RING    Ring
-    );
-
 extern BOOLEAN
 RingQueueRequest(
     IN  PXENVBD_RING    Ring,

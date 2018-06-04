@@ -1593,8 +1593,6 @@ FrontendSuspendCallback(
         ASSERT(FALSE);
     }
 
-    RingTrigger(Frontend->Ring);
-
     Verbose("Target[%d] : <=== restored %s\n", Frontend->TargetId, __XenvbdStateName(Frontend->State));
 }
 
