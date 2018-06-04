@@ -1276,15 +1276,15 @@ FrontendConnect(
         if (!NT_SUCCESS(Status))
             goto abort;
 
-        //status = XENBUS_STORE(Printf,
-        //                      &Frontend->StoreInterface,
-        //                      Transaction,
-        //                      Frontend->FrontendPath,
-        //                      "multi-queue-num-queues",
-        //                      "%u",
-        //                      __FrontendGetNumQueues(Frontend));
-        //if (!NT_SUCCESS(status))
-        //    goto abort;
+        Status = XENBUS_STORE(Printf,
+                              &Frontend->StoreInterface,
+                              Transaction,
+                              Frontend->FrontendPath,
+                              "multi-queue-num-queues",
+                              "%u",
+                              __FrontendGetNumQueues(Frontend));
+        if (!NT_SUCCESS(Status))
+            goto abort;
 
         Status = XENBUS_STORE(TransactionEnd,
                               &Frontend->StoreInterface,
