@@ -74,6 +74,8 @@ struct _XENVBD_FRONTEND {
     XENVBD_DISKINFO             DiskInfo;
     XENVBD_PAGE                 Page80;
     XENVBD_PAGE                 Page83;
+    ULONG                       MaxQueues;
+    ULONG                       NumQueues;
 
     // Interfaces to XenBus
     XENBUS_STORE_INTERFACE      StoreInterface;
@@ -109,6 +111,101 @@ __XenvbdStateName(
     default:                        return "UNKNOWN";
     }
 }
+
+
+#define FRONTEND_GET_PROPERTY(_name, _type)     \
+static FORCEINLINE _type                        \
+__FrontendGet ## _name ## (                     \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return Frontend-> ## _name ## ;             \
+}                                               \
+_type                                           \
+FrontendGet ## _name ## (                       \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return __FrontendGet ## _name ## (Frontend);\
+}
+
+FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
+FRONTEND_GET_PROPERTY(Ring, PXENVBD_RING)
+FRONTEND_GET_PROPERTY(Granter, PXENVBD_GRANTER)
+FRONTEND_GET_PROPERTY(TargetId, ULONG)
+FRONTEND_GET_PROPERTY(DeviceId, ULONG)
+FRONTEND_GET_PROPERTY(BackendDomain, ULONG)
+FRONTEND_GET_PROPERTY(BackendPath, PCHAR)
+FRONTEND_GET_PROPERTY(FrontendPath, PCHAR)
+//FRONTEND_GET_PROPERTY(Caps, PXENVBD_CAPS)
+PXENVBD_CAPS
+FrontendGetCaps(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->Caps;
+}
+//FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
+PXENVBD_FEATURES
+FrontendGetFeatures(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->Features;
+}
+//FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
+PXENVBD_DISKINFO
+FrontendGetDiskInfo(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return &Frontend->DiskInfo;
+}
+//FRONTEND_GET_PROPERTY(Connected, BOOLEAN)
+BOOLEAN
+FrontendGetConnected(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->Caps.Connected;
+}
+//FRONTEND_GET_PROPERTY(ReadOnly, BOOLEAN)
+BOOLEAN
+FrontendGetReadOnly(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return !!(Frontend->DiskInfo.DiskInfo & VDISK_READONLY);
+}
+//FRONTEND_GET_PROPERTY(Discard, BOOLEAN)
+BOOLEAN
+FrontendGetDiscard(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.Discard;
+}
+//FRONTEND_GET_PROPERTY(FlushCache, BOOLEAN)
+BOOLEAN
+FrontendGetFlushCache(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.FlushCache;
+}
+//FRONTEND_GET_PROPERTY(Barrier, BOOLEAN)
+BOOLEAN
+FrontendGetBarrier(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    return Frontend->DiskInfo.Barrier;
+}
+FRONTEND_GET_PROPERTY(MaxQueues, ULONG)
+FRONTEND_GET_PROPERTY(NumQueues, ULONG)
+
+#undef FRONTEND_GET_PROPERTY
+
 //=============================================================================
 #define FRONTEND_POOL_TAG            'tnFX'
 __checkReturn
@@ -1079,6 +1176,38 @@ fail1:
     Error("Fail1 (%08x)\n", Status);
     return Status;
 }
+static VOID
+FrontendSetNumQueues(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    PCHAR                   Buffer;
+    ULONG                   BackendMaxQueues;
+    NTSTATUS                status;
+
+    status = XENBUS_STORE(Read,
+                          &Frontend->StoreInterface,
+                          NULL,
+                          __FrontendGetBackendPath(Frontend),
+                          "multi-queue-max-queues",
+                          &Buffer);
+    if (NT_SUCCESS(status)) {
+        BackendMaxQueues = (ULONG)strtoul(Buffer, NULL, 10);
+
+        XENBUS_STORE(Free,
+                     &Frontend->StoreInterface,
+                     Buffer);
+    } else {
+        BackendMaxQueues = 1;
+    }
+
+    Frontend->NumQueues = __min(__FrontendGetMaxQueues(Frontend),
+                                BackendMaxQueues);
+
+    Verbose("Target[%u] NumQueues %u\n",
+            __FrontendGetTargetId(Frontend),
+            Frontend->NumQueues);
+}
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendConnect(
@@ -1087,6 +1216,8 @@ FrontendConnect(
 {
     NTSTATUS        Status;
     XenbusState     BackendState;
+
+    FrontendSetNumQueues(Frontend);
 
     // Alloc Ring, Create Evtchn, Gnttab map
     Status = GranterConnect(Frontend->Granter);
@@ -1144,6 +1275,16 @@ FrontendConnect(
                               1);
         if (!NT_SUCCESS(Status))
             goto abort;
+
+        //status = XENBUS_STORE(Printf,
+        //                      &Frontend->StoreInterface,
+        //                      Transaction,
+        //                      Frontend->FrontendPath,
+        //                      "multi-queue-num-queues",
+        //                      "%u",
+        //                      __FrontendGetNumQueues(Frontend));
+        //if (!NT_SUCCESS(status))
+        //    goto abort;
 
         Status = XENBUS_STORE(TransactionEnd,
                               &Frontend->StoreInterface,
@@ -1215,6 +1356,7 @@ fail2:
     GranterDisconnect(Frontend->Granter);
 fail1:
     Error("Fail1 (%08x)\n", Status);
+    Frontend->NumQueues = 0;
     return Status;
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
@@ -1225,6 +1367,8 @@ FrontendDisconnect(
 {
     RingDisconnect(Frontend->Ring);
     GranterDisconnect(Frontend->Granter);
+
+    Frontend->NumQueues = 0;
 
     Base64Free(Frontend->Page80.Data);
     Frontend->Page80.Data = NULL;
@@ -1724,6 +1868,29 @@ fail1:
     return status;
 }
 
+static VOID
+FrontendSetMaxQueues(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    ULONG                   FrontendMaxQueues;
+
+    Frontend->MaxQueues = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
+
+    if (DriverGetFeatureOverride(FeatureMultiQueueMaxQueues,
+                                 &FrontendMaxQueues)) {
+        if (FrontendMaxQueues < Frontend->MaxQueues)
+            Frontend->MaxQueues = FrontendMaxQueues;
+    }
+
+    if (Frontend->MaxQueues == 0)
+        Frontend->MaxQueues = 1;
+
+    Verbose("Target[%u] MaxQueues %u\n",
+            __FrontendGetTargetId(Frontend),
+            Frontend->MaxQueues);
+}
+
 NTSTATUS
 FrontendCreate(
     IN  PXENVBD_TARGET      Target,
@@ -1750,6 +1917,8 @@ FrontendCreate(
     Frontend->State = XENVBD_INITIALIZED;
     Frontend->DiskInfo.SectorSize = 512; // default sector size
     Frontend->BackendDomain = DOMID_INVALID;
+
+    FrontendSetMaxQueues(Frontend);
     
     status = RtlStringCbPrintfA(Frontend->FrontendPath,
                                 sizeof(Frontend->FrontendPath),
@@ -1798,6 +1967,14 @@ fail3:
     Error("fail3\n");
 fail2:
     Error("Fail2\n");
+    Frontend->Target = NULL;
+    Frontend->TargetId = 0;
+    Frontend->DeviceId = 0;
+    Frontend->State = XENVBD_STATE_INVALID; // 0
+    Frontend->DiskInfo.SectorSize = 0;
+    Frontend->BackendDomain = 0;
+    Frontend->MaxQueues = 0;
+    ASSERT(IsZeroMemory(Frontend, sizeof(XENVBD_FRONTEND)));
     __FrontendFree(Frontend);
 fail1:
     Error("Fail1 (%08x)\n", status);
@@ -1822,6 +1999,8 @@ FrontendDestroy(
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 
+    Frontend->MaxQueues = 0;
+
     ThreadAlert(Frontend->BackendThread);
     ThreadJoin(Frontend->BackendThread);
     Frontend->BackendThread = NULL;
@@ -1838,94 +2017,3 @@ FrontendDestroy(
     __FrontendFree(Frontend);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }
-
-#define FRONTEND_GET_PROPERTY(_name, _type)     \
-static FORCEINLINE _type                        \
-__FrontendGet ## _name ## (                     \
-    IN  PXENVBD_FRONTEND    Frontend            \
-    )                                           \
-{                                               \
-    return Frontend-> ## _name ## ;             \
-}                                               \
-_type                                           \
-FrontendGet ## _name ## (                       \
-    IN  PXENVBD_FRONTEND    Frontend            \
-    )                                           \
-{                                               \
-    return __FrontendGet ## _name ## (Frontend);\
-}
-
-FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
-FRONTEND_GET_PROPERTY(Ring, PXENVBD_RING)
-FRONTEND_GET_PROPERTY(Granter, PXENVBD_GRANTER)
-FRONTEND_GET_PROPERTY(TargetId, ULONG)
-FRONTEND_GET_PROPERTY(DeviceId, ULONG)
-FRONTEND_GET_PROPERTY(BackendDomain, ULONG)
-FRONTEND_GET_PROPERTY(BackendPath, PCHAR)
-FRONTEND_GET_PROPERTY(FrontendPath, PCHAR)
-//FRONTEND_GET_PROPERTY(Caps, PXENVBD_CAPS)
-PXENVBD_CAPS
-FrontendGetCaps(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->Caps;
-}
-//FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
-PXENVBD_FEATURES
-FrontendGetFeatures(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->Features;
-}
-//FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
-PXENVBD_DISKINFO
-FrontendGetDiskInfo(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->DiskInfo;
-}
-//FRONTEND_GET_PROPERTY(Connected, BOOLEAN)
-BOOLEAN
-FrontendGetConnected(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->Caps.Connected;
-}
-//FRONTEND_GET_PROPERTY(ReadOnly, BOOLEAN)
-BOOLEAN
-FrontendGetReadOnly(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return !!(Frontend->DiskInfo.DiskInfo & VDISK_READONLY);
-}
-//FRONTEND_GET_PROPERTY(Discard, BOOLEAN)
-BOOLEAN
-FrontendGetDiscard(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->DiskInfo.Discard;
-}
-//FRONTEND_GET_PROPERTY(FlushCache, BOOLEAN)
-BOOLEAN
-FrontendGetFlushCache(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->DiskInfo.FlushCache;
-}
-//FRONTEND_GET_PROPERTY(Barrier, BOOLEAN)
-BOOLEAN
-FrontendGetBarrier(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->DiskInfo.Barrier;
-}
-
-#undef FRONTEND_GET_PROPERTY
