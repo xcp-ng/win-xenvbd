@@ -1844,17 +1844,16 @@ FrontendReset(
     IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    XENVBD_STATE            PreviousState = Frontend->State;
     NTSTATUS                status;
 
-    if (PreviousState != XENVBD_ENABLED)
+    if (Frontend->State != XENVBD_ENABLED)
         goto done;
 
-    status = FrontendSetState(Frontend, XENVBD_CLOSED);
+    status = FrontendSetState(Frontend, XENVBD_CONNECTED);
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    status = FrontendSetState(Frontend, PreviousState);
+    status = FrontendSetState(Frontend, XENVBD_ENABLED);
     if (!NT_SUCCESS(status))
         goto fail2;
 
