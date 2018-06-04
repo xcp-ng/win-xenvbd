@@ -28,6 +28,7 @@
 #define __XEN_PUBLIC_MEMORY_H__
 
 #include "xen.h"
+#include "physdev.h"
 
 /*
  * Increase or decrease the specified domain's memory reservation. Returns the
@@ -55,6 +56,8 @@
 /* Flag to request allocation only from the node specified */
 #define XENMEMF_exact_node_request  (1<<17)
 #define XENMEMF_exact_node(n) (XENMEMF_node(n) | XENMEMF_exact_node_request)
+/* Flag to indicate the node specified is virtual node */
+#define XENMEMF_vnode  (1<<18)
 #endif
 
 struct xen_memory_reservation {
@@ -99,6 +102,8 @@ DEFINE_XEN_GUEST_HANDLE(xen_memory_reservation_t);
  * Returns zero on complete success, otherwise a negative error code.
  * On complete success then always @nr_exchanged == @in.nr_extents.
  * On partial success @nr_exchanged indicates how much work was done.
+ *
+ * Note that only PV guests can use this operation.
  */
 #define XENMEM_exchange             11
 struct xen_memory_exchange {
@@ -187,6 +192,15 @@ typedef struct xen_machphys_mfn_list xen_machphys_mfn_list_t;
 DEFINE_XEN_GUEST_HANDLE(xen_machphys_mfn_list_t);
 
 /*
+ * For a compat caller, this is identical to XENMEM_machphys_mfn_list.
+ *
+ * For a non compat caller, this functions similarly to
+ * XENMEM_machphys_mfn_list, but returns the mfns making up the compatibility
+ * m2p table.
+ */
+#define XENMEM_machphys_compat_mfn_list     25
+
+/*
  * Returns the location in virtual address space of the machine_to_phys
  * mapping table. Architectures which do not have a m2p table, or which do not
  * map it by default into guest address space, do not implement this command.
@@ -207,8 +221,12 @@ DEFINE_XEN_GUEST_HANDLE(xen_machphys_mapping_t);
 #define XENMAPSPACE_gmfn         2 /* GMFN */
 #define XENMAPSPACE_gmfn_range   3 /* GMFN range, XENMEM_add_to_physmap only. */
 #define XENMAPSPACE_gmfn_foreign 4 /* GMFN from another dom,
-                                    * XENMEM_add_to_physmap_range only.
-                                    */
+                                    * XENMEM_add_to_physmap_batch only. */
+#define XENMAPSPACE_dev_mmio     5 /* device mmio region
+                                      ARM only; the region is mapped in
+                                      Stage-2 using the Normal Memory
+                                      Inner/Outer Write-Back Cacheable
+                                      memory attribute. */
 /* ` } */
 
 /*
@@ -238,8 +256,8 @@ typedef struct xen_add_to_physmap xen_add_to_physmap_t;
 DEFINE_XEN_GUEST_HANDLE(xen_add_to_physmap_t);
 
 /* A batched version of add_to_physmap. */
-#define XENMEM_add_to_physmap_range 23
-struct xen_add_to_physmap_range {
+#define XENMEM_add_to_physmap_batch 23
+struct xen_add_to_physmap_batch {
     /* IN */
     /* Which domain to change the mapping for. */
     domid_t domid;
@@ -247,7 +265,15 @@ struct xen_add_to_physmap_range {
 
     /* Number of pages to go through */
     uint16_t size;
-    domid_t foreign_domid; /* IFF gmfn_foreign */
+
+#if __XEN_INTERFACE_VERSION__ < 0x00040700
+    domid_t foreign_domid; /* IFF gmfn_foreign. Should be 0 for other spaces. */
+#else
+    union xen_add_to_physmap_batch_extra {
+        domid_t foreign_domid; /* gmfn_foreign */
+        uint16_t res0;  /* All the other spaces. Should be 0 */
+    } u;
+#endif
 
     /* Indexes into space being mapped. */
     XEN_GUEST_HANDLE(xen_ulong_t) idxs;
@@ -260,8 +286,15 @@ struct xen_add_to_physmap_range {
     /* Per index error code. */
     XEN_GUEST_HANDLE(int) errs;
 };
-typedef struct xen_add_to_physmap_range xen_add_to_physmap_range_t;
+typedef struct xen_add_to_physmap_batch xen_add_to_physmap_batch_t;
+DEFINE_XEN_GUEST_HANDLE(xen_add_to_physmap_batch_t);
+
+#if __XEN_INTERFACE_VERSION__ < 0x00040400
+#define XENMEM_add_to_physmap_range XENMEM_add_to_physmap_batch
+#define xen_add_to_physmap_range xen_add_to_physmap_batch
+typedef struct xen_add_to_physmap_batch xen_add_to_physmap_range_t;
 DEFINE_XEN_GUEST_HANDLE(xen_add_to_physmap_range_t);
+#endif
 
 /*
  * Unmaps the page appearing at a particular GPFN from the specified guest's
@@ -308,6 +341,8 @@ DEFINE_XEN_GUEST_HANDLE(xen_memory_map_t);
 /*
  * Returns the real physical memory map. Passes the same structure as
  * XENMEM_memory_map.
+ * Specifying buffer as NULL will return the number of entries required
+ * to store the complete memory map.
  * arg == addr of xen_memory_map_t.
  */
 #define XENMEM_machine_memory_map   10
@@ -357,32 +392,96 @@ typedef struct xen_pod_target xen_pod_target_t;
 #define XENMEM_paging_op_evict              1
 #define XENMEM_paging_op_prep               2
 
-#define XENMEM_access_op                    21
-#define XENMEM_access_op_resume             0
-
-struct xen_mem_event_op {
-    uint8_t     op;         /* XENMEM_*_op_* */
+struct xen_mem_paging_op {
+    uint8_t     op;         /* XENMEM_paging_op_* */
     domid_t     domain;
-    
 
     /* PAGING_PREP IN: buffer to immediately fill page in */
     uint64_aligned_t    buffer;
     /* Other OPs */
     uint64_aligned_t    gfn;           /* IN:  gfn of page being operated on */
 };
-typedef struct xen_mem_event_op xen_mem_event_op_t;
-DEFINE_XEN_GUEST_HANDLE(xen_mem_event_op_t);
+typedef struct xen_mem_paging_op xen_mem_paging_op_t;
+DEFINE_XEN_GUEST_HANDLE(xen_mem_paging_op_t);
+
+#define XENMEM_access_op                    21
+#define XENMEM_access_op_set_access         0
+#define XENMEM_access_op_get_access         1
+/*
+ * XENMEM_access_op_enable_emulate and XENMEM_access_op_disable_emulate are
+ * currently unused, but since they have been in use please do not reuse them.
+ *
+ * #define XENMEM_access_op_enable_emulate     2
+ * #define XENMEM_access_op_disable_emulate    3
+ */
+#define XENMEM_access_op_set_access_multi   4
+
+typedef enum {
+    XENMEM_access_n,
+    XENMEM_access_r,
+    XENMEM_access_w,
+    XENMEM_access_rw,
+    XENMEM_access_x,
+    XENMEM_access_rx,
+    XENMEM_access_wx,
+    XENMEM_access_rwx,
+    /*
+     * Page starts off as r-x, but automatically
+     * change to r-w on a write
+     */
+    XENMEM_access_rx2rw,
+    /*
+     * Log access: starts off as n, automatically
+     * goes to rwx, generating an event without
+     * pausing the vcpu
+     */
+    XENMEM_access_n2rwx,
+    /* Take the domain default */
+    XENMEM_access_default
+} xenmem_access_t;
+
+struct xen_mem_access_op {
+    /* XENMEM_access_op_* */
+    uint8_t op;
+    /* xenmem_access_t */
+    uint8_t access;
+    domid_t domid;
+    /*
+     * Number of pages for set op (or size of pfn_list for
+     * XENMEM_access_op_set_access_multi)
+     * Ignored on setting default access and other ops
+     */
+    uint32_t nr;
+    /*
+     * First pfn for set op
+     * pfn for get op
+     * ~0ull is used to set and get the default access for pages
+     */
+    uint64_aligned_t pfn;
+    /*
+     * List of pfns to set access for
+     * Used only with XENMEM_access_op_set_access_multi
+     */
+    XEN_GUEST_HANDLE(const_uint64) pfn_list;
+    /*
+     * Corresponding list of access settings for pfn_list
+     * Used only with XENMEM_access_op_set_access_multi
+     */
+    XEN_GUEST_HANDLE(const_uint8) access_list;
+};
+typedef struct xen_mem_access_op xen_mem_access_op_t;
+DEFINE_XEN_GUEST_HANDLE(xen_mem_access_op_t);
 
 #define XENMEM_sharing_op                   22
 #define XENMEM_sharing_op_nominate_gfn      0
 #define XENMEM_sharing_op_nominate_gref     1
 #define XENMEM_sharing_op_share             2
-#define XENMEM_sharing_op_resume            3
-#define XENMEM_sharing_op_debug_gfn         4
-#define XENMEM_sharing_op_debug_mfn         5
-#define XENMEM_sharing_op_debug_gref        6
-#define XENMEM_sharing_op_add_physmap       7
-#define XENMEM_sharing_op_audit             8
+#define XENMEM_sharing_op_debug_gfn         3
+#define XENMEM_sharing_op_debug_mfn         4
+#define XENMEM_sharing_op_debug_gref        5
+#define XENMEM_sharing_op_add_physmap       6
+#define XENMEM_sharing_op_audit             7
+#define XENMEM_sharing_op_range_share       8
 
 #define XENMEM_SHARING_OP_S_HANDLE_INVALID  (-10)
 #define XENMEM_SHARING_OP_C_HANDLE_INVALID  (-9)
@@ -391,7 +490,7 @@ DEFINE_XEN_GUEST_HANDLE(xen_mem_event_op_t);
  * for sharing utilities sitting as "filters" in IO backends
  * (e.g. memshr + blktap(2)). The IO backend is only exposed 
  * to grant references, and this allows sharing of the grefs */
-#define XENMEM_SHARING_OP_FIELD_IS_GREF_FLAG   (1ULL << 62)
+#define XENMEM_SHARING_OP_FIELD_IS_GREF_FLAG   (xen_mk_ullong(1) << 62)
 
 #define XENMEM_SHARING_OP_FIELD_MAKE_GREF(field, val)  \
     (field) = (XENMEM_SHARING_OP_FIELD_IS_GREF_FLAG | val)
@@ -418,7 +517,14 @@ struct xen_mem_sharing_op {
             uint64_aligned_t client_gfn;    /* IN: the client gfn */
             uint64_aligned_t client_handle; /* IN: handle to the client page */
             domid_t  client_domain; /* IN: the client domain id */
-        } share; 
+        } share;
+        struct mem_sharing_op_range {         /* OP_RANGE_SHARE */
+            uint64_aligned_t first_gfn;      /* IN: the first gfn */
+            uint64_aligned_t last_gfn;       /* IN: the last gfn */
+            uint64_aligned_t opaque;         /* Must be set to 0 */
+            domid_t client_domain;           /* IN: the client domain id */
+            uint16_t _pad[3];                /* Must be set to 0 */
+        } range;
         struct mem_sharing_op_debug {     /* OP_DEBUG_xxx */
             union {
                 uint64_aligned_t gfn;      /* IN: gfn to debug          */
@@ -456,10 +562,157 @@ DEFINE_XEN_GUEST_HANDLE(xen_mem_sharing_op_t);
 
 /*
  * XENMEM_claim_pages flags - the are no flags at this time.
- * The zero value is appropiate.
+ * The zero value is appropriate.
  */
 
+/*
+ * With some legacy devices, certain guest-physical addresses cannot safely
+ * be used for other purposes, e.g. to map guest RAM.  This hypercall
+ * enumerates those regions so the toolstack can avoid using them.
+ */
+#define XENMEM_reserved_device_memory_map   27
+struct xen_reserved_device_memory {
+    xen_pfn_t start_pfn;
+    xen_ulong_t nr_pages;
+};
+typedef struct xen_reserved_device_memory xen_reserved_device_memory_t;
+DEFINE_XEN_GUEST_HANDLE(xen_reserved_device_memory_t);
+
+struct xen_reserved_device_memory_map {
+#define XENMEM_RDM_ALL 1 /* Request all regions (ignore dev union). */
+    /* IN */
+    uint32_t flags;
+    /*
+     * IN/OUT
+     *
+     * Gets set to the required number of entries when too low,
+     * signaled by error code -ERANGE.
+     */
+    unsigned int nr_entries;
+    /* OUT */
+    XEN_GUEST_HANDLE(xen_reserved_device_memory_t) buffer;
+    /* IN */
+    union {
+        struct physdev_pci_device pci;
+    } dev;
+};
+typedef struct xen_reserved_device_memory_map xen_reserved_device_memory_map_t;
+DEFINE_XEN_GUEST_HANDLE(xen_reserved_device_memory_map_t);
+
+/*
+ * Get the pages for a particular guest resource, so that they can be
+ * mapped directly by a tools domain.
+ */
+#define XENMEM_acquire_resource 28
+struct xen_mem_acquire_resource {
+    /* IN - The domain whose resource is to be mapped */
+    domid_t domid;
+    /* IN - the type of resource */
+    uint16_t type;
+
+#define XENMEM_resource_ioreq_server 0
+
+    /*
+     * IN - a type-specific resource identifier, which must be zero
+     *      unless stated otherwise.
+     *
+     * type == XENMEM_resource_ioreq_server -> id == ioreq server id
+     */
+    uint32_t id;
+    /*
+     * IN/OUT - As an IN parameter number of frames of the resource
+     *          to be mapped. However, if the specified value is 0 and
+     *          frame_list is NULL then this field will be set to the
+     *          maximum value supported by the implementation on return.
+     */
+    uint32_t nr_frames;
+    /*
+     * OUT - Must be zero on entry. On return this may contain a bitwise
+     *       OR of the following values.
+     */
+    uint32_t flags;
+
+    /* The resource pages have been assigned to the calling domain */
+#define _XENMEM_rsrc_acq_caller_owned 0
+#define XENMEM_rsrc_acq_caller_owned (1u << _XENMEM_rsrc_acq_caller_owned)
+
+    /*
+     * IN - the index of the initial frame to be mapped. This parameter
+     *      is ignored if nr_frames is 0.
+     */
+    uint64_aligned_t frame;
+
+#define XENMEM_resource_ioreq_server_frame_bufioreq 0
+#define XENMEM_resource_ioreq_server_frame_ioreq(n) (1 + (n))
+
+    /*
+     * IN/OUT - If the tools domain is PV then, upon return, frame_list
+     *          will be populated with the MFNs of the resource.
+     *          If the tools domain is HVM then it is expected that, on
+     *          entry, frame_list will be populated with a list of GFNs
+     *          that will be mapped to the MFNs of the resource.
+     *          If -EIO is returned then the frame_list has only been
+     *          partially mapped and it is up to the caller to unmap all
+     *          the GFNs.
+     *          This parameter may be NULL if nr_frames is 0.
+     */
+    XEN_GUEST_HANDLE(xen_pfn_t) frame_list;
+};
+typedef struct xen_mem_acquire_resource xen_mem_acquire_resource_t;
+DEFINE_XEN_GUEST_HANDLE(xen_mem_acquire_resource_t);
+
 #endif /* defined(__XEN__) || defined(__XEN_TOOLS__) */
+
+/*
+ * XENMEM_get_vnumainfo used by guest to get
+ * vNUMA topology from hypervisor.
+ */
+#define XENMEM_get_vnumainfo                26
+
+/* vNUMA node memory ranges */
+struct xen_vmemrange {
+    uint64_t start, end;
+    unsigned int flags;
+    unsigned int nid;
+};
+typedef struct xen_vmemrange xen_vmemrange_t;
+DEFINE_XEN_GUEST_HANDLE(xen_vmemrange_t);
+
+/*
+ * vNUMA topology specifies vNUMA node number, distance table,
+ * memory ranges and vcpu mapping provided for guests.
+ * XENMEM_get_vnumainfo hypercall expects to see from guest
+ * nr_vnodes, nr_vmemranges and nr_vcpus to indicate available memory.
+ * After filling guests structures, nr_vnodes, nr_vmemranges and nr_vcpus
+ * copied back to guest. Domain returns expected values of nr_vnodes,
+ * nr_vmemranges and nr_vcpus to guest if the values where incorrect.
+ */
+struct xen_vnuma_topology_info {
+    /* IN */
+    domid_t domid;
+    uint16_t pad;
+    /* IN/OUT */
+    unsigned int nr_vnodes;
+    unsigned int nr_vcpus;
+    unsigned int nr_vmemranges;
+    /* OUT */
+    union {
+        XEN_GUEST_HANDLE(uint) h;
+        uint64_t pad;
+    } vdistance;
+    union {
+        XEN_GUEST_HANDLE(uint) h;
+        uint64_t pad;
+    } vcpu_to_vnode;
+    union {
+        XEN_GUEST_HANDLE(xen_vmemrange_t) h;
+        uint64_t pad;
+    } vmemrange;
+};
+typedef struct xen_vnuma_topology_info xen_vnuma_topology_info_t;
+DEFINE_XEN_GUEST_HANDLE(xen_vnuma_topology_info_t);
+
+/* Next available subop number is 29 */
 
 #endif /* __XEN_PUBLIC_MEMORY_H__ */
 

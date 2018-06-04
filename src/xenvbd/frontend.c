@@ -93,8 +93,6 @@ struct _XENVBD_FRONTEND {
     PXENBUS_STORE_WATCH         BackendWatch;
 };
 
-#define DOMID_INVALID (0x7FF4U)
-
 static const PCHAR
 __XenvbdStateName(
     IN  XENVBD_STATE                        State

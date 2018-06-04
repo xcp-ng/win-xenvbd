@@ -43,7 +43,7 @@
  * table are identified by grant references. A grant reference is an
  * integer, which indexes into the grant table. It acts as a
  * capability which the grantee can use to perform operations on the
- * granter’s memory.
+ * granter's memory.
  *
  * This capability-based system allows shared-memory communications
  * between unprivileged domains. A grant reference also encapsulates
@@ -134,8 +134,10 @@ struct grant_entry_v1 {
     /* The domain being granted foreign privileges. [GST] */
     domid_t  domid;
     /*
-     * GTF_permit_access: Frame that @domid is allowed to map and access. [GST]
-     * GTF_accept_transfer: Frame whose ownership transferred by @domid. [XEN]
+     * GTF_permit_access: GFN that @domid is allowed to map and access. [GST]
+     * GTF_accept_transfer: GFN that @domid is allowed to transfer into. [GST]
+     * GTF_transfer_completed: MFN whose ownership transferred by @domid
+     *                         (non-translated guests only). [XEN]
      */
     uint32_t frame;
 };
@@ -309,6 +311,7 @@ typedef uint16_t grant_status_t;
 #define GNTTABOP_get_status_frames    9
 #define GNTTABOP_get_version          10
 #define GNTTABOP_swap_grant_ref	      11
+#define GNTTABOP_cache_flush	      12
 #endif /* __XEN_INTERFACE_VERSION__ */
 /* ` } */
 
@@ -320,7 +323,7 @@ typedef uint32_t grant_handle_t;
 /*
  * GNTTABOP_map_grant_ref: Map the grant entry (<dom>,<ref>) for access
  * by devices and/or host CPUs. If successful, <handle> is a tracking number
- * that must be presented later to destroy the mapping(s). On error, <handle>
+ * that must be presented later to destroy the mapping(s). On error, <status>
  * is a negative status code.
  * NOTES:
  *  1. If GNTMAP_device_map is specified then <dev_bus_addr> is the address
@@ -408,12 +411,13 @@ typedef struct gnttab_dump_table gnttab_dump_table_t;
 DEFINE_XEN_GUEST_HANDLE(gnttab_dump_table_t);
 
 /*
- * GNTTABOP_transfer_grant_ref: Transfer <frame> to a foreign domain. The
- * foreign domain has previously registered its interest in the transfer via
- * <domid, ref>.
+ * GNTTABOP_transfer: Transfer <frame> to a foreign domain. The foreign domain
+ * has previously registered its interest in the transfer via <domid, ref>.
  *
  * Note that, even if the transfer fails, the specified page no LONG_PTRer belongs
  * to the calling domain *unless* the error is GNTST_bad_page.
+ *
+ * Note further that only PV guests can use this operation.
  */
 struct gnttab_transfer {
     /* IN parameters. */
@@ -452,7 +456,7 @@ DEFINE_XEN_GUEST_HANDLE(gnttab_transfer_t);
 
 struct gnttab_copy {
     /* IN parameters. */
-    struct {
+    struct gnttab_copy_ptr {
         union {
             grant_ref_t ref;
             xen_pfn_t   gmfn;
@@ -511,10 +515,9 @@ DEFINE_XEN_GUEST_HANDLE(gnttab_unmap_and_replace_t);
 #if __XEN_INTERFACE_VERSION__ >= 0x0003020a
 /*
  * GNTTABOP_set_version: Request a particular version of the grant
- * table shared table structure.  This operation can only be performed
- * once in any given domain.  It must be performed before any grants
- * are activated; otherwise, the domain will be stuck with version 1.
- * The only defined versions are 1 and 2.
+ * table shared table structure.  This operation may be used to toggle
+ * between different versions, but must be performed while no grants
+ * are active.  The only defined versions are 1 and 2.
  */
 struct gnttab_set_version {
     /* IN/OUT parameters */
@@ -573,6 +576,25 @@ struct gnttab_swap_grant_ref {
 };
 typedef struct gnttab_swap_grant_ref gnttab_swap_grant_ref_t;
 DEFINE_XEN_GUEST_HANDLE(gnttab_swap_grant_ref_t);
+
+/*
+ * Issue one or more cache maintenance operations on a portion of a
+ * page granted to the calling domain by a foreign domain.
+ */
+struct gnttab_cache_flush {
+    union {
+        uint64_t dev_bus_addr;
+        grant_ref_t ref;
+    } a;
+    uint16_t offset; /* offset from start of grant */
+    uint16_t length; /* size within the grant */
+#define GNTTAB_CACHE_CLEAN          (1u<<0)
+#define GNTTAB_CACHE_INVAL          (1u<<1)
+#define GNTTAB_CACHE_SOURCE_GREF    (1u<<31)
+    uint32_t op;
+};
+typedef struct gnttab_cache_flush gnttab_cache_flush_t;
+DEFINE_XEN_GUEST_HANDLE(gnttab_cache_flush_t);
 
 #endif /* __XEN_INTERFACE_VERSION__ */
 

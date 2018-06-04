@@ -61,6 +61,7 @@ if __name__ == '__main__':
     copy_file(working, 'public', '.', 'sched.h')
     copy_file(working, 'public', '.', 'event_channel.h')
     copy_file(working, 'public', '.', 'grant_table.h')
+    copy_file(working, 'public', '.', 'physdev.h')
 
     copy_file(working, 'public\\arch-x86', 'arch-x86', 'xen.h')
     copy_file(working, 'public\\arch-x86', 'arch-x86', 'xen-x86_32.h')

@@ -28,7 +28,8 @@
 
 enum xsd_sockmsg_type
 {
-    XS_DEBUG,
+    XS_CONTROL,
+#define XS_DEBUG XS_CONTROL
     XS_DIRECTORY,
     XS_READ,
     XS_GET_PERMS,
@@ -48,8 +49,13 @@ enum xsd_sockmsg_type
     XS_IS_DOMAIN_INTRODUCED,
     XS_RESUME,
     XS_SET_TARGET,
-    XS_RESTRICT,
-    XS_RESET_WATCHES
+    /* XS_RESTRICT has been removed */
+    XS_RESET_WATCHES = XS_SET_TARGET + 2,
+    XS_DIRECTORY_PART,
+
+    XS_TYPE_COUNT,      /* Number of valid types. */
+
+    XS_INVALID = 0xffff /* Guaranteed to remain an invalid type */
 };
 
 #define XS_WRITE_NONE "NONE"
@@ -83,7 +89,8 @@ __attribute__((unused))
     XSD_ERROR(EROFS),
     XSD_ERROR(EBUSY),
     XSD_ERROR(EAGAIN),
-    XSD_ERROR(EISCONN)
+    XSD_ERROR(EISCONN),
+    XSD_ERROR(E2BIG)
 };
 #endif
 
@@ -115,6 +122,8 @@ struct xenstore_domain_interface {
     char rsp[XENSTORE_RING_SIZE]; /* Replies and async watch events. */
     XENSTORE_RING_IDX req_cons, req_prod;
     XENSTORE_RING_IDX rsp_cons, rsp_prod;
+    uint32_t server_features; /* Bitmap of features supported by the server */
+    uint32_t connection;
 };
 
 /* Violating this is very bad.  See docs/misc/xenstore.txt. */
@@ -123,6 +132,13 @@ struct xenstore_domain_interface {
 /* Violating these just gets you an error back */
 #define XENSTORE_ABS_PATH_MAX 3072
 #define XENSTORE_REL_PATH_MAX 2048
+
+/* The ability to reconnect a ring */
+#define XENSTORE_SERVER_FEATURE_RECONNECTION 1
+
+/* Valid values for the connection field */
+#define XENSTORE_CONNECTED 0 /* the steady-state */
+#define XENSTORE_RECONNECT 1 /* guest has initiated a reconnect */
 
 #endif /* _XS_WIRE_H */
 

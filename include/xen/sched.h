@@ -76,9 +76,10 @@
  * Halt execution of this domain (all VCPUs) and notify the system controller.
  * @arg == pointer to sched_shutdown_t structure.
  *
- * If the sched_shutdown_t reason is SHUTDOWN_suspend then this
- * hypercall takes an additional extra argument which should be the
- * MFN of the guest's start_info_t.
+ * If the sched_shutdown_t reason is SHUTDOWN_suspend then
+ * x86 PV guests must also set RDX (EDX for 32-bit guests) to the MFN
+ * of the guest's start info page.  RDX/EDX is the third hypercall
+ * argument.
  *
  * In addition, which reason is SHUTDOWN_suspend this hypercall
  * returns 1 if suspend was cancelled or the domain was merely
@@ -117,6 +118,18 @@
  * With id != 0 and timeout != 0, poke watchdog timer and set new timeout.
  */
 #define SCHEDOP_watchdog    6
+
+/*
+ * Override the current vcpu affinity by pinning it to one physical cpu or
+ * undo this override restoring the previous affinity.
+ * @arg == pointer to sched_pin_override_t structure.
+ *
+ * A negative pcpu value will undo a previous pin override and restore the
+ * previous cpu affinity.
+ * This call is allowed for the hardware domain only and requires the cpu
+ * to be part of the domain's cpupool.
+ */
+#define SCHEDOP_pin_override 7
 /* ` } */
 
 struct sched_shutdown {
@@ -147,6 +160,12 @@ struct sched_watchdog {
 typedef struct sched_watchdog sched_watchdog_t;
 DEFINE_XEN_GUEST_HANDLE(sched_watchdog_t);
 
+struct sched_pin_override {
+    int32_t pcpu;
+};
+typedef struct sched_pin_override sched_pin_override_t;
+DEFINE_XEN_GUEST_HANDLE(sched_pin_override_t);
+
 /*
  * Reason codes for SCHEDOP_shutdown. These may be interpreted by control
  * software to determine the appropriate action. For the most part, Xen does
@@ -158,7 +177,16 @@ DEFINE_XEN_GUEST_HANDLE(sched_watchdog_t);
 #define SHUTDOWN_suspend    2  /* Clean up, save suspend info, kill.         */
 #define SHUTDOWN_crash      3  /* Tell controller we've crashed.             */
 #define SHUTDOWN_watchdog   4  /* Restart because watchdog time expired.     */
-#define SHUTDOWN_MAX        4  /* Maximum valid shutdown reason.             */
+
+/*
+ * Domain asked to perform 'soft reset' for it. The expected behavior is to
+ * reset internal Xen state for the domain returning it to the point where it
+ * was created but leaving the domain's memory contents and vCPU contexts
+ * intact. This will allow the domain to start over and set up all Xen specific
+ * interfaces again.
+ */
+#define SHUTDOWN_soft_reset 5
+#define SHUTDOWN_MAX        5  /* Maximum valid shutdown reason.             */
 /* ` } */
 
 #endif /* __XEN_PUBLIC_SCHED_H__ */

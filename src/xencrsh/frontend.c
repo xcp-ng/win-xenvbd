@@ -46,7 +46,6 @@
 
 #include <stdlib.h>
 
-#define DOMID_INVALID (0x7FF4U)
 // States in XenStore (Note - numbers must match!)
 typedef enum _XENBUS_STATE {
     XENBUS_STATE_INVALID = 0,   // 0
