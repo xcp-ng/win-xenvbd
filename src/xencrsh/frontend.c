@@ -737,6 +737,8 @@ FrontendClose(
                        "feature-online-resize");
     (VOID) StoreRemove(NULL, Frontend->FrontendPath,
                        "feature-surprise-remove");
+    (VOID) StoreRemove(NULL, Frontend->FrontendPath,
+                       "multi-queue-num-queues");
 
     return STATUS_SUCCESS;
 
