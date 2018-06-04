@@ -2082,6 +2082,61 @@ AdapterHwFindAdapter(
     return SP_RETURN_FOUND;
 }
 
+static FORCEINLINE VOID
+AdapterSetPerformanceOptions(
+    IN  PVOID               DevExt
+    )
+{
+    PERF_CONFIGURATION_DATA PerfData;
+    ULONG                   Version;
+    ULONG                   status;
+
+    RtlZeroMemory(&PerfData, sizeof(PERF_CONFIGURATION_DATA));
+    PerfData.Version = STOR_PERF_VERSION;
+    PerfData.Size = sizeof(PERF_CONFIGURATION_DATA);
+
+    status = StorPortInitializePerfOpts(DevExt, TRUE, &PerfData);
+    if (status == STOR_STATUS_SUCCESS) {
+        Trace("Version = %u\n", PerfData.Version);
+        // dump available options
+        if (PerfData.Flags & STOR_PERF_DPC_REDIRECTION)
+            Trace("DPC_REDIRECTION\n");
+        if (PerfData.Flags & STOR_PERF_CONCURRENT_CHANNELS)
+            Trace("CONCURRENT_CHANNELS\n");
+        if (PerfData.Flags & STOR_PERF_INTERRUPT_MESSAGE_RANGES)
+            Trace("INTERRUPT_MESSAGE_RANGES\n");
+        if (PerfData.Flags & STOR_PERF_ADV_CONFIG_LOCALITY)
+            Trace("ADV_CONFIG_LOCALITY\n");
+        if (PerfData.Flags & STOR_PERF_OPTIMIZE_FOR_COMPLETION_DURING_STARTIO)
+            Trace("OPTIMIZE_FOR_COMPLETION_DURING_STARTIO\n");
+        if (PerfData.Flags & STOR_PERF_DPC_REDIRECTION_CURRENT_CPU)
+            Trace("DPC_REDIRECTION_CURRENT_CPU\n");
+        if (PerfData.Flags & STOR_PERF_NO_SGL)
+            Trace("NO_SGL\n");
+
+        Version = PerfData.Version;
+    } else {
+        Warning("StorPortInitializePerfOpts(Get) failed %08x\n", status);
+        Version = STOR_PERF_VERSION;
+    }
+
+    RtlZeroMemory(&PerfData, sizeof(PERF_CONFIGURATION_DATA));
+    PerfData.Version = Version;
+    PerfData.Size = sizeof(PERF_CONFIGURATION_DATA);
+
+    if (Version >= 2) {
+        PerfData.Flags |= STOR_PERF_DPC_REDIRECTION |
+                          STOR_PERF_CONCURRENT_CHANNELS;
+        PerfData.ConcurrentChannels = DriverGetMaxQueues();
+    }
+    if (Version >= 3)
+        PerfData.Flags |= STOR_PERF_OPTIMIZE_FOR_COMPLETION_DURING_STARTIO;
+
+    status = StorPortInitializePerfOpts(DevExt, FALSE, &PerfData);
+    if (status != STOR_STATUS_SUCCESS)
+        Warning("StorPortInitializePerfOpts(Set) failed %08x\n", status);
+}
+
 HW_PASSIVE_INITIALIZE_ROUTINE AdapterHwPassiveInitialize;
 
 BOOLEAN
@@ -2095,6 +2150,7 @@ AdapterHwPassiveInitialize(
     PDEVICE_OBJECT  LowerDeviceObject;
     NTSTATUS        status;
 
+    AdapterSetPerformanceOptions(DevExt);
     if (StorPortGetDeviceObjects(DevExt,
                                  &DeviceObject,
                                  &PhysicalDeviceObject,
