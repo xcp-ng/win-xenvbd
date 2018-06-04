@@ -320,6 +320,28 @@ DriverGetFeatureName(
            NULL;
 }
 
+ULONG
+DriverGetMaxQueues(
+    VOID
+    )
+{
+    ULONG   Override;
+    ULONG   MaxQueues;
+
+    MaxQueues = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
+
+    if (DriverGetFeatureOverride(FeatureMultiQueueMaxQueues,
+                                 &Override)) {
+        if (Override < MaxQueues)
+            MaxQueues = Override;
+    }
+
+    if (MaxQueues == 0)
+        MaxQueues = 1;
+
+    return MaxQueues;
+}
+
 DRIVER_INITIALIZE   DriverEntry;
 
 NTSTATUS

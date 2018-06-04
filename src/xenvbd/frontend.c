@@ -1865,29 +1865,6 @@ fail1:
     return status;
 }
 
-static VOID
-FrontendSetMaxQueues(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    ULONG                   FrontendMaxQueues;
-
-    Frontend->MaxQueues = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
-
-    if (DriverGetFeatureOverride(FeatureMultiQueueMaxQueues,
-                                 &FrontendMaxQueues)) {
-        if (FrontendMaxQueues < Frontend->MaxQueues)
-            Frontend->MaxQueues = FrontendMaxQueues;
-    }
-
-    if (Frontend->MaxQueues == 0)
-        Frontend->MaxQueues = 1;
-
-    Verbose("Target[%u] MaxQueues %u\n",
-            __FrontendGetTargetId(Frontend),
-            Frontend->MaxQueues);
-}
-
 NTSTATUS
 FrontendCreate(
     IN  PXENVBD_TARGET      Target,
@@ -1915,8 +1892,11 @@ FrontendCreate(
     Frontend->DiskInfo.SectorSize = 512; // default sector size
     Frontend->BackendDomain = DOMID_INVALID;
 
-    FrontendSetMaxQueues(Frontend);
-    
+    Frontend->MaxQueues = DriverGetMaxQueues();
+    Verbose("Target[%u] MaxQueues %u\n",
+            __FrontendGetTargetId(Frontend),
+            Frontend->MaxQueues);
+
     status = RtlStringCbPrintfA(Frontend->FrontendPath,
                                 sizeof(Frontend->FrontendPath),
                                 "device/vbd/%u",

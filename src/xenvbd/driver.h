@@ -100,4 +100,9 @@ DriverGetFeatureName(
     IN  XENVBD_FEATURE  Feature
     );
 
+extern ULONG
+DriverGetMaxQueues(
+    VOID
+    );
+
 #endif // _XENVBD_DRIVER_H
