@@ -46,7 +46,6 @@
 #include "driver.h"
 #include "adapter.h"
 #include "frontend.h"
-#include "queue.h"
 #include "srbext.h"
 
 #include "debug.h"

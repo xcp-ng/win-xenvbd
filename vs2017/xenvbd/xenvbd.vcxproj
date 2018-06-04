@@ -78,7 +78,6 @@
     <ClCompile Include="../../src/xenvbd/frontend.c" />
     <ClCompile Include="../../src/xenvbd/target.c" />
     <ClCompile Include="../../src/xenvbd/base64.c" />
-    <ClCompile Include="../../src/xenvbd/queue.c" />
     <ClCompile Include="../../src/xenvbd/thread.c" />
     <ClCompile Include="../../src/xenvbd/ring.c" />
     <ClCompile Include="../../src/xenvbd/granter.c" />
