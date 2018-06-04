@@ -1878,7 +1878,8 @@ BlkifRingConnect(
         status = KeGetProcessorNumberFromIndex(BlkifRing->Index, &ProcNumber);
         ASSERT(NT_SUCCESS(status));
 
-        KeSetTargetProcessorDpcEx(&BlkifRing->Dpc, &ProcNumber);
+        status = KeSetTargetProcessorDpcEx(&BlkifRing->Dpc, &ProcNumber);
+        ASSERT(NT_SUCCESS(status));
     }
     KeSetImportanceDpc(&BlkifRing->Dpc, MediumHighImportance);
 
