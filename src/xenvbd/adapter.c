@@ -2111,8 +2111,6 @@ AdapterSetPerformanceOptions(
             Trace("OPTIMIZE_FOR_COMPLETION_DURING_STARTIO\n");
         if (PerfData.Flags & STOR_PERF_DPC_REDIRECTION_CURRENT_CPU)
             Trace("DPC_REDIRECTION_CURRENT_CPU\n");
-        if (PerfData.Flags & STOR_PERF_NO_SGL)
-            Trace("NO_SGL\n");
 
         Version = PerfData.Version;
     } else {
