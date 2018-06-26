@@ -1649,7 +1649,8 @@ BlkifRingDpc(
     XENBUS_EVTCHN(Unmask,
                   &Ring->EvtchnInterface,
                   BlkifRing->Channel,
-                  FALSE);
+                  FALSE,
+                  TRUE);
 }
 
 static NTSTATUS
@@ -1923,7 +1924,8 @@ BlkifRingConnect(
     XENBUS_EVTCHN(Unmask,
                   &Ring->EvtchnInterface,
                   BlkifRing->Channel,
-                  FALSE);
+                  FALSE,
+                  TRUE);
 
     status = RtlStringCchPrintfA(Name,
                                  MAX_NAME_LEN,
