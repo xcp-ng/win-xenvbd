@@ -35,9 +35,9 @@
 #include <ntddk.h>
 #include <stdarg.h>
 
-#ifdef  _SDV_
-#define __MODULE__ ""
-#endif
+#define stringify_literal(_text) #_text
+#define stringify(_text) stringify_literal(_text)
+#define __MODULE__ stringify(PROJECT)
 
 // DEBUG_FILTER_MASKs
 // Set these to see relevant output

@@ -22,7 +22,7 @@
     <ClCompile>
       <AdditionalIncludeDirectories>..\..\include;..\..\src\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>false</BufferSecurityCheck>
-      <PreprocessorDefinitions>__MODULE__="XENDISK";POOL_NX_OPTIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PROJECT=$(ProjectName);POOL_NX_OPTIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>EnableAllWarnings</WarningLevel>
       <DisableSpecificWarnings>4464;4548;4711;4820;4668;4255;6001;6054;28196;30030;30029;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
