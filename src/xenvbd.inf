@@ -102,6 +102,8 @@ HKR,"Parameters",,0x00000010
 HKR,"Parameters","BusType",0x00010001,0x00000001 
 HKR,"Parameters\PnpInterface","5",0x00010001,0x00000001 
 HKR,"Parameters","RequestKey",0x00000000,%RequestKey%
+HKR,"Parameters","max-ring-page-order",0x00010001,0x00000001
+HKR,"Parameters","multi-queue-max-queues",0x00010001,0x00000002
 
 [XenVbd_Inst.CoInstallers]
 CopyFiles=CoInst_CopyFiles
