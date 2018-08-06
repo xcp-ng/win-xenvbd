@@ -1419,8 +1419,6 @@ BlkifRingSchedule(
             RING_SIZE(&BlkifRing->Front) / 4)
             __BlkifRingPushRequests(BlkifRing);
 
-        ASSERT3U(State->Count, == , 0);
-
         if (IsListEmpty(&BlkifRing->SrbQueue))
             break;
 
