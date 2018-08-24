@@ -45,7 +45,7 @@
       <Project>{d7411b2c-2c43-434d-9f56-e10a3d2f5bad}</Project>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="Exists('$(DPINST_REDIST)')">
     <FilesToPackage Include="$(DPINST_REDIST)\x86\dpinst.exe" Condition="'$(Platform)'=='Win32'" />
     <FilesToPackage Include="$(DPINST_REDIST)\x64\dpinst.exe" Condition="'$(Platform)'=='x64'" />
   </ItemGroup>
