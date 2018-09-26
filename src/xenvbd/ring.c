@@ -2338,8 +2338,9 @@ RingDestroy(
     ULONG               Index;
 
     Index = FrontendGetMaxQueues(Ring->Frontend);
+    ASSERT3U(Index, !=, 0);
 
-    while (--Index > 0) {
+    while (--Index != 0) {
         PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
         Ring->Ring[Index] = NULL;

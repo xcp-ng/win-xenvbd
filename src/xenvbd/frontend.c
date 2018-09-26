@@ -1976,8 +1976,6 @@ FrontendDestroy(
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 
-    Frontend->MaxQueues = 0;
-
     ThreadAlert(Frontend->BackendThread);
     ThreadJoin(Frontend->BackendThread);
     Frontend->BackendThread = NULL;
@@ -1987,6 +1985,8 @@ FrontendDestroy(
 
     RingDestroy(Frontend->Ring);
     Frontend->Ring = NULL;
+
+    Frontend->MaxQueues = 0;
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->BackendWatch, ==, NULL);
