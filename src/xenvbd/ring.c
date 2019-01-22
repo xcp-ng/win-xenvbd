@@ -1848,7 +1848,7 @@ BlkifRingDestroy(
     RtlZeroMemory(&BlkifRing->ShutdownQueue, sizeof(LIST_ENTRY));
 
     __RingFree(BlkifRing->Path);
-    BlkifRing->Path;
+    BlkifRing->Path = NULL;
     BlkifRing->Index = 0;
     BlkifRing->Ring = NULL;
 
