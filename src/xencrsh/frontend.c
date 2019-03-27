@@ -666,6 +666,11 @@ __WriteRing(
         if (!NT_SUCCESS(Status))
             goto abort;
 
+        Status = StoreWrite(Transaction, Frontend->FrontendPath,
+                        "multi-queue-num-queues", "1");
+        if (!NT_SUCCESS(Status))
+            goto abort;
+
         Status = StoreTransactionEnd(Transaction, TRUE);
         if (Status == STATUS_RETRY)
             continue;
