@@ -1276,16 +1276,6 @@ FrontendConnect(
         if (!NT_SUCCESS(Status))
             goto abort;
 
-        Status = XENBUS_STORE(Printf,
-                              &Frontend->StoreInterface,
-                              Transaction,
-                              Frontend->FrontendPath,
-                              "multi-queue-num-queues",
-                              "%u",
-                              __FrontendGetNumQueues(Frontend));
-        if (!NT_SUCCESS(Status))
-            goto abort;
-
         Status = XENBUS_STORE(TransactionEnd,
                               &Frontend->StoreInterface,
                               Transaction,
@@ -1628,6 +1618,11 @@ FrontendDebugCallback(
                  &Frontend->DebugInterface,
                  "State: %s\n",
                  __XenvbdStateName(Frontend->State));
+    XENBUS_DEBUG(Printf,
+                 &Frontend->DebugInterface,
+                 "Queues: u / %u\n",
+                 __FrontendGetNumQueues(Frontend),
+                 __FrontendGetMaxQueues(Frontend));
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
