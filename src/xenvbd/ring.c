@@ -2085,6 +2085,7 @@ BlkifRingDisable(
 
         ListEntry = RemoveHeadList(&BlkifRing->State.List);
         ASSERT3P(ListEntry, != , &BlkifRing->State.List);
+        --BlkifRing->State.Count;
 
         Request = CONTAINING_RECORD(ListEntry,
                                     XENVBD_REQUEST,
