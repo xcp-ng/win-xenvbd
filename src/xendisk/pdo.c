@@ -528,8 +528,8 @@ PdoSendTrimSynchronous(
     Cdb->UNMAP.OperationCode = SCSIOP_UNMAP;
     *(PUSHORT)Cdb->UNMAP.AllocationLength = _byteswap_ushort((USHORT)Length);
 
-	*(PUSHORT)Unmap->DataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, BlockDescrDataLength)));
-	*(PUSHORT)Unmap->BlockDescrDataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, Descriptors[0])));
+    *(PUSHORT)Unmap->DataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, BlockDescrDataLength)));
+    *(PUSHORT)Unmap->BlockDescrDataLength = _byteswap_ushort((USHORT)(Length - FIELD_OFFSET(UNMAP_LIST_HEADER, Descriptors[0])));
 
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Block = &Unmap->Descriptors[Index];
@@ -537,11 +537,6 @@ PdoSendTrimSynchronous(
 
         ULONG   LengthInSectors = (ULONG)(Range->LengthInBytes / Pdo->SectorSize);
         ULONG64 OffsetInSectors = (ULONG64)(Range->StartingOffset / Pdo->SectorSize);
-
-        Trace("TRIM[%x] %x @ %llx\n",
-                        Index,
-                        LengthInSectors,
-                        OffsetInSectors);
 
         *(PULONG64)Block->StartingLba = _byteswap_uint64(OffsetInSectors);
         *(PULONG)Block->LbaCount = _byteswap_ulong(LengthInSectors);
