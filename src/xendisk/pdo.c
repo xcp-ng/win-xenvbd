@@ -65,6 +65,7 @@ struct _XENDISK_PDO {
 
     BOOLEAN                     InterceptTrim;
     ULONG                       SectorSize;
+    ULONG                       PhysSectorSize;
 };
 
 static FORCEINLINE PVOID
@@ -429,7 +430,8 @@ fail1:
 static NTSTATUS
 PdoSendReadCapacity16Synchronous(
     IN  PXENDISK_PDO            Pdo,
-    OUT PULONG                  SectorSize
+    OUT PULONG                  SectorSize,
+    OUT PULONG                  PhysSectorSize
     )
 {
     SCSI_REQUEST_BLOCK          Srb;
@@ -470,6 +472,7 @@ PdoSendReadCapacity16Synchronous(
         goto fail3;
 
     *SectorSize = _byteswap_ulong(Capacity->BytesPerBlock);
+    *PhysSectorSize = *SectorSize << Capacity->LogicalPerPhysicalExponent;
 
     __PdoFree(Capacity);
 
@@ -587,6 +590,16 @@ PropertyIdName(
     _STORAGE_PROPERTY_NAME(DevicePowerProperty);
     _STORAGE_PROPERTY_NAME(DeviceCopyOffloadProperty);
     _STORAGE_PROPERTY_NAME(DeviceResiliencyProperty);
+    _STORAGE_PROPERTY_NAME(DeviceMediumProductType);
+    _STORAGE_PROPERTY_NAME(AdapterCryptoProperty);
+    _STORAGE_PROPERTY_NAME(DeviceIoCapabilityProperty);
+    _STORAGE_PROPERTY_NAME(AdapterProtocolSpecificProperty);
+    _STORAGE_PROPERTY_NAME(DeviceProtocolSpecificProperty);
+    _STORAGE_PROPERTY_NAME(AdapterTemperatureProperty);
+    _STORAGE_PROPERTY_NAME(DeviceTemperatureProperty);
+    _STORAGE_PROPERTY_NAME(AdapterPhysicalTopologyProperty);
+    _STORAGE_PROPERTY_NAME(DevicePhysicalTopologyProperty);
+    _STORAGE_PROPERTY_NAME(DeviceAttributesProperty);
     default:
         break;
     }
@@ -594,6 +607,28 @@ PropertyIdName(
     return "UNKNOWN";
 
 #undef _STORAGE_PROPERTY_NAME
+}
+
+static const CHAR *
+QueryTypeName(
+    IN  STORAGE_QUERY_TYPE  Type
+    )
+{
+#define _STORAGE_QUERY_NAME(_Type)   \
+    case Property ## _Type ## Query: \
+        return #_Type;
+
+    switch (Type) {
+    _STORAGE_QUERY_NAME(Standard);
+    _STORAGE_QUERY_NAME(Exists);
+    _STORAGE_QUERY_NAME(Mask);
+    default:
+        break;
+    }
+
+    return "UNKNOWN";
+
+#undef _STORAGE_QUERY_NAME
 }
 
 static DECLSPEC_NOINLINE NTSTATUS
@@ -614,7 +649,7 @@ PdoQueryProperty(
 
     Query = Irp->AssociatedIrp.SystemBuffer;
 
-    Trace("%s\n", PropertyIdName(Query->PropertyId));
+    Trace("%s %s\n", PropertyIdName(Query->PropertyId), QueryTypeName(Query->QueryType));
 
     switch (Query->PropertyId) {
     case StorageDeviceTrimProperty:
@@ -646,6 +681,34 @@ PdoQueryProperty(
         status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
         break;
 
+    case StorageAccessAlignmentProperty: {
+        if (Query->QueryType == PropertyStandardQuery) {
+            PSTORAGE_ACCESS_ALIGNMENT_DESCRIPTOR AccessAlignment;
+
+            if (StackLocation->Parameters.DeviceIoControl.OutputBufferLength <
+                sizeof (STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR))
+                return PdoCompleteIrp(Pdo, Irp, STATUS_BUFFER_OVERFLOW);
+
+            AccessAlignment = Irp->AssociatedIrp.SystemBuffer;
+
+            RtlZeroMemory(AccessAlignment, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
+
+            AccessAlignment->Version = sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR);
+            AccessAlignment->Size = sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR);
+            AccessAlignment->BytesPerCacheLine = 0;
+            AccessAlignment->BytesOffsetForCacheAlignment = 0;
+            AccessAlignment->BytesPerLogicalSector = Pdo->SectorSize;
+            AccessAlignment->BytesPerPhysicalSector = Pdo->PhysSectorSize;
+            AccessAlignment->BytesOffsetForSectorAlignment = 0;
+
+            Irp->IoStatus.Information = sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR);
+        } else {
+            Irp->IoStatus.Information = 0;
+        }
+
+        status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
+        break;
+    }
     default:
         status = PdoForwardIrpAndForget(Pdo, Irp);
         break;
@@ -743,6 +806,7 @@ PdoStartDevice(
     )
 {
     ULONG               SectorSize;
+    ULONG               PhysSectorSize;
     POWER_STATE         PowerState;
     NTSTATUS            status;
 
@@ -754,11 +818,14 @@ PdoStartDevice(
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = PdoSendReadCapacity16Synchronous(Pdo, &SectorSize);
+    status = PdoSendReadCapacity16Synchronous(Pdo, &SectorSize, &PhysSectorSize);
     if (!NT_SUCCESS(status))
         goto fail3;
 
+    Trace("SectorSize = %u PhysSectorSize = %u\n", SectorSize, PhysSectorSize);
+
     Pdo->SectorSize = SectorSize;
+    Pdo->PhysSectorSize = PhysSectorSize;
 
     __PdoSetSystemPowerState(Pdo, PowerSystemWorking);
     __PdoSetDevicePowerState(Pdo, PowerDeviceD0);
