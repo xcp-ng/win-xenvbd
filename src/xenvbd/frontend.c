@@ -1276,6 +1276,16 @@ FrontendConnect(
         if (!NT_SUCCESS(Status))
             goto abort;
 
+        Status = XENBUS_STORE(Printf,
+                              &Frontend->StoreInterface,
+                              Transaction,
+                              Frontend->FrontendPath,
+                              "feature-large-sector-size",
+                              "%u",
+                              1);
+        if (!NT_SUCCESS(Status))
+            goto abort;
+
         Status = XENBUS_STORE(TransactionEnd,
                               &Frontend->StoreInterface,
                               Transaction,
