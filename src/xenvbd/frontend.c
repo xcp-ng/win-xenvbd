@@ -865,13 +865,13 @@ __ReadDiskInfo(
     }
 
     // dump actual values
-    Verbose("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
-            Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
-            Frontend->DiskInfo.PhysSectorSize);
-    Verbose("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
-            __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-            Frontend->DiskInfo.DiskInfo,
-            Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+    Trace("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
+          Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
+          Frontend->DiskInfo.PhysSectorSize);
+    Trace("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
+          __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
+          Frontend->DiskInfo.DiskInfo,
+          Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
 }
 
 static FORCEINLINE VOID

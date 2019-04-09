@@ -457,16 +457,17 @@ fail1:
 
 static NTSTATUS
 PdoSendReadCapacity16Synchronous(
-    IN  PXENDISK_PDO            Pdo,
-    OUT PULONG                  SectorSize,
-    OUT PULONG                  PhysSectorSize
+    IN  PXENDISK_PDO        Pdo,
+    OUT PULONG              SectorSize,
+    OUT PULONG              PhysSectorSize,
+    OUT PULONG64            SectorCount
     )
 {
-    SCSI_REQUEST_BLOCK          Srb;
-    PCDB                        Cdb;
-    PREAD_CAPACITY16_DATA       Capacity;
-    ULONG                       Length;
-    NTSTATUS                    status;
+    SCSI_REQUEST_BLOCK       Srb;
+    PCDB                     Cdb;
+    PREAD_CAPACITY16_DATA    Capacity;
+    ULONG                    Length;
+    NTSTATUS                 status;
 
     Trace("====>\n");
 
@@ -501,6 +502,7 @@ PdoSendReadCapacity16Synchronous(
 
     *SectorSize = _byteswap_ulong(Capacity->BytesPerBlock);
     *PhysSectorSize = *SectorSize << Capacity->LogicalPerPhysicalExponent;
+    *SectorCount = _byteswap_uint64(Capacity->LogicalBlockAddress.QuadPart) + 1;
 
     __PdoFree(Capacity);
 
@@ -830,6 +832,8 @@ PdoStartDevice(
 {
     ULONG               SectorSize;
     ULONG               PhysSectorSize;
+    ULONG64             SectorCount;
+    ULONG64             Size;
     POWER_STATE         PowerState;
     NTSTATUS            status;
 
@@ -841,14 +845,21 @@ PdoStartDevice(
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = PdoSendReadCapacity16Synchronous(Pdo, &SectorSize, &PhysSectorSize);
+    status = PdoSendReadCapacity16Synchronous(Pdo,
+                                              &SectorSize,
+                                              &PhysSectorSize,
+                                              &SectorCount);
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    Trace("SectorSize = %u PhysSectorSize = %u\n", SectorSize, PhysSectorSize);
-
     Pdo->SectorSize = SectorSize;
     Pdo->PhysSectorSize = PhysSectorSize;
+
+    Size = SectorSize * SectorCount;
+    Size >>= 20; // Scale to megabytes
+
+    Verbose("%s: %luMB (%uB sectors)\n",
+            __PdoGetName(Pdo), Size, SectorSize);
 
     __PdoSetSystemPowerState(Pdo, PowerSystemWorking);
     __PdoSetDevicePowerState(Pdo, PowerDeviceD0);
