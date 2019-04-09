@@ -57,7 +57,9 @@ PdoGetPhysicalDeviceObject(
 extern NTSTATUS
 PdoCreate(
     IN  PXENDISK_FDO    Fdo,
-    IN  PDEVICE_OBJECT  PhysicalDeviceObject
+    IN  PDEVICE_OBJECT  PhysicalDeviceObject,
+    IN  PCHAR           DeviceID,
+    IN  PCHAR           InstanceID
     );
 
 extern VOID

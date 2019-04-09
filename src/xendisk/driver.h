@@ -45,6 +45,8 @@ DriverGetParametersKey(
     VOID
     );
 
+#define MAX_DEVICE_ID_LEN   200
+
 #pragma warning(push)
 #pragma warning(disable:4201) // nonstandard extension used : nameless struct/union
 

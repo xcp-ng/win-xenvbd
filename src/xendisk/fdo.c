@@ -240,6 +240,142 @@ FdoReleaseMutex(
         FdoDestroy(Fdo);
 }
 
+__drv_functionClass(IO_COMPLETION_ROUTINE)
+__drv_sameIRQL
+static NTSTATUS
+FdoQueryIdCompletion(
+    IN  PDEVICE_OBJECT  DeviceObject,
+    IN  PIRP            Irp,
+    IN  PVOID           Context
+    )
+{
+    PKEVENT             Event = Context;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
+
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+static NTSTATUS
+FdoQueryId(
+    IN  PXENDISK_FDO        Fdo,
+    IN  PDEVICE_OBJECT      DeviceObject,
+    IN  BUS_QUERY_ID_TYPE   Type,
+    OUT PCHAR               Id
+    )
+{
+    PIRP                    Irp;
+    KEVENT                  Event;
+    PIO_STACK_LOCATION      StackLocation;
+    NTSTATUS                status;
+
+    UNREFERENCED_PARAMETER(Fdo);
+
+    ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
+
+    Irp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
+
+    status = STATUS_INSUFFICIENT_RESOURCES;
+    if (Irp == NULL)
+        goto fail1;
+
+    StackLocation = IoGetNextIrpStackLocation(Irp);
+
+    StackLocation->MajorFunction = IRP_MJ_PNP;
+    StackLocation->MinorFunction = IRP_MN_QUERY_ID;
+    StackLocation->Flags = 0;
+    StackLocation->Parameters.QueryId.IdType = Type;
+    StackLocation->DeviceObject = DeviceObject;
+    StackLocation->FileObject = NULL;
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+    IoSetCompletionRoutine(Irp,
+                           FdoQueryIdCompletion,
+                           &Event,
+                           TRUE,
+                           TRUE,
+                           TRUE);
+
+    // Default completion status
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+
+    status = IoCallDriver(DeviceObject, Irp);
+    if (status == STATUS_PENDING) {
+        (VOID) KeWaitForSingleObject(&Event,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     NULL);
+        status = Irp->IoStatus.Status;
+    } else {
+        ASSERT3U(status, ==, Irp->IoStatus.Status);
+    }
+
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = RtlStringCbPrintfA(Id,
+                                MAX_DEVICE_ID_LEN,
+                                "%ws",
+                                (PWCHAR)Irp->IoStatus.Information);
+    ASSERT(NT_SUCCESS(status));
+
+    ExFreePool((PVOID)Irp->IoStatus.Information);
+
+    IoFreeIrp(Irp);
+
+    return STATUS_SUCCESS;
+
+fail2:
+    IoFreeIrp(Irp);
+
+fail1:
+    return status;
+}
+
+static NTSTATUS
+FdoAddDevice(
+    IN  PXENDISK_FDO    Fdo,
+    IN  PDEVICE_OBJECT  PhysicalDeviceObject
+    )
+{
+    CHAR                DeviceID[MAX_DEVICE_ID_LEN];
+    CHAR                InstanceID[MAX_DEVICE_ID_LEN];
+    NTSTATUS            status;
+
+    status = FdoQueryId(Fdo,
+                        PhysicalDeviceObject,
+                        BusQueryDeviceID,
+                        DeviceID);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = FdoQueryId(Fdo,
+                        PhysicalDeviceObject,
+                        BusQueryInstanceID,
+                        InstanceID);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = PdoCreate(Fdo,
+                       PhysicalDeviceObject,
+                       DeviceID,
+                       InstanceID);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    return STATUS_SUCCESS;
+
+fail3:
+fail2:
+fail1:
+    return status;
+}
+
 static FORCEINLINE VOID
 __FdoEnumerate(
     IN  PXENDISK_FDO        Fdo,
@@ -287,8 +423,8 @@ __FdoEnumerate(
     for (Index = 0; Index < Count; Index++) {
 #pragma warning(suppress:6385)  // Reading invalid data from 'PhysicalDeviceObject'
         if (PhysicalDeviceObject[Index] != NULL) {
-            (VOID) PdoCreate(Fdo,
-                             PhysicalDeviceObject[Index]);
+            (VOID) FdoAddDevice(Fdo,
+                                PhysicalDeviceObject[Index]);
         }
     }
 

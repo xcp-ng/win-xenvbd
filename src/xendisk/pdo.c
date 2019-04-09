@@ -51,10 +51,13 @@
 
 #define PDO_TAG 'ODP'
 
+#define MAXNAMELEN  128
+
 struct _XENDISK_PDO {
     PXENDISK_DX                 Dx;
     PDEVICE_OBJECT              LowerDeviceObject;
     PDEVICE_OBJECT              PhysicalDeviceObject;
+    CHAR                        Name[MAXNAMELEN];
 
     PXENDISK_THREAD             SystemPowerThread;
     PIRP                        SystemPowerIrp;
@@ -218,6 +221,31 @@ __PdoGetFdo(
     )
 {
     return Pdo->Fdo;
+}
+
+static FORCEINLINE VOID
+__PdoSetName(
+    IN  PXENDISK_PDO    Pdo,
+    IN  PCHAR           DeviceID,
+    IN  PCHAR           InstanceID
+    )
+{
+    NTSTATUS            status;
+
+    status = RtlStringCbPrintfA(Pdo->Name,
+                                MAXNAMELEN,
+                                "%s\\%s",
+                                DeviceID,
+                                InstanceID);
+    ASSERT(NT_SUCCESS(status));
+}
+
+static FORCEINLINE PCHAR
+__PdoGetName(
+    IN  PXENDISK_PDO    Pdo
+    )
+{
+    return Pdo->Name;
 }
 
 __drv_functionClass(IO_COMPLETION_ROUTINE)
@@ -1393,10 +1421,10 @@ __PdoSetDevicePowerUp(
     if (!NT_SUCCESS(status))
         goto done;
 
-    Verbose("%p: %s -> %s\n",
-         Pdo->Dx->DeviceObject,
-         PowerDeviceStateName(__PdoGetDevicePowerState(Pdo)),
-         PowerDeviceStateName(DeviceState));
+    Verbose("%s: %s -> %s\n",
+            __PdoGetName(Pdo),
+            PowerDeviceStateName(__PdoGetDevicePowerState(Pdo)),
+            PowerDeviceStateName(DeviceState));
 
     __PdoSetDevicePowerState(Pdo, DeviceState);
 
@@ -1422,10 +1450,10 @@ __PdoSetDevicePowerDown(
 
     ASSERT3U(DeviceState, >,  __PdoGetDevicePowerState(Pdo));
 
-    Verbose("%p: %s -> %s\n",
-         Pdo->Dx->DeviceObject,
-         PowerDeviceStateName(__PdoGetDevicePowerState(Pdo)),
-         PowerDeviceStateName(DeviceState));
+    Verbose("%s: %s -> %s\n",
+            __PdoGetName(Pdo),
+            PowerDeviceStateName(__PdoGetDevicePowerState(Pdo)),
+            PowerDeviceStateName(DeviceState));
 
     __PdoSetDevicePowerState(Pdo, DeviceState);
 
@@ -1492,10 +1520,10 @@ __PdoSetSystemPowerUp(
     if (!NT_SUCCESS(status))
         goto done;
 
-    Verbose("%p: %s -> %s\n",
-         Pdo->Dx->DeviceObject,
-         PowerSystemStateName(__PdoGetSystemPowerState(Pdo)),
-         PowerSystemStateName(SystemState));
+    Verbose("%s: %s -> %s\n",
+            __PdoGetName(Pdo),
+            PowerSystemStateName(__PdoGetSystemPowerState(Pdo)),
+            PowerSystemStateName(SystemState));
 
     __PdoSetSystemPowerState(Pdo, SystemState);
 
@@ -1508,7 +1536,7 @@ done:
 
 static FORCEINLINE NTSTATUS
 __PdoSetSystemPowerDown(
-    IN  PXENDISK_PDO     Pdo,
+    IN  PXENDISK_PDO    Pdo,
     IN  PIRP            Irp
     )
 {
@@ -1521,10 +1549,10 @@ __PdoSetSystemPowerDown(
 
     ASSERT3U(SystemState, >,  __PdoGetSystemPowerState(Pdo));
 
-    Verbose("%p: %s -> %s\n",
-         Pdo->Dx->DeviceObject,
-         PowerSystemStateName(__PdoGetSystemPowerState(Pdo)),
-         PowerSystemStateName(SystemState));
+    Verbose("%s: %s -> %s\n",
+            __PdoGetName(Pdo),
+            PowerSystemStateName(__PdoGetSystemPowerState(Pdo)),
+            PowerSystemStateName(SystemState));
 
     __PdoSetSystemPowerState(Pdo, SystemState);
 
@@ -2057,18 +2085,20 @@ PdoDispatch(
 
 NTSTATUS
 PdoCreate(
-    PXENDISK_FDO                    Fdo,
-    PDEVICE_OBJECT                  PhysicalDeviceObject
+    IN  PXENDISK_FDO    Fdo,
+    IN  PDEVICE_OBJECT  PhysicalDeviceObject,
+    IN  PCHAR           DeviceID,
+    IN  PCHAR           InstanceID
     )
 {
-    PDEVICE_OBJECT                  LowerDeviceObject;
-    ULONG                           DeviceType;
-    PDEVICE_OBJECT                  FilterDeviceObject;
-    PXENDISK_DX                     Dx;
-    PXENDISK_PDO                    Pdo;
-    HANDLE                          ParametersKey;
-    ULONG                           InterceptTrim;
-    NTSTATUS                        status;
+    PDEVICE_OBJECT      LowerDeviceObject;
+    ULONG               DeviceType;
+    PDEVICE_OBJECT      FilterDeviceObject;
+    PXENDISK_DX         Dx;
+    PXENDISK_PDO        Pdo;
+    HANDLE              ParametersKey;
+    ULONG               InterceptTrim;
+    NTSTATUS            status;
 
     LowerDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);
     DeviceType = LowerDeviceObject->DeviceType;
@@ -2121,6 +2151,8 @@ PdoCreate(
     if (!NT_SUCCESS(status))
         goto fail5;
 
+    __PdoSetName(Pdo, DeviceID, InstanceID);
+
     ParametersKey = DriverGetParametersKey();
 
     Pdo->InterceptTrim = TRUE;
@@ -2131,7 +2163,7 @@ PdoCreate(
     if (NT_SUCCESS(status))
         Pdo->InterceptTrim = (InterceptTrim != 0) ? TRUE : FALSE;
 
-    Verbose("%p\n", FilterDeviceObject);
+    Verbose("%p (%s)\n", FilterDeviceObject, __PdoGetName(Pdo));
 
     Dx->Pdo = Pdo;
 
@@ -2192,11 +2224,13 @@ PdoDestroy(
 
     __PdoUnlink(Pdo);
 
-    Verbose("%p\n", FilterDeviceObject);
+    Verbose("%s\n", __PdoGetName(Pdo));
 
     Dx->Pdo = NULL;
 
     Pdo->InterceptTrim = FALSE;
+
+    RtlZeroMemory(Pdo->Name, sizeof (Pdo->Name));
 
     ThreadAlert(Pdo->DevicePowerThread);
     ThreadJoin(Pdo->DevicePowerThread);
