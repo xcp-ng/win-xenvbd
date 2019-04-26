@@ -59,4 +59,10 @@ HvmSetParameter(
     IN  ULONGLONG       Value
     );
 
+NTSTATUS
+HvmGetMemoryType(
+    IN  PFN_NUMBER      Pfn,
+    OUT ULONG           *Type
+    );
+
 #endif // _XENVBD_HVM_H

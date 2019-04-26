@@ -41,10 +41,12 @@
 #include "pdoinquiry.h"
 
 #include "austere.h"
+#include "hvm.h"
 #include "store.h"
 #include "gnttab.h"
 #include "evtchn.h"
 
+#include <xen/hvm/hvm_op.h>
 #include <xencdb.h>
 #include "log.h"
 #include "assert.h"
@@ -226,12 +228,17 @@ __CleanupRequest(
 
         // free bounce buffer
         if (Request->Segments[Index].BufferId) {
-            if (Request->Operation == BLKIF_OP_READ && CopyOut) {
-                BufferCopyOut(Request->Segments[Index].BufferId, (PUCHAR)Request->Segments[Index].Buffer, Request->Segments[Index].Length);
+            if (Request->Operation == BLKIF_OP_READ && CopyOut &&
+                Request->Segments[Index].Buffer) {
+                BufferCopyOut(Request->Segments[Index].BufferId,
+                              (PUCHAR)Request->Segments[Index].Buffer,
+                              Request->Segments[Index].Length);
             } 
             BufferPut(Request->Segments[Index].BufferId);
             Request->Segments[Index].BufferId = 0;
-            MmUnmapLockedPages(Request->Segments[Index].Buffer, &Request->Segments[Index].Mdl);
+            if (Request->Segments[Index].Buffer)
+                MmUnmapLockedPages(Request->Segments[Index].Buffer,
+                                   &Request->Segments[Index].Mdl);
         }
     }
 
@@ -428,6 +435,8 @@ PrepareReadWrite(
             SGIndex.LastLength = 0;
             __GetPhysAddr(SGList, &SGIndex, &PhysAddr, &PhysLen);
             if (__PhysAddrIsAligned(PhysAddr, PhysLen, SectorSize - 1)) {
+                ULONG Type;
+
                 // get first sector, last sector and count
                 FirstSector = (__Offset(PhysAddr) + SectorSize - 1) / SectorSize;
                 SectorsNow  = __Min(NumSectors - SectorsDone, SectorsPerPage - FirstSector);
@@ -438,6 +447,21 @@ PrepareReadWrite(
                
                 // simples - grab Pfn of PhysAddr
                 Pfn         = __Pfn(PhysAddr);
+
+                Status = HvmGetMemoryType(Pfn, &Type);
+                if (!NT_SUCCESS(Status))
+                    LogWarning("Unable to get type for PFN %lx\n", Pfn);
+                else if (Type != HVMMEM_ram_rw) {
+                    ULONG BufferId;
+
+                    if (!BufferGet(&BufferId, &Pfn)) {
+                        Pdo->NeedsWake = TRUE;
+                        __CleanupSrb(Srb);
+                        return STATUS_INSUFFICIENT_RESOURCES;
+                    }
+
+                    Request->Segments[Index2].BufferId = BufferId;
+                }
             } else {
                 PMDL        Mdl;
                 ULONG       BufferId;

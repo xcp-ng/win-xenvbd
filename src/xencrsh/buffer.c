@@ -107,7 +107,7 @@ BufferGet(
     PXENVBD_BUFFER  Buf;
 
     if (__Buffer.Next == 0) {
-        // Warn!
+        LogWarning("failed to get buffer\n");
         return FALSE;
     }
     // find a free buffer, copy Buffer@Length into the buffer, return the BufferId and Pfn

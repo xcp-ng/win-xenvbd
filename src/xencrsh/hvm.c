@@ -359,3 +359,34 @@ fail1:
 
     return status;
 }
+
+NTSTATUS
+HvmGetMemoryType(
+    IN  PFN_NUMBER              Pfn,
+    OUT ULONG                   *Type
+    )
+{
+    struct xen_hvm_get_mem_type op;
+    LONG_PTR                rc;
+    NTSTATUS                status;
+
+    RtlZeroMemory(&op, sizeof(struct xen_hvm_get_mem_type));
+
+    op.domid = DOMID_SELF;
+    op.pfn = Pfn;
+
+    rc = HvmOp(HVMOP_get_mem_type, &op);
+
+    if (rc < 0)
+        goto fail1;
+
+    *Type = op.mem_type;
+
+    return STATUS_SUCCESS;
+
+fail1:
+    ERRNO_TO_STATUS(-rc, status);
+    LogError("fail1 (%08x)\n", status);
+
+    return status;
+}
