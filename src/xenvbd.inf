@@ -51,9 +51,9 @@ xendisk.sys=0,,
 xenvbd_coinst.dll=0,,
 
 [Manufacturer] 
-%Vendor%=Inst,NT$ARCH$
+%Vendor%=Inst,NT@INF_ARCH@
 
-[Inst.NT$ARCH$]
+[Inst.NT@INF_ARCH@]
 %XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_09000004
 %XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_09000004
 %XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_09000004

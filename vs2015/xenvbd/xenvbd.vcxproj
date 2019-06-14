@@ -35,33 +35,20 @@
       <AdditionalDependencies>$(ProjectDir)..\$(ConfigurationName)\$(Platform)\xencrsh.lib;$(DDK_LIB_PATH)/storport.lib;$(DDK_LIB_PATH)/libcntpr.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
     </Link>
-    <Inf>
-      <SpecifyArchitecture>true</SpecifyArchitecture>
-      <SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion>
-      <TimeStamp>$(MAJOR_VERSION).$(MINOR_VERSION).$(MICRO_VERSION).$(BUILD_NUMBER)</TimeStamp>
-      <EnableVerbose>true</EnableVerbose>
-    </Inf>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>
       <PreprocessorDefinitions>__i386__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <Inf>
-      <Architecture>x86</Architecture>
-    </Inf>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Platform)'=='x64'">
     <ClCompile>
       <PreprocessorDefinitions>__x86_64__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <Inf>
-      <Architecture>amd64</Architecture>
-    </Inf>
   </ItemDefinitionGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
     <FilesToPackage Include="$(OutDir)$(TargetName).pdb" />
-    <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="../../src/xenvbd/driver.c" />
@@ -76,9 +63,6 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\src\xenvbd\xenvbd.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Inf Include="..\xenvbd.inf" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
