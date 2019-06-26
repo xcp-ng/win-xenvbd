@@ -50,7 +50,7 @@
 
 static ULONG    __OperatingMode;
 
-FORCEINLINE ULONG DriverGetOperatingMode()
+ULONG DriverGetOperatingMode()
 {
     return __OperatingMode;
 }

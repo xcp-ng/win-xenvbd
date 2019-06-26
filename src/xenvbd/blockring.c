@@ -549,7 +549,6 @@ BlockRingPoll(
         KeMemoryBarrier();
 
         BlockRing->FrontRing.rsp_cons = rsp_cons;
-        BlockRing->SharedRing->rsp_event = rsp_cons + 1;
     }
 
 done:
@@ -575,7 +574,7 @@ BlockRingSubmit(
     req = RING_GET_REQUEST(&BlockRing->FrontRing, BlockRing->FrontRing.req_prod_pvt);
     __BlockRingInsert(BlockRing, Request, req);
     KeMemoryBarrier();
-    ++BlockRing->FrontRing.req_prod_pvt;
+    BlockRing->SharedRing->rsp_event = ++BlockRing->FrontRing.req_prod_pvt;
 
     RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&BlockRing->FrontRing, Notify);
     KeReleaseSpinLock(&BlockRing->Lock, Irql);
