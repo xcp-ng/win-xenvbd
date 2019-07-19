@@ -94,6 +94,7 @@ typedef struct _XENVBD_BLKIF_RING {
     ULONG                           RequestsPushed;
     ULONG                           ResponsesProcessed;
     PXENBUS_DEBUG_CALLBACK          DebugCallback;
+    LARGE_INTEGER                   TimeOfLastErrorLog;
 } XENVBD_BLKIF_RING, *PXENVBD_BLKIF_RING;
 
 typedef enum _XENVBD_STAT {
@@ -1212,13 +1213,22 @@ __BlkifRingCompleteResponse(
         break;
 
     case BLKIF_RSP_ERROR:
-    default:
-        Warning("Target[%u][%u] : %s BLKIF_RSP_ERROR\n",
-                FrontendGetTargetId(Frontend),
-                BlkifRing->Index,
-                __BlkifOperationName(Request->Operation));
+    default: {
+        LARGE_INTEGER TimeNow;
+
+        KeQuerySystemTime(&TimeNow);
+
+        // If last log message was more than 10 seconds ago
+        if (TimeNow.QuadPart - BlkifRing->TimeOfLastErrorLog.QuadPart > 100000000ull) {
+            Warning("Target[%u][%u] : %s BLKIF_RSP_ERROR\n",
+                    FrontendGetTargetId(Frontend),
+                    BlkifRing->Index,
+                    __BlkifOperationName(Request->Operation));
+            KeQuerySystemTime(&BlkifRing->TimeOfLastErrorLog);
+        }
         Srb->SrbStatus = SRB_STATUS_ERROR;
         break;
+        }
     }
 
     BlkifRingPutRequest(BlkifRing, Request);
