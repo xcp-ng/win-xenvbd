@@ -1630,7 +1630,7 @@ FrontendDebugCallback(
                  __XenvbdStateName(Frontend->State));
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "Queues: u / %u\n",
+                 "Queues: %u / %u\n",
                  __FrontendGetNumQueues(Frontend),
                  __FrontendGetMaxQueues(Frontend));
 

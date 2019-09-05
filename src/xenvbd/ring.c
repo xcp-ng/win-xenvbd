@@ -1937,7 +1937,7 @@ BlkifRingConnect(
     status = RtlStringCchPrintfA(Name,
                                  MAX_NAME_LEN,
                                  __MODULE__"|RING[%u]",
-                                 Index);
+                                 BlkifRing->Index);
     if (!NT_SUCCESS(status))
         goto fail4;
 
