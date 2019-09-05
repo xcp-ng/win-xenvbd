@@ -1089,27 +1089,20 @@ __BlkifRingPostRequests(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
-#define RING_SLOTS_AVAILABLE(_Front, _req_prod, _rsp_cons)   \
-        (RING_SIZE(_Front) - ((_req_prod) - (_rsp_cons)))
-
     PXENVBD_SRB_STATE       State;
-    RING_IDX                req_prod;
-    RING_IDX                rsp_cons;
-    NTSTATUS                status;
 
     State = &BlkifRing->State;
 
-    req_prod = BlkifRing->Front.req_prod_pvt;
-    rsp_cons = BlkifRing->Front.rsp_cons;
-
-    status = STATUS_ALLOTTED_SPACE_EXCEEDED;
-    if (RING_SLOTS_AVAILABLE(&BlkifRing->Front, req_prod, rsp_cons) <= 1)
-        goto fail1;
-
-    while (State->Count != 0) {
+    for (;;) {
         blkif_request_t     *req;
         PXENVBD_REQUEST     Request;
         PLIST_ENTRY         ListEntry;
+
+        if (State->Count == 0)
+            return STATUS_SUCCESS;
+
+        if (RING_FULL(&BlkifRing->Front))
+            return STATUS_ALLOTTED_SPACE_EXCEEDED;
 
         --State->Count;
 
@@ -1122,8 +1115,8 @@ __BlkifRingPostRequests(
                                     XENVBD_REQUEST,
                                     ListEntry);
 
-        req = RING_GET_REQUEST(&BlkifRing->Front, req_prod);
-        req_prod++;
+        req = RING_GET_REQUEST(&BlkifRing->Front, BlkifRing->Front.req_prod_pvt);
+        BlkifRing->Front.req_prod_pvt++;
         BlkifRing->RequestsPosted++;
 
         __BlkifRingInsertRequest(BlkifRing,
@@ -1131,19 +1124,7 @@ __BlkifRingPostRequests(
                                  req);
 
         InsertTailList(&BlkifRing->SubmittedList, ListEntry);
-
-        if (RING_SLOTS_AVAILABLE(&BlkifRing->Front, req_prod, rsp_cons) <= 1)
-            break;
     }
-
-    BlkifRing->Front.req_prod_pvt = req_prod;
-
-    return STATUS_SUCCESS;
-
-fail1:
-    return status;
-
-#undef  RING_SLOTS_AVAILABLE
 }
 
 static FORCEINLINE PXENVBD_REQUEST
@@ -1424,9 +1405,7 @@ BlkifRingSchedule(
             continue;
         }
 
-        if (BlkifRing->RequestsPosted - BlkifRing->RequestsPushed >=
-            RING_SIZE(&BlkifRing->Front) / 4)
-            __BlkifRingPushRequests(BlkifRing);
+        __BlkifRingPushRequests(BlkifRing);
 
         if (IsListEmpty(&BlkifRing->SrbQueue))
             break;
