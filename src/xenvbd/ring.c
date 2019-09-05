@@ -1294,6 +1294,7 @@ BlkifRingPoll(
         KeMemoryBarrier();
 
         BlkifRing->Front.rsp_cons = rsp_cons;
+        BlkifRing->Shared->rsp_event = rsp_cons + 1;
     }
 
 done:
@@ -1326,8 +1327,6 @@ __BlkifRingPushRequests(
 
 #pragma warning (push)
 #pragma warning (disable:4244)
-
-    BlkifRing->Shared->rsp_event = BlkifRing->Front.req_prod_pvt;
 
     // Make the requests visible to the backend
     RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&BlkifRing->Front, Notify);
