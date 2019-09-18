@@ -1024,6 +1024,7 @@ __PdoStopDevice(
 
     IoReleaseRemoveLock(&Pdo->Dx->RemoveLock, Irp);
 
+    Pdo->PhysSectorSize = 0;
     Pdo->SectorSize = 0;
 
     return STATUS_SUCCESS;
@@ -1276,6 +1277,7 @@ done:
     status = PdoForwardIrpSynchronously(Pdo, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
+    Pdo->PhysSectorSize = 0;
     Pdo->SectorSize = 0;
 
     FdoAcquireMutex(Fdo);
