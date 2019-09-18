@@ -58,11 +58,6 @@
 #define xen_mb  KeMemoryBarrier
 #define xen_wmb KeMemoryBarrier
 
-typedef struct _XENVBD_SRB_STATE {
-    LIST_ENTRY                      List;
-    ULONG                           Count;
-} XENVBD_SRB_STATE, *PXENVBD_SRB_STATE;
-
 typedef struct _XENVBD_BLKIF_RING {
     PXENVBD_RING                    Ring;
     ULONG                           Index;
@@ -83,8 +78,8 @@ typedef struct _XENVBD_BLKIF_RING {
     BOOLEAN                         Stopped;
     PVOID                           Lock;
     PKTHREAD                        LockThread;
-    XENVBD_SRB_STATE                State;
     LIST_ENTRY                      SrbQueue;
+    LIST_ENTRY                      PreparedQueue;
     LIST_ENTRY                      SubmittedList;
     LIST_ENTRY                      ShutdownQueue;
     ULONG                           SrbsQueued;
@@ -613,8 +608,6 @@ BlkifRingQueueRequests(
     IN  PLIST_ENTRY         List
     )
 {
-    PXENVBD_SRB_STATE       State = &BlkifRing->State;
-
     for (;;) {
         PLIST_ENTRY         ListEntry;
         PXENVBD_REQUEST     Request;
@@ -627,8 +620,7 @@ BlkifRingQueueRequests(
                                     XENVBD_REQUEST,
                                     ListEntry);
 
-        InsertTailList(&State->List, ListEntry);
-        State->Count++;
+        InsertTailList(&BlkifRing->PreparedQueue, ListEntry);
     }
 }
 
@@ -1089,25 +1081,19 @@ __BlkifRingPostRequests(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
-    PXENVBD_SRB_STATE       State;
-
-    State = &BlkifRing->State;
-
     for (;;) {
         blkif_request_t     *req;
         PXENVBD_REQUEST     Request;
         PLIST_ENTRY         ListEntry;
 
-        if (State->Count == 0)
+        if (IsListEmpty(&BlkifRing->PreparedQueue))
             return STATUS_SUCCESS;
 
         if (RING_FULL(&BlkifRing->Front))
             return STATUS_ALLOTTED_SPACE_EXCEEDED;
 
-        --State->Count;
-
-        ListEntry = RemoveHeadList(&State->List);
-        ASSERT3P(ListEntry, != , &State->List);
+        ListEntry = RemoveHeadList(&BlkifRing->PreparedQueue);
+        ASSERT3P(ListEntry, != , &BlkifRing->PreparedQueue);
 
         RtlZeroMemory(ListEntry, sizeof(LIST_ENTRY));
 
@@ -1376,13 +1362,11 @@ BlkifRingSchedule(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
-    PXENVBD_SRB_STATE       State;
     BOOLEAN                 Polled;
 
     if (!BlkifRing->Enabled)
         return;
 
-    State = &BlkifRing->State;
     Polled = FALSE;
 
     while (!BlkifRing->Stopped) {
@@ -1390,7 +1374,7 @@ BlkifRingSchedule(
         PXENVBD_SRBEXT      SrbExt;
         NTSTATUS            status;
 
-        if (State->Count != 0) {
+        if (!IsListEmpty(&BlkifRing->PreparedQueue)) {
             status = __BlkifRingPostRequests(BlkifRing);
             if (!NT_SUCCESS(status))
                 BlkifRing->Stopped = TRUE;
@@ -1685,7 +1669,7 @@ BlkifRingCreate(
     InitializeListHead(&(*BlkifRing)->SrbQueue);
     InitializeListHead(&(*BlkifRing)->ShutdownQueue);
     InitializeListHead(&(*BlkifRing)->SubmittedList);
-    InitializeListHead(&(*BlkifRing)->State.List);
+    InitializeListHead(&(*BlkifRing)->PreparedQueue);
 
     KeInitializeThreadedDpc(&(*BlkifRing)->Dpc, BlkifRingDpc, *BlkifRing);
 
@@ -1780,7 +1764,7 @@ fail4:
 
     RtlZeroMemory(&(*BlkifRing)->Dpc, sizeof(KDPC));
 
-    RtlZeroMemory(&(*BlkifRing)->State.List, sizeof(LIST_ENTRY));
+    RtlZeroMemory(&(*BlkifRing)->PreparedQueue, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->SubmittedList, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->ShutdownQueue, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->SrbQueue, sizeof(LIST_ENTRY));
@@ -1827,12 +1811,16 @@ BlkifRingDestroy(
 
     RtlZeroMemory(&BlkifRing->Dpc, sizeof(KDPC));
 
-    ASSERT3U(BlkifRing->State.Count, == , 0);
-    ASSERT(IsListEmpty(&BlkifRing->State.List));
-    RtlZeroMemory(&BlkifRing->State.List, sizeof(LIST_ENTRY));
+    ASSERT(IsListEmpty(&BlkifRing->PreparedQueue));
+    RtlZeroMemory(&BlkifRing->PreparedQueue, sizeof(LIST_ENTRY));
 
+    ASSERT(IsListEmpty(&BlkifRing->SubmittedList));
     RtlZeroMemory(&BlkifRing->SubmittedList, sizeof(LIST_ENTRY));
+
+    ASSERT(IsListEmpty(&BlkifRing->SrbQueue));
     RtlZeroMemory(&BlkifRing->SrbQueue, sizeof(LIST_ENTRY));
+
+    ASSERT(IsListEmpty(&BlkifRing->ShutdownQueue));
     RtlZeroMemory(&BlkifRing->ShutdownQueue, sizeof(LIST_ENTRY));
 
     __RingFree(BlkifRing->Path);
@@ -2065,15 +2053,14 @@ BlkifRingDisable(
     ASSERT(BlkifRing->Enabled);
 
     // Discard any pending requests
-    while (!IsListEmpty(&BlkifRing->State.List)) {
+    while (!IsListEmpty(&BlkifRing->PreparedQueue)) {
         PLIST_ENTRY         ListEntry;
         PXENVBD_REQUEST     Request;
         PXENVBD_SRBEXT      SrbExt;
         PSCSI_REQUEST_BLOCK Srb;
 
-        ListEntry = RemoveHeadList(&BlkifRing->State.List);
-        ASSERT3P(ListEntry, != , &BlkifRing->State.List);
-        --BlkifRing->State.Count;
+        ListEntry = RemoveHeadList(&BlkifRing->PreparedQueue);
+        ASSERT3P(ListEntry, !=, &BlkifRing->PreparedQueue);
 
         Request = CONTAINING_RECORD(ListEntry,
                                     XENVBD_REQUEST,
@@ -2088,8 +2075,6 @@ BlkifRingDisable(
         if (InterlockedDecrement(&SrbExt->RequestCount) == 0)
             __BlkifRingCompleteSrb(BlkifRing, SrbExt);
     }
-
-    ASSERT3U(BlkifRing->State.Count, == , 0);
 
     Attempt = 0;
     ASSERT3U(BlkifRing->RequestsPushed, == , BlkifRing->RequestsPosted);
