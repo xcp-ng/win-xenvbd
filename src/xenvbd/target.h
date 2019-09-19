@@ -110,13 +110,13 @@ TargetReset(
     IN  PXENVBD_TARGET  Target
     );
 
-extern VOID
+extern BOOLEAN
 TargetFlush(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt
     );
 
-extern VOID
+extern BOOLEAN
 TargetShutdown(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt

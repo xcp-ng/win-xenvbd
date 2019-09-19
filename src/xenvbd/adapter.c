@@ -1993,13 +1993,11 @@ AdapterHwStartIo(
         break;
 
     case SRB_FUNCTION_FLUSH:
-        TargetFlush(Target, SrbExt);
-        WasQueued = TRUE;
+        WasQueued = TargetFlush(Target, SrbExt);
         break;
 
     case SRB_FUNCTION_SHUTDOWN:
-        TargetShutdown(Target, SrbExt);
-        WasQueued = TRUE;
+        WasQueued = TargetShutdown(Target, SrbExt);
         break;
 
     default:

@@ -973,22 +973,22 @@ TargetReset(
     Verbose("[%u] <=====\n", TargetGetTargetId(Target));
 }
 
-VOID
+BOOLEAN
 TargetFlush(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt
     )
 {
-    RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
+    return RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
 }
 
-VOID
+BOOLEAN
 TargetShutdown(
     IN  PXENVBD_TARGET  Target,
     IN  PXENVBD_SRBEXT  SrbExt
     )
 {
-    RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
+    return RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
 }
 
 VOID

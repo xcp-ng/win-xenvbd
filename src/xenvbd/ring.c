@@ -2147,7 +2147,7 @@ BlkifRingDisconnect(
     Trace("<==== %u\n", BlkifRing->Index);
 }
 
-static VOID
+static BOOLEAN
 __BlkifRingQueueSrb(
     IN  PXENVBD_BLKIF_RING  BlkifRing,
     IN  PXENVBD_SRBEXT      SrbExt
@@ -2157,6 +2157,9 @@ __BlkifRingQueueSrb(
     ULONG_PTR               Old;
     ULONG_PTR               LockBit;
     ULONG_PTR               New;
+
+    if (!BlkifRing->Enabled)
+        goto fail1;
 
     ListEntry = &SrbExt->ListEntry;
 
@@ -2177,17 +2180,36 @@ __BlkifRingQueueSrb(
 
     if (__BlkifRingTryAcquireLock(BlkifRing))
         __BlkifRingReleaseLock(BlkifRing);
+
+    return TRUE;
+
+fail1:
+    Error("fail1\n");
+
+    SrbExt->Srb->SrbStatus = SRB_STATUS_BUSY;
+    return FALSE;
 }
 
-static VOID
+static BOOLEAN
 __BlkifRingQueueShutdown(
     IN  PXENVBD_BLKIF_RING  BlkifRing,
     IN  PXENVBD_SRBEXT      SrbExt
     )
 {
+    if (!BlkifRing->Enabled)
+        goto fail1;
+
     __BlkifRingAcquireLock(BlkifRing);
     InsertTailList(&BlkifRing->ShutdownQueue, &SrbExt->ListEntry);
     __BlkifRingReleaseLock(BlkifRing);
+
+    return TRUE;
+
+fail1:
+    Error("fail1\n");
+
+    SrbExt->Srb->SrbStatus = SRB_STATUS_BUSY;
+    return FALSE;
 }
 
 static DECLSPEC_NOINLINE VOID
@@ -2616,12 +2638,10 @@ RingQueueRequest(
     BlkifRing = __RingGetBlkifRing(Ring, Srb->QueueTag);
     ASSERT(BlkifRing != NULL);
 
-    __BlkifRingQueueSrb(BlkifRing, SrbExt);
-
-    return TRUE;
+    return __BlkifRingQueueSrb(BlkifRing, SrbExt);
 }
 
-VOID
+BOOLEAN
 RingQueueShutdown(
     IN  PXENVBD_RING    Ring,
     IN  PXENVBD_SRBEXT  SrbExt
@@ -2633,5 +2653,5 @@ RingQueueShutdown(
     BlkifRing = __RingGetBlkifRing(Ring, Srb->QueueTag);
     ASSERT(BlkifRing != NULL);
 
-    __BlkifRingQueueShutdown(BlkifRing, SrbExt);
+    return __BlkifRingQueueShutdown(BlkifRing, SrbExt);
 }

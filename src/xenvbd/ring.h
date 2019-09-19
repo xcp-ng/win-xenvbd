@@ -80,7 +80,7 @@ RingQueueRequest(
     IN  PXENVBD_SRBEXT  SrbExt
     );
 
-extern VOID
+extern BOOLEAN
 RingQueueShutdown(
     IN  PXENVBD_RING    Ring,
     IN  PXENVBD_SRBEXT  SrbExt
