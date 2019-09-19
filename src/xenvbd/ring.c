@@ -2044,10 +2044,56 @@ BlkifRingDisable(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
+    PXENVBD_RING            Ring;
+    PCHAR                   Buffer;
+    XenbusState             State;
+    NTSTATUS                status;
+
+    Ring = BlkifRing->Ring;
+
     Trace("====> %u\n", BlkifRing->Index);
 
     __BlkifRingAcquireLock(BlkifRing);
     ASSERT(BlkifRing->Enabled);
+
+    status = XENBUS_STORE(Read,
+                          &Ring->StoreInterface,
+                          NULL,
+                          FrontendGetBackendPath(Ring->Frontend),
+                          "state",
+                          &Buffer);
+    if (!NT_SUCCESS(status)) {
+        State = XenbusStateUnknown;
+    } else {
+        State = (XenbusState) strtol(Buffer, NULL, 10);
+
+        XENBUS_STORE(Free,
+                     &Ring->StoreInterface,
+                     Buffer);
+    }
+
+    if (State == XenbusStateConnected) {
+        ULONG               Attempt;
+
+        Attempt = 0;
+        ASSERT3U(BlkifRing->RequestsPushed, ==, BlkifRing->RequestsPosted);
+        while (BlkifRing->ResponsesProcessed != BlkifRing->RequestsPushed) {
+            Attempt++;
+            if (Attempt > 100)
+                break;
+
+            // Try to move things along
+            __BlkifRingSend(BlkifRing);
+            (VOID) BlkifRingPoll(BlkifRing);
+
+            // We are waiting for a watch event at DISPATCH_LEVEL so
+            // it is our responsibility to poll the store ring.
+            XENBUS_STORE(Poll,
+                         &Ring->StoreInterface);
+
+            KeStallExecutionProcessor(1000);    // 1ms
+        }
+    }
 
     BlkifRing->Enabled = FALSE;
 
