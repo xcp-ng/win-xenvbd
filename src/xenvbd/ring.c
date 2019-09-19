@@ -1242,17 +1242,17 @@ BlkifRingPoll(
 
             rsp = RING_GET_RESPONSE(&BlkifRing->Front, rsp_cons);
             rsp_cons++;
-            BlkifRing->ResponsesProcessed++;
 
             BlkifRing->Stopped = FALSE;
 
             Request = __BlkifRingGetSubmittedRequest(BlkifRing,
                                                      rsp->id);
-            ASSERT3P(Request, != , NULL);
-
-            __BlkifRingCompleteResponse(BlkifRing,
-                                        Request,
-                                        rsp->status);
+            if (Request != NULL) {
+                BlkifRing->ResponsesProcessed++;
+                __BlkifRingCompleteResponse(BlkifRing,
+                                            Request,
+                                            rsp->status);
+            }
 
             if (rsp_cons - BlkifRing->Front.rsp_cons > XENVBD_BATCH(BlkifRing))
                 Retry = TRUE;
@@ -2044,57 +2044,39 @@ BlkifRingDisable(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
-    PXENVBD_RING            Ring = BlkifRing->Ring;
-    ULONG                   Attempt;
-
     Trace("====> %u\n", BlkifRing->Index);
 
     __BlkifRingAcquireLock(BlkifRing);
     ASSERT(BlkifRing->Enabled);
 
-    // Discard any pending requests
+    BlkifRing->Enabled = FALSE;
+
+    while (!IsListEmpty(&BlkifRing->SubmittedList)) {
+        PLIST_ENTRY ListEntry;
+        PXENVBD_REQUEST Request;
+
+        ListEntry = RemoveHeadList(&BlkifRing->SubmittedList);
+        ASSERT3P(ListEntry, !=, &BlkifRing->SubmittedList);
+
+        Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
+        BlkifRing->ResponsesProcessed++;
+        __BlkifRingCompleteResponse(BlkifRing, Request, BLKIF_RSP_ERROR);
+    }
+
     while (!IsListEmpty(&BlkifRing->PreparedQueue)) {
-        PLIST_ENTRY         ListEntry;
-        PXENVBD_REQUEST     Request;
-        PXENVBD_SRBEXT      SrbExt;
-        PSCSI_REQUEST_BLOCK Srb;
+        PLIST_ENTRY ListEntry;
+        PXENVBD_REQUEST Request;
 
         ListEntry = RemoveHeadList(&BlkifRing->PreparedQueue);
         ASSERT3P(ListEntry, !=, &BlkifRing->PreparedQueue);
 
-        Request = CONTAINING_RECORD(ListEntry,
-                                    XENVBD_REQUEST,
-                                    ListEntry);
-        SrbExt = Request->SrbExt;
-        Srb = SrbExt->Srb;
-        Srb->SrbStatus = SRB_STATUS_ABORTED;
-        Srb->ScsiStatus = 0x40; // SCSI_ABORTED
-
-        BlkifRingPutRequest(BlkifRing, Request);
-
-        if (InterlockedDecrement(&SrbExt->RequestCount) == 0)
-            __BlkifRingCompleteSrb(BlkifRing, SrbExt);
+        Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
+        // Dont increment ResponsesProcessed, as this is a faked response
+        __BlkifRingCompleteResponse(BlkifRing, Request, BLKIF_RSP_ERROR);
     }
 
-    Attempt = 0;
-    ASSERT3U(BlkifRing->RequestsPushed, == , BlkifRing->RequestsPosted);
-    while (BlkifRing->ResponsesProcessed != BlkifRing->RequestsPushed) {
-        Attempt++;
-        ASSERT(Attempt < 100);
+    BlkifRing->Stopped = FALSE;
 
-        // Try to move things along
-        __BlkifRingSend(BlkifRing);
-        (VOID)BlkifRingPoll(BlkifRing);
-
-        // We are waiting for a watch event at DISPATCH_LEVEL so
-        // it is our responsibility to poll the store ring.
-        XENBUS_STORE(Poll,
-                     &Ring->StoreInterface);
-
-        KeStallExecutionProcessor(1000);    // 1ms
-    }
-
-    BlkifRing->Enabled = FALSE;
     __BlkifRingReleaseLock(BlkifRing);
 
     Trace("<==== %u\n", BlkifRing->Index);
