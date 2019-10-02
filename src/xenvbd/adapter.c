@@ -404,9 +404,7 @@ AdapterIsTargetEmulated(
     // Ask XenFilt if Ctrlr(0), Target(Target), Lun(0) is present
     Emulated = XENFILT_EMULATED(IsDiskPresent,
                                 &Adapter->EmulatedInterface,
-                                0,
-                                TargetId,
-                                0);
+                                TargetId);
 
     XENFILT_EMULATED(Release, &Adapter->EmulatedInterface);
 
