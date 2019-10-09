@@ -93,6 +93,7 @@ struct _XENVBD_ADAPTER {
     ULONG                       BuildIo;
     ULONG                       StartIo;
     ULONG                       Completed;
+    ULONG                       Failed;
 };
 
 static FORCEINLINE PVOID
@@ -905,10 +906,11 @@ AdapterDebugCallback(
                  PowerDeviceStateName(Adapter->DevicePower));
     XENBUS_DEBUG(Printf,
                  &Adapter->DebugInterface,
-                 "ADAPTER: Srbs            : %u built, %u started, %u completed\n",
+                 "ADAPTER: Srbs            : %u built, %u started, %u completed, %u failed\n",
                  Adapter->BuildIo,
                  Adapter->StartIo,
-                 Adapter->Completed);
+                 Adapter->Completed,
+                 Adapter->Failed);
 }
 
 static NTSTATUS
@@ -1503,6 +1505,7 @@ AdapterTeardown(
     Adapter->BuildIo                = 0;
     Adapter->StartIo                = 0;
     Adapter->Completed              = 0;
+    Adapter->Failed                 = 0;
 
     ASSERT(IsZeroMemory(Adapter, sizeof(XENVBD_ADAPTER)));
     Trace("<===== (%d)\n", KeGetCurrentIrql());
@@ -1518,7 +1521,10 @@ AdapterCompleteSrb(
 
     ASSERT3U(Srb->SrbStatus, !=, SRB_STATUS_PENDING);
 
-    InterlockedIncrement((PLONG)&Adapter->Completed);
+    if (Srb->SrbStatus == SRB_STATUS_SUCCESS)
+        InterlockedIncrement((PLONG)&Adapter->Completed);
+    else
+        InterlockedIncrement((PLONG)&Adapter->Failed);
 
     StorPortNotification(RequestComplete, Adapter, Srb);
 }
@@ -1974,6 +1980,7 @@ AdapterHwStartIo(
     BOOLEAN                 WasQueued = FALSE;
     PXENVBD_TARGET          Target;
 
+    InterlockedIncrement((PLONG)&Adapter->StartIo);
     Target = AdapterGetTarget(Adapter, Srb->TargetId);
     if (Target == NULL) {
         Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
