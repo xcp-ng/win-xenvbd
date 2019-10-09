@@ -320,7 +320,7 @@ __AdapterHiddenTarget(
 {
     NTSTATUS                status;
     PCHAR                   Buffer;
-    CHAR                    Path[sizeof("device/vbd/XXXXXXXX")];
+    CHAR                    Path[MAXNAMELEN];
     BOOLEAN                 Ejected;
     BOOLEAN                 IsDisk;
 
