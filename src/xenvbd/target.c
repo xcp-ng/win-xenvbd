@@ -545,14 +545,14 @@ TargetReadCapacity(
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
     if (Data == NULL)
-        return;
+        goto fail1;
     RtlZeroMemory(Data, Length);
 
     if (Length < sizeof(READ_CAPACITY_DATA))
-        return;
+        goto fail2;
 
     if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
-        return;
+        goto fail3;
 
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
@@ -567,6 +567,15 @@ TargetReadCapacity(
 
     Srb->DataTransferLength = sizeof(READ_CAPACITY_DATA);
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
+
+    return;
+
+fail3:
+    Error("fail3\n");
+fail2:
+    Error("fail2\n");
+fail1:
+    Error("fail1\n");
 }
 
 static DECLSPEC_NOINLINE VOID
@@ -587,14 +596,14 @@ TargetReadCapacity16(
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
     if (Data == NULL)
-        return;
+        goto fail1;
     RtlZeroMemory(Data, Length);
 
-    if (Length < sizeof(READ_CAPACITY16_DATA))
-        return;
+    if (Length < sizeof(READ_CAPACITY_DATA_EX))
+        goto fail2;
 
     if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
-        return;
+        goto fail3;
 
     SectorCount = DiskInfo->SectorCount;
     SectorSize = DiskInfo->SectorSize;
@@ -607,10 +616,23 @@ TargetReadCapacity16(
 
     Data->LogicalBlockAddress.QuadPart = _byteswap_uint64(SectorCount - 1);
     Data->BytesPerBlock = _byteswap_ulong(SectorSize);
-    Data->LogicalPerPhysicalExponent = (UCHAR)LogicalPerPhysicalExponent;
 
-    Srb->DataTransferLength = sizeof(READ_CAPACITY16_DATA);
+    if (Length == sizeof(READ_CAPACITY16_DATA))
+        Data->LogicalPerPhysicalExponent = (UCHAR)LogicalPerPhysicalExponent;
+    else
+        Length = sizeof(READ_CAPACITY_DATA_EX);
+
+    Srb->DataTransferLength = Length;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
+
+    return;
+
+fail3:
+    Error("fail3\n");
+fail2:
+    Error("fail2\n");
+fail1:
+    Error("fail1\n");
 }
 
 static FORCEINLINE VOID
