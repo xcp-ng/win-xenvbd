@@ -62,7 +62,7 @@ struct _XENVBD_FRONTEND {
     PXENVBD_TARGET              Target;
     ULONG                       TargetId;
     ULONG                       DeviceId;
-    CHAR                        FrontendPath[sizeof("device/vbd/XXXXXXXX")];
+    CHAR                        FrontendPath[sizeof("device/vbd/XXXXXXXXX")];
     PCHAR                       BackendPath;
     CHAR                        TargetPath[sizeof("data/scsi/target/XXXX")];
     USHORT                      BackendDomain;
