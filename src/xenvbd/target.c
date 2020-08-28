@@ -641,10 +641,10 @@ TargetInquiryStd(
     IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
+    PXENVBD_FEATURES        Features =  FrontendGetFeatures(Target->Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PINQUIRYDATA            Data = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
-
-    UNREFERENCED_PARAMETER(Target);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -658,6 +658,8 @@ TargetInquiryStd(
     RtlZeroMemory(Data, Length);
     Data->DeviceType            = DIRECT_ACCESS_DEVICE;
     Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
+    Data->RemovableMedia        = Features->Removable ||
+                                  (DiskInfo->DiskInfo & VDISK_REMOVABLE);
     Data->Versions              = 4;
     Data->ResponseDataFormat    = 2;
     Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
@@ -1468,24 +1470,6 @@ TargetGetDeviceId(
     )
 {
     return FrontendGetDeviceId(Target->Frontend);
-}
-
-//TARGET_GET_PROPERTY(Removable, BOOLEAN)
-BOOLEAN
-TargetGetRemovable(
-    IN  PXENVBD_TARGET  Target
-    )
-{
-    return FrontendGetCaps(Target->Frontend)->Removable;
-}
-
-//TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
-BOOLEAN
-TargetGetSurpriseRemovable(
-    IN  PXENVBD_TARGET  Target
-    )
-{
-    return FrontendGetCaps(Target->Frontend)->SurpriseRemovable;
 }
 
 TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)

@@ -460,13 +460,6 @@ __ReadFeatures(
     NTSTATUS    Status;
     PCHAR       Buffer;
 
-    Status = StoreRead(NULL, Frontend->BackendPath, 
-                        "removable", &Buffer);
-    if (NT_SUCCESS(Status)) {
-        Frontend->Removable = (strtoul(Buffer, NULL, 10) == 1);
-        AustereFree(Buffer);
-    }
-
     Status = StoreRead(NULL, Frontend->BackendPath,
                         "feature-barrier", &Buffer);
     if (NT_SUCCESS(Status)) {
@@ -485,9 +478,8 @@ __ReadFeatures(
         Frontend->FeatureDiscard = FALSE;
     }
 
-    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s %s\n", 
+    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s\n",
                 Frontend->BackendId,
-                Frontend->Removable ? "REMOVABLE" : "NOT_REMOVABLE",
                 Frontend->FeatureBarrier ? "BARRIER" : "NOT_BARRIER",
                 Frontend->FeatureDiscard ? "DISCARD" : "NOT_DISCARD");
 }

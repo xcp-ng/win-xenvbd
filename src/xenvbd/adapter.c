@@ -1892,9 +1892,9 @@ __AdapterSrbPnp(
     case StorQueryCapabilities: {
         PSTOR_DEVICE_CAPABILITIES Caps = Srb->DataBuffer;
 
-        Caps->Removable = TargetGetRemovable(Target);
-        Caps->EjectSupported = TargetGetRemovable(Target);
-        Caps->SurpriseRemovalOK = TargetGetSurpriseRemovable(Target);
+        Caps->Removable = 1;
+        Caps->EjectSupported = 1;
+        Caps->SurpriseRemovalOK = 1;
         Caps->UniqueID = 1;
 
         } break;

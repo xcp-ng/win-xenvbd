@@ -847,7 +847,6 @@ __ReadDiskInfo(
     if (!Changed)
         return;
 
-    Frontend->Caps.SurpriseRemovable = !!(Frontend->DiskInfo.DiskInfo & VDISK_REMOVABLE);
     if (Frontend->DiskInfo.DiskInfo & VDISK_READONLY) {
         Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n", Frontend->TargetId);
     }
@@ -868,10 +867,9 @@ __ReadDiskInfo(
     Trace("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
           Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
           Frontend->DiskInfo.PhysSectorSize);
-    Trace("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
+    Trace("Target[%d] : %d %s (%08x)\n", Frontend->TargetId,
           __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-          Frontend->DiskInfo.DiskInfo,
-          Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+          Frontend->DiskInfo.DiskInfo);
 }
 
 static FORCEINLINE VOID
@@ -883,7 +881,7 @@ FrontendReadFeatures(
 
     Changed = FrontendReadFeature(Frontend,
                                   FeatureRemovable,
-                                  &Frontend->Caps.Removable);
+                                  &Frontend->Features.Removable);
     Changed |= FrontendReadValue32(Frontend,
                                    FeatureMaxIndirectSegments,
                                    TRUE,
@@ -899,7 +897,7 @@ FrontendReadFeatures(
             Frontend->TargetId,
             Frontend->Features.Persistent ? "PERSISTENT " : "",
             Frontend->Features.Indirect ? "INDIRECT " : "",
-            Frontend->Caps.Removable ? "REMOVABLE" : "");
+            Frontend->Features.Removable ? "REMOVABLE" : "");
 
     if (Frontend->Features.Indirect) {
         Verbose("Target[%d] : INDIRECT %x\n",
@@ -1636,19 +1634,18 @@ FrontendDebugCallback(
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "Caps: %s%s%s%s%s%s\n",
+                 "Caps: %s%s%s%s\n",
                  Frontend->Caps.Connected ? "CONNECTED " : "",
-                 Frontend->Caps.Removable ? "REMOVABLE " : "",
-                 Frontend->Caps.SurpriseRemovable ? "SURPRISE " : "",
                  Frontend->Caps.Paging ? "PAGING " : "",
                  Frontend->Caps.Hibernation ? "HIBER " : "",
                  Frontend->Caps.DumpFile ? "DUMP " : "");
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "Features: %s%s%s%s%s\n",
+                 "Features: %s%s%s%s%s%s\n",
                  Frontend->Features.Persistent ? "PERSISTENT " : "",
                  Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
+                 Frontend->Features.Removable ? "REMOVABLE " : "",
                  Frontend->DiskInfo.Barrier ? "BARRIER " : "",
                  Frontend->DiskInfo.FlushCache ? "FLUSH " : "",
                  Frontend->DiskInfo.Discard ? "DISCARD " : "");
