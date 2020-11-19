@@ -47,6 +47,7 @@
 #include "srbext.h"
 #include "driver.h"
 #include "granter.h"
+#include "thread.h"
 
 #include "util.h"
 #include "debug.h"
@@ -90,6 +91,7 @@ typedef struct _XENVBD_BLKIF_RING {
     ULONG                           ResponsesProcessed;
     PXENBUS_DEBUG_CALLBACK          DebugCallback;
     LARGE_INTEGER                   TimeOfLastErrorLog;
+    PXENVBD_THREAD                  WatchdogThread;
 } XENVBD_BLKIF_RING, *PXENVBD_BLKIF_RING;
 
 typedef enum _XENVBD_STAT {
@@ -1623,6 +1625,90 @@ BlkifRingDpc(
                   TRUE);
 }
 
+#define TIME_US(_us)        ((_us) * 10)
+#define TIME_MS(_ms)        (TIME_US((_ms) * 1000))
+#define TIME_S(_s)          (TIME_MS((_s) * 1000))
+#define TIME_RELATIVE(_t)   (-(_t))
+
+#define XENVBD_WATCHDOG_PERIOD 30
+
+static NTSTATUS
+RingWatchdog(
+    IN  PXENVBD_THREAD  Self,
+    IN  PVOID           Context
+    )
+{
+    PXENVBD_BLKIF_RING  BlkifRing = Context;
+    PXENVBD_RING        Ring = BlkifRing->Ring;
+    PROCESSOR_NUMBER    ProcNumber;
+    GROUP_AFFINITY      Affinity;
+    LARGE_INTEGER       Timeout;
+    RING_IDX            rsp_prod;
+    RING_IDX            rsp_cons;
+    NTSTATUS            status;
+
+    Verbose("====> (%u)\n", BlkifRing->Index);
+
+    status = KeGetProcessorNumberFromIndex(BlkifRing->Index, &ProcNumber);
+    ASSERT(NT_SUCCESS(status));
+
+    Affinity.Group = ProcNumber.Group;
+    Affinity.Mask = (KAFFINITY)1 << ProcNumber.Number;
+    KeSetSystemGroupAffinityThread(&Affinity, NULL);
+
+    Timeout.QuadPart = TIME_RELATIVE(TIME_S(XENVBD_WATCHDOG_PERIOD));
+
+    rsp_prod = 0;
+    rsp_cons = 0;
+
+    for (;;) {
+        PKEVENT Event;
+        KIRQL   Irql;
+
+        Event = ThreadGetEvent(Self);
+
+        (VOID) KeWaitForSingleObject(Event,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     &Timeout);
+        KeClearEvent(Event);
+
+        if (ThreadIsAlerted(Self))
+            break;
+
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        __BlkifRingAcquireLock(BlkifRing);
+
+        if (BlkifRing->Enabled) {
+            KeMemoryBarrier();
+
+            if (BlkifRing->Shared->rsp_prod != rsp_prod &&
+                BlkifRing->Front.rsp_cons == rsp_cons) {
+                XENBUS_DEBUG(Trigger,
+                             &Ring->DebugInterface,
+                             BlkifRing->DebugCallback);
+
+                // Try to move things along
+                __BlkifRingSend(BlkifRing);
+                (VOID) BlkifRingPoll(BlkifRing);
+            }
+
+            KeMemoryBarrier();
+
+            rsp_prod = BlkifRing->Shared->rsp_prod;
+            rsp_cons = BlkifRing->Front.rsp_cons;
+        }
+
+        __BlkifRingReleaseLock(BlkifRing);
+        KeLowerIrql(Irql);
+    }
+
+    Verbose("<====\n");
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS
 BlkifRingCreate(
     IN  PXENVBD_RING        Ring,
@@ -1739,8 +1825,20 @@ BlkifRingCreate(
     if (!NT_SUCCESS(status))
         goto fail9;
 
+    status = ThreadCreate(RingWatchdog,
+                          *BlkifRing,
+                          &(*BlkifRing)->WatchdogThread);
+    if (!NT_SUCCESS(status))
+        goto fail10;
+
     return STATUS_SUCCESS;
 
+fail10:
+    Error("fail10\n");
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 (*BlkifRing)->IndirectCache);
+    (*BlkifRing)->IndirectCache = NULL;
 fail9:
     Error("fail9\n");
 fail8:
@@ -1793,6 +1891,10 @@ BlkifRingDestroy(
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
+
+    ThreadAlert(BlkifRing->WatchdogThread);
+    ThreadJoin(BlkifRing->WatchdogThread);
+    BlkifRing->WatchdogThread = NULL;
 
     XENBUS_CACHE(Destroy,
                  &Ring->CacheInterface,
