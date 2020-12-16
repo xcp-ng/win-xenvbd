@@ -1377,6 +1377,9 @@ TargetCreate(
     if (TargetId >= XENVBD_MAX_TARGETS)
         return STATUS_RETRY;
 
+    if (TargetId == 0 && AdapterBootEmulated(Adapter))
+        return STATUS_UNSUCCESSFUL;
+
     if (AdapterIsTargetEmulated(Adapter, TargetId))
         return STATUS_RETRY;
 

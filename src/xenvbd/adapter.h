@@ -67,6 +67,11 @@ AdapterIsTargetEmulated(
     IN  ULONG           TargetId
     );
 
+extern BOOLEAN
+AdapterBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
+    );
+
 extern VOID
 AdapterCompleteSrb(
     IN  PXENVBD_ADAPTER Adapter,

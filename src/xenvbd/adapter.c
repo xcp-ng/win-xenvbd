@@ -89,6 +89,7 @@ struct _XENVBD_ADAPTER {
     PXENVBD_THREAD              ScanThread;
     KEVENT                      ScanEvent;
     PXENBUS_STORE_WATCH         ScanWatch;
+    BOOLEAN                     BootEmulated;
 
     ULONG                       BuildIo;
     ULONG                       StartIo;
@@ -410,6 +411,14 @@ AdapterIsTargetEmulated(
     XENFILT_EMULATED(Release, &Adapter->EmulatedInterface);
 
     return Emulated;
+}
+
+BOOLEAN
+AdapterBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    return Adapter->BootEmulated;
 }
 
 static FORCEINLINE VOID
@@ -1179,6 +1188,32 @@ AdapterReleaseLock(
     KeReleaseSpinLockFromDpcLevel(&Adapter->Lock);
 }
 
+static FORCEINLINE VOID
+__AdapterSetBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    CHAR                Key[] = "XEN:BOOT_EMULATED=";
+    PANSI_STRING        Option;
+    PCHAR               Value;
+    NTSTATUS            status;
+
+    Adapter->BootEmulated = FALSE;
+
+    status = RegistryQuerySystemStartOption(Key, &Option);
+    if (!NT_SUCCESS(status))
+        return;
+
+    Value = Option->Buffer + sizeof (Key) - 1;
+
+    if (strcmp(Value, "TRUE") == 0)
+        Adapter->BootEmulated = TRUE;
+    else if (strcmp(Value, "FALSE") != 0)
+        Warning("UNRECOGNIZED VALUE OF %s: %s\n", Key, Value);
+
+    RegistryFreeSzValue(Option);
+}
+
 __drv_requiresIRQL(PASSIVE_LEVEL)
 static NTSTATUS
 __AdapterQueryInterface(
@@ -1356,6 +1391,8 @@ AdapterInitialize(
     if (!NT_SUCCESS(status))
         goto fail10;
 
+    __AdapterSetBootEmulated(Adapter);
+
     status = ThreadCreate(AdapterScanThread,
                           Adapter,
                           &Adapter->ScanThread);
@@ -1377,6 +1414,7 @@ fail12:
     Adapter->ScanThread = NULL;
 fail11:
     Error("fail11\n");
+    Adapter->BootEmulated = FALSE;
     XENBUS_CACHE(Destroy,
                  &Adapter->CacheInterface,
                  Adapter->BounceCache);
@@ -1461,6 +1499,8 @@ AdapterTeardown(
         // drop ref-count acquired in __AdapterGetTarget *before* destroying Target
         TargetDestroy(Target);
     }
+
+    Adapter->BootEmulated = FALSE;
 
     XENBUS_CACHE(Destroy,
                  &Adapter->CacheInterface,
