@@ -1382,6 +1382,7 @@ AdapterInitialize(
                           "vbd_bounce",
                           sizeof(XENVBD_BOUNCE),
                           32,
+                          0,
                           AdapterBounceCtor,
                           AdapterBounceDtor,
                           AdapterAcquireLock,

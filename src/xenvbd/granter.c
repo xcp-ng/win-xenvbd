@@ -198,6 +198,7 @@ GranterConnect(
                            &Granter->GnttabInterface,
                            Name,
                            0,
+                           0,
                            GranterAcquireLock,
                            GranterReleaseLock,
                            Granter,
