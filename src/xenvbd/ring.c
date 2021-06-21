@@ -2158,7 +2158,6 @@ BlkifRingDisable(
 
     Trace("====> %u\n", BlkifRing->Index);
 
-    __BlkifRingAcquireLock(BlkifRing);
     ASSERT(BlkifRing->Enabled);
 
     status = XENBUS_STORE(Read,
@@ -2188,8 +2187,10 @@ BlkifRingDisable(
                 break;
 
             // Try to move things along
+            __BlkifRingAcquireLock(BlkifRing);
             __BlkifRingSend(BlkifRing);
             (VOID) BlkifRingPoll(BlkifRing);
+            __BlkifRingReleaseLock(BlkifRing);
 
             // We are waiting for a watch event at DISPATCH_LEVEL so
             // it is our responsibility to poll the store ring.
@@ -2200,6 +2201,7 @@ BlkifRingDisable(
         }
     }
 
+    __BlkifRingAcquireLock(BlkifRing);
     BlkifRing->Enabled = FALSE;
 
     while (!IsListEmpty(&BlkifRing->SubmittedList)) {
