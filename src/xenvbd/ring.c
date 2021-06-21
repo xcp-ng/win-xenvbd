@@ -494,7 +494,7 @@ BlkifRingIndirectDtor(
 
     UNREFERENCED_PARAMETER(Argument);
 
-    __FreePages(Indirect->Mdl);
+    __FreePage(Indirect->Mdl);
     Indirect->Page = NULL;
     Indirect->Mdl = NULL;
 }

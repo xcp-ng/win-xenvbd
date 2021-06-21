@@ -1166,7 +1166,7 @@ AdapterBounceDtor(
 
     Bounce->BouncePtr = NULL;
 
-    __FreePages(Bounce->BounceMdl);
+    __FreePage(Bounce->BounceMdl);
     Bounce->BounceMdl = NULL;
 }
 
