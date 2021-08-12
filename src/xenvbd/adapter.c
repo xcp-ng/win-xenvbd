@@ -102,13 +102,9 @@ __AdapterAllocate(
     IN  ULONG   Size
     )
 {
-    PVOID       Buffer;
-    Buffer = ExAllocatePoolWithTag(NonPagedPool,
-                                   Size,
-                                   ADAPTER_POOL_TAG);
-    if (Buffer)
-        RtlZeroMemory(Buffer, Size);
-    return Buffer;
+    return __AllocatePoolWithTag(NonPagedPool,
+                                 Size,
+                                 ADAPTER_POOL_TAG);
 }
 
 static FORCEINLINE VOID
@@ -116,7 +112,7 @@ __AdapterFree(
     IN  PVOID   Buffer
     )
 {
-    ExFreePoolWithTag(Buffer, ADAPTER_POOL_TAG);
+    __FreePoolWithTag(Buffer, ADAPTER_POOL_TAG);
 }
 
 static FORCEINLINE PANSI_STRING

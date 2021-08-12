@@ -44,15 +44,9 @@ Base64Allocate(
     IN  ULONG   Size
     )
 {
-    PVOID       Buffer;
-
-    Buffer = ExAllocatePoolWithTag(NonPagedPool,
-                                   Size,
-                                   BASE64_POOL_TAG);
-    if (Buffer)
-        RtlZeroMemory(Buffer, Size);
-
-    return Buffer;
+    return __AllocatePoolWithTag(NonPagedPool,
+                                 Size,
+                                 BASE64_POOL_TAG);
 }
 
 VOID
@@ -60,8 +54,7 @@ Base64Free(
     IN  PVOID   Buffer
     )
 {
-    if (Buffer)
-        ExFreePoolWithTag(Buffer, BASE64_POOL_TAG);
+    __FreePoolWithTag(Buffer, BASE64_POOL_TAG);
 }
 
 static FORCEINLINE UCHAR
