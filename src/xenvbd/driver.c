@@ -301,7 +301,7 @@ DriverGetFeatureOverride(
 {
     BOOLEAN              Present = FALSE;
 
-    if (Feature < ARRAYSIZE(Driver.FeatureOverride)) {
+    if ((ULONG)Feature < ARRAYSIZE(Driver.FeatureOverride)) {
         Present = Driver.FeatureOverride[Feature].Present;
         *Value = Driver.FeatureOverride[Feature].Value;
     }
@@ -315,7 +315,7 @@ DriverGetFeatureName(
     IN  XENVBD_FEATURE  Feature
     )
 {
-    return (Feature < ARRAYSIZE(Driver.FeatureOverride)) ?
+    return ((ULONG)Feature < ARRAYSIZE(Driver.FeatureOverride)) ?
            Driver.FeatureOverride[Feature].Name :
            NULL;
 }
