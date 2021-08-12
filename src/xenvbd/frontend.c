@@ -1368,11 +1368,13 @@ FrontendDisconnect(
 
     Frontend->NumQueues = 0;
 
-    Base64Free(Frontend->Page80.Data);
+    if (Frontend->Page80.Data)
+        Base64Free(Frontend->Page80.Data);
     Frontend->Page80.Data = NULL;
     Frontend->Page80.Size = 0;
 
-    Base64Free(Frontend->Page83.Data);
+    if (Frontend->Page83.Data)
+        Base64Free(Frontend->Page83.Data);
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 }
@@ -1970,11 +1972,13 @@ FrontendDestroy(
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
-    Base64Free(Frontend->Page80.Data);
+    if (Frontend->Page80.Data)
+        Base64Free(Frontend->Page80.Data);
     Frontend->Page80.Data = NULL;
     Frontend->Page80.Size = 0;
 
-    Base64Free(Frontend->Page83.Data);
+    if (Frontend->Page83.Data)
+        Base64Free(Frontend->Page83.Data);
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 
