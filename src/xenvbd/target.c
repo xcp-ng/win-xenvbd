@@ -641,7 +641,6 @@ TargetInquiryStd(
     IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PXENVBD_FEATURES        Features =  FrontendGetFeatures(Target->Frontend);
     PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PINQUIRYDATA            Data = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
@@ -656,9 +655,11 @@ TargetInquiryStd(
         return;
 
     RtlZeroMemory(Data, Length);
-    Data->DeviceType            = DIRECT_ACCESS_DEVICE;
+    Data->DeviceType            = (DiskInfo->DiskInfo & VDISK_READONLY) ?
+                                  READ_ONLY_DIRECT_ACCESS_DEVICE :
+                                  DIRECT_ACCESS_DEVICE;
     Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
-    Data->RemovableMedia        = Features->Removable ||
+    Data->RemovableMedia        = (DiskInfo->DiskInfo & VDISK_CDROM) ||
                                   (DiskInfo->DiskInfo & VDISK_REMOVABLE);
     Data->Versions              = 4;
     Data->ResponseDataFormat    = 2;
@@ -1473,6 +1474,15 @@ TargetGetDeviceId(
     )
 {
     return FrontendGetDeviceId(Target->Frontend);
+}
+
+//TARGET_GET_PROPERTY(Removable, BOOLEAN)
+BOOLEAN
+TargetGetRemovable(
+    IN  PXENVBD_TARGET  Target
+    )
+{
+    return FrontendGetFeatures(Target->Frontend)->Removable;
 }
 
 TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)

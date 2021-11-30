@@ -1927,10 +1927,10 @@ __AdapterSrbPnp(
 
     switch (Srb->PnPAction) {
     case StorQueryCapabilities: {
-        PSTOR_DEVICE_CAPABILITIES Caps = Srb->DataBuffer;
+        PSTOR_DEVICE_CAPABILITIES_EX Caps = Srb->DataBuffer;
 
-        Caps->Removable = 1;
-        Caps->EjectSupported = 1;
+        Caps->Removable = TargetGetRemovable(Target);
+        Caps->EjectSupported = TargetGetRemovable(Target);
         Caps->SurpriseRemovalOK = 1;
         Caps->UniqueID = 1;
 
@@ -2280,6 +2280,7 @@ AdapterDriverEntry(
     InitData.MultipleRequestPerLu       = TRUE;
     InitData.HwAdapterControl           = AdapterHwAdapterControl;
     InitData.HwBuildIo                  = AdapterHwBuildIo;
+    InitData.FeatureSupport             = STOR_FEATURE_FULL_PNP_DEVICE_CAPABILITIES;
 
     status = StorPortInitialize(DriverObject,
                                 RegistryPath,
