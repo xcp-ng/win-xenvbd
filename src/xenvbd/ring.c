@@ -1898,22 +1898,13 @@ BlkifRingCreate(
 
     KeInitializeThreadedDpc(&(*BlkifRing)->Dpc, BlkifRingDpc, *BlkifRing);
 
-    status = BlkifRingCacheCreate(*BlkifRing);
-    if (!NT_SUCCESS(status))
-        goto fail4;
-
     status = ThreadCreate(RingWatchdog,
                           *BlkifRing,
                           &(*BlkifRing)->WatchdogThread);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail4;
 
     return STATUS_SUCCESS;
-
-fail5:
-    Error("fail5\n");
-
-    BlkifRingCacheDestroy(*BlkifRing);
 
 fail4:
     Error("fail4\n");
@@ -1951,8 +1942,6 @@ BlkifRingDestroy(
     ThreadAlert(BlkifRing->WatchdogThread);
     ThreadJoin(BlkifRing->WatchdogThread);
     BlkifRing->WatchdogThread = NULL;
-
-    BlkifRingCacheDestroy(BlkifRing);
 
     RtlZeroMemory(&BlkifRing->Dpc, sizeof(KDPC));
 
@@ -2003,11 +1992,15 @@ BlkifRingConnect(
     }
     KeSetImportanceDpc(&BlkifRing->Dpc, MediumHighImportance);
 
+    status = BlkifRingCacheCreate(BlkifRing);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
     BlkifRing->Mdl = __AllocatePages(1 << Ring->Order);
 
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Mdl == NULL)
-        goto fail1;
+        goto fail2;
 
     BlkifRing->Shared = MmGetSystemAddressForMdlSafe(BlkifRing->Mdl,
                                                      NormalPagePriority);
@@ -2026,7 +2019,7 @@ BlkifRingConnect(
                             FALSE,
                             &BlkifRing->Grants[Index]);
         if (!NT_SUCCESS(status))
-            goto fail2;
+            goto fail3;
     }
 
     BlkifRing->Channel = XENBUS_EVTCHN(Open,
@@ -2038,7 +2031,7 @@ BlkifRingConnect(
                                        TRUE);
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Channel == NULL)
-        goto fail3;
+        goto fail4;
 
     XENBUS_EVTCHN(Unmask,
                   &Ring->EvtchnInterface,
@@ -2051,7 +2044,7 @@ BlkifRingConnect(
                                  __MODULE__"|RING[%u]",
                                  BlkifRing->Index);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail5;
 
     status = XENBUS_DEBUG(Register,
                           &Ring->DebugInterface,
@@ -2060,25 +2053,25 @@ BlkifRingConnect(
                           BlkifRing,
                           &BlkifRing->DebugCallback);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail6;
 
     BlkifRing->Connected = TRUE;
     Trace("<==== %u\n", BlkifRing->Index);
 
     return STATUS_SUCCESS;
 
+fail6:
+    Error("fail6\n");
 fail5:
     Error("fail5\n");
-fail4:
-    Error("fail4\n");
     XENBUS_EVTCHN(Close,
                   &Ring->EvtchnInterface,
                   BlkifRing->Channel);
     BlkifRing->Channel = NULL;
+fail4:
+    Error("fail4\n");
 fail3:
     Error("fail3\n");
-fail2:
-    Error("fail2\n");
     for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
         if (BlkifRing->Grants[Index] == NULL)
             continue;
@@ -2092,6 +2085,9 @@ fail2:
     __FreePages(BlkifRing->Mdl);
     BlkifRing->Shared = NULL;
     BlkifRing->Mdl = NULL;
+fail2:
+    Error("fail2\n");
+    BlkifRingCacheDestroy(BlkifRing);
 fail1:
     Error("fail1 %08x\n", status);
     return status;
@@ -2310,6 +2306,8 @@ BlkifRingDisconnect(
     __FreePages(BlkifRing->Mdl);
     BlkifRing->Shared = NULL;
     BlkifRing->Mdl = NULL;
+
+    BlkifRingCacheDestroy(BlkifRing);
 
     BlkifRing->Events = 0;
     BlkifRing->Dpcs = 0;
