@@ -30,8 +30,8 @@
  */ 
 
 #include <wdm.h>
+#include <intrin.h>
 #include <xenvbd-storport.h>
-
 
 #include <xen-version.h>
 #include <xen\xen-compat.h>
@@ -103,21 +103,21 @@ CpuId(
     OUT PULONG  EDX OPTIONAL
     )
 {
-    ULONG       Value[4] = {0};
+    int         Value[4] = {0};
 
     __cpuid(Value, Leaf);
 
     if (EAX)
-        *EAX = Value[0];
+        *EAX = (ULONG)Value[0];
 
     if (EBX)
-        *EBX = Value[1];
+        *EBX = (ULONG)Value[1];
 
     if (ECX)
-        *ECX = Value[2];
+        *ECX = (ULONG)Value[2];
 
     if (EDX)
-        *EDX = Value[3];
+        *EDX = (ULONG)Value[3];
 }
 
 static FORCEINLINE NTSTATUS
