@@ -157,9 +157,9 @@ fail4:
     Error("fail4\n");
 fail3:
     Error("fail3\n");
+    Base64Free(Buffer);
 fail2:
     Error("fail2\n");
-    Base64Free(Buffer);
 fail1:
     Error("fail1 %08x\n", status);
     *Binary = NULL;
