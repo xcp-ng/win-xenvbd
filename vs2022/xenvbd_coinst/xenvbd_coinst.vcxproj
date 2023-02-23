@@ -61,5 +61,8 @@
   <ItemGroup>
     <None Include="..\..\src\coinst\xenvbd_coinst.def" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\src\coinst\xenvbd_coinst.rc" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
