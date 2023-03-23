@@ -1197,5 +1197,3 @@ fail1:
     LogError("Fail1 (%08x)\n", Status);
     return Status;
 }
-
-

@@ -187,4 +187,3 @@ BufferCopyOut(
     ASSERT(Buf->VAddr != NULL);
     RtlCopyMemory(Output, Buf->VAddr, Length);
 }
-

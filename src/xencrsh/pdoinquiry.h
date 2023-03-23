@@ -57,4 +57,3 @@ PdoInquiry(
     );
 
 #endif // _XENVBD_PDO_INQUIRY_H
-

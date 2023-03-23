@@ -210,4 +210,3 @@ QueueDebugCallback(
 
     Queue->MaxCount = Queue->Count;
 }
-

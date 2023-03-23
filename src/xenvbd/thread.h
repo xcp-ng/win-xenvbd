@@ -86,4 +86,3 @@ ThreadJoin(
     );
 
 #endif  // _XENVBD_THREAD_H
-

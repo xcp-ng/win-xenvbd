@@ -39,5 +39,3 @@ asm___hypercall3 proc
 asm___hypercall3 endp
 
                 end
-
-
