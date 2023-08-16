@@ -5,3 +5,18 @@
 
 # Output
 /xenvbd
+*.log
+*.lastbuildstate
+*.db
+*.recipe
+*.sarif
+*.obj
+*.vsidx
+*.tlog
+*.pdb
+vs2019/Windows10Release/
+vs2019/*/Windows10Release/
+include/version.h
+vs2019/version/.revision
+vs2019/xenvbd.inf
+vs2019/*/x64/Windows10Release/
