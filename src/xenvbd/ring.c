@@ -1858,7 +1858,7 @@ BlkifRingConnect(
     }
     KeSetImportanceDpc(&BlkifRing->Dpc, MediumHighImportance);
 
-    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order);
+    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order, TRUE);
 
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Mdl == NULL)

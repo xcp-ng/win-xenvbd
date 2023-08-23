@@ -46,7 +46,7 @@ Base64Allocate(
 {
     PVOID       Buffer;
 
-    Buffer = ExAllocatePoolWithTag(NonPagedPool,
+    Buffer = ALLOCATE_POOL(NonPagedPool,
                                    Size,
                                    BASE64_POOL_TAG);
     if (Buffer)

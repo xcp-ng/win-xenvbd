@@ -102,7 +102,7 @@ __AdapterAllocate(
     )
 {
     PVOID       Buffer;
-    Buffer = ExAllocatePoolWithTag(NonPagedPool,
+    Buffer = ALLOCATE_POOL(NonPagedPool,
                                    Size,
                                    ADAPTER_POOL_TAG);
     if (Buffer)
