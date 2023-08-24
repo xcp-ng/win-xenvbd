@@ -194,7 +194,7 @@ __FreePoolWithTag(
 static FORCEINLINE PMDL
 __AllocatePages(
     IN  ULONG           Count,
-    IN  BOOLEAN         zeroInitialize = TRUE
+    IN  BOOLEAN         zeroInitialize
     )
 {
     PHYSICAL_ADDRESS    LowAddress;
@@ -244,7 +244,7 @@ __AllocatePages(
     ASSERT3P(Mdl->StartVa, ==, MdlMappedSystemVa);
     ASSERT3P(Mdl->MappedSystemVa, ==, MdlMappedSystemVa);
 
-    if (zeroInitialize) {
+    if (!zeroInitialize) {
         RtlZeroMemory(MdlMappedSystemVa, Mdl->ByteCount);
     }
 
