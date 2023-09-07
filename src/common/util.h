@@ -36,6 +36,7 @@
 #include <intrin.h>
 
 #include "assert.h"
+#include "debug.h"
 
 #define	P2ROUNDUP(_x, _a)   \
         (-(-(_x) & -(_a)))
