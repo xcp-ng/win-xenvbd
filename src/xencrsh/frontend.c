@@ -1000,6 +1000,8 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
             default:
                 Failed = TRUE;
                 break;
@@ -1023,6 +1025,9 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_CLOSED:
             default:
                 Failed = TRUE;
                 break;
@@ -1054,6 +1059,9 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_PREPARED:
             default:
                 Failed = TRUE;
                 break;
@@ -1077,6 +1085,9 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_CONNECTED:
             default:
                 Failed = TRUE;
                 break;
@@ -1091,12 +1102,16 @@ FrontendSetState(
                 FrontendDisable(Frontend);
                 Frontend->State = XENVBD_CONNECTED;
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_ENABLED:
             default:
                 Failed = TRUE;
                 break;
             }
             break;
 
+        case XENVBD_STATE_INVALID:
         default:
             Failed = TRUE;
             break;

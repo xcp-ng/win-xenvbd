@@ -361,6 +361,33 @@ FdoAdapterControl(
 #undef SET_SUPPORTED
 
         } break;
+    case ScsiStopAdapter:
+    case ScsiRestartAdapter:
+    case ScsiSetBootConfig:
+    case ScsiSetRunningConfig:
+    case ScsiPowerSettingNotification:
+    case ScsiAdapterPower:
+    case ScsiAdapterPoFxPowerRequired:
+    case ScsiAdapterPoFxPowerActive:
+    case ScsiAdapterPoFxPowerSetFState:
+    case ScsiAdapterPoFxPowerControl:
+    case ScsiAdapterPrepareForBusReScan:
+    case ScsiAdapterSystemPowerHints:
+    case ScsiAdapterFilterResourceRequirements:
+    case ScsiAdapterPoFxMaxOperationalPower:
+    case ScsiAdapterPoFxSetPerfState:
+    case ScsiAdapterSurpriseRemoval:
+    case ScsiAdapterSerialNumber:
+    case ScsiAdapterCryptoOperation:
+    case ScsiAdapterQueryFruId:
+    case ScsiAdapterSetEventLogging:
+    case ScsiAdapterReportInternalData:
+    case ScsiAdapterResetBusSynchronous:
+    case ScsiAdapterPostHwInitialize:
+    case ScsiAdapterPrepareEarlyDumpData:
+    case ScsiAdapterRestoreEarlyDumpData:
+    case ScsiAdapterControlMax:
+    case MakeAdapterControlTypeSizeOfUlong:
     default:
         LogVerbose("%s\n", ScsiAdapterControlTypeName(ControlType));
         break;
