@@ -62,6 +62,11 @@
   <ItemGroup>
     <PackageFiles Include="$(OutDir)\$(ProjectName)\*" />
   </ItemGroup>
+  <ItemDefinitionGroup>
+    <DriverSign>
+      <AdditionalOptions>/fdws %(AdditionalOptions)</AdditionalOptions>
+    </DriverSign>
+  </ItemDefinitionGroup>
   <Target Name="Archive" AfterTargets="TestSign">
     <Copy
        SourceFiles="@(PackageFiles)"
