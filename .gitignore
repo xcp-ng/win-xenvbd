@@ -20,3 +20,7 @@ include/version.h
 vs2019/version/.revision
 vs2019/xenvbd.inf
 vs2019/*/x64/Windows10Release/
+vs2019/.vs/xenvbd/v16/.suo
+*.db-shm
+*.db-wal
+*.opendb

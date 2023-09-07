@@ -31,7 +31,7 @@
 
 #include <wdm.h>
 #include <xenvbd-storport.h>
-
+#include <intrin.h>
 
 #include <xen-version.h>
 #include <xen\xen-compat.h>
@@ -103,7 +103,7 @@ CpuId(
     OUT PULONG  EDX OPTIONAL
     )
 {
-    ULONG       Value[4] = {0};
+    int       Value[4] = {0};
 
     __cpuid(Value, Leaf);
 
