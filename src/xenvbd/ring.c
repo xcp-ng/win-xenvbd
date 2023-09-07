@@ -175,6 +175,8 @@ __StatName(
     case XENVBD_STAT_BLKIF_OP_DISCARD:          return "BLKIF_OP_DISCARD";
     case XENVBD_STAT_SEGMENTS_GRANTED:          return "SegmentsGranted";
     case XENVBD_STAT_SEGMENTS_BOUNCED:          return "SegmentsBounced";
+    case XENVBD_STAT_BLKIF_OP_UNKNOWN:          return "BLKIF_OP_UNKNOWN";
+    case XENVBD_STAT__MAX:                      return "_MAX";
     default:                                    return "UNKNOWN";
     }
 }

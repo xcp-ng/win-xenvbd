@@ -1082,6 +1082,10 @@ AdapterDevicePowerThread(
                 AdapterD0ToD3(Adapter);
                 break;
 
+            case PowerDeviceUnspecified:
+            case PowerDeviceD1:
+            case PowerDeviceD2:
+            case PowerDeviceMaximum:
             default:
                 break;
             }
@@ -1899,6 +1903,12 @@ __AdapterSrbPnp(
 
         } break;
 
+    case StorStartDevice:
+    case StorRemoveDevice:
+    case StorStopDevice:
+    case StorQueryResourceRequirements:
+    case StorFilterResourceRequirements:
+    case StorSurpriseRemoval:
     default:
         break;
     }
@@ -2038,6 +2048,33 @@ AdapterHwAdapterControl(
         List->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
         break;
 
+    case ScsiStopAdapter:
+    case ScsiRestartAdapter:
+    case ScsiSetBootConfig:
+    case ScsiSetRunningConfig:
+    case ScsiPowerSettingNotification:
+    case ScsiAdapterPower:
+    case ScsiAdapterPoFxPowerRequired:
+    case ScsiAdapterPoFxPowerActive:
+    case ScsiAdapterPoFxPowerSetFState:
+    case ScsiAdapterPoFxPowerControl:
+    case ScsiAdapterPrepareForBusReScan:
+    case ScsiAdapterSystemPowerHints:
+    case ScsiAdapterFilterResourceRequirements:
+    case ScsiAdapterPoFxMaxOperationalPower:
+    case ScsiAdapterPoFxSetPerfState:
+    case ScsiAdapterSurpriseRemoval:
+    case ScsiAdapterSerialNumber:
+    case ScsiAdapterCryptoOperation:
+    case ScsiAdapterQueryFruId:
+    case ScsiAdapterSetEventLogging:
+    case ScsiAdapterReportInternalData:
+    case ScsiAdapterResetBusSynchronous:
+    case ScsiAdapterPostHwInitialize:
+    case ScsiAdapterPrepareEarlyDumpData:
+    case ScsiAdapterRestoreEarlyDumpData:
+    case ScsiAdapterControlMax:
+    case MakeAdapterControlTypeSizeOfUlong:
     default:
         break;
     }

@@ -1128,6 +1128,15 @@ __TargetRemoveDevice(
         TargetSetMissing(Target, "Surprise Remove");
         break;
 
+    case Invalid:
+    case Present:
+    case Enumerated:
+    case Added:
+    case Started:
+    case StopPending:
+    case Stopped:
+    case RemovePending:
+    case Deleted:
     default:
         TargetSetMissing(Target, "Removed");
         break;

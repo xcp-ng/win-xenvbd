@@ -326,6 +326,10 @@ FrontendSetDeviceUsage(
         UsageName = "dump";
         Frontend->Caps.DumpFile = Value;
         break;
+    case DeviceUsageTypeUndefined:
+    case DeviceUsageTypeBoot:
+    case DeviceUsageTypePostDisplay:
+    case DeviceUsageTypeGuestAssigned:
     default:
         return;
     }
@@ -1439,6 +1443,8 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
             default:
                 Failed = TRUE;
                 break;
@@ -1468,6 +1474,9 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_CLOSING:
+            case XENVBD_CLOSED:
             default:
                 Failed = TRUE;
                 break;
@@ -1500,6 +1509,9 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_PREPARED:
             default:
                 Failed = TRUE;
                 break;
@@ -1518,6 +1530,9 @@ __FrontendSetState(
                 Status = FrontendClose(Frontend);
                 Frontend->State = XENVBD_CLOSING;
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_CONNECTED:
             default:
                 Failed = TRUE;
                 break;
@@ -1534,6 +1549,8 @@ __FrontendSetState(
                 FrontendDisconnect(Frontend);
                 Frontend->State = XENVBD_CLOSED;
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_CLOSING:
             default:
                 Failed = TRUE;
                 break;
@@ -1549,12 +1566,16 @@ __FrontendSetState(
                 FrontendDisable(Frontend);
                 Frontend->State = XENVBD_CONNECTED;
                 break;
+            case XENVBD_STATE_INVALID:
+            case XENVBD_INITIALIZED:
+            case XENVBD_ENABLED:
             default:
                 Failed = TRUE;
                 break;
             }
             break;
 
+        case XENVBD_STATE_INVALID:
         default:
             Failed = TRUE;
             break;
