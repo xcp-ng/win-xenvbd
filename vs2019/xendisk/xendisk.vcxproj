@@ -37,6 +37,9 @@
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
+	<DriverSign>
+      <AdditionalOptions>/fdws %(AdditionalOptions)</AdditionalOptions>
+    </DriverSign>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>

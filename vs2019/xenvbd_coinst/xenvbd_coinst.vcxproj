@@ -34,6 +34,9 @@
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+	<DriverSign>
+      <AdditionalOptions>/fdws %(AdditionalOptions)</AdditionalOptions>
+    </DriverSign>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>
