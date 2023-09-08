@@ -1,15 +1,16 @@
-#
 # Wrapper script for MSBuild
-#
 param(
 	[string]$SolutionDir = "vs2019",
 	[string]$ConfigurationBase = "Windows 10",
 	[Parameter(Mandatory = $true)]
 	[string]$Arch,
 	[Parameter(Mandatory = $true)]
-	[string]$Type
+	[string]$Type,
+	[string]$SolutionName = "xenvbd",
+	[string[]]$ProjectNames = @("xencrsh", "xendisk", "xenvbd")
 )
 
+# Function to run MSBuild with specified parameters
 Function Run-MSBuild {
 	param(
 		[string]$SolutionPath,
@@ -20,23 +21,30 @@ Function Run-MSBuild {
 		[string]$Inputs = ""
 	)
 
-	$c = "msbuild.exe"
-	$c += " /m:4"
-	$c += [string]::Format(" /p:Configuration=""{0}""", $Configuration)
-	$c += [string]::Format(" /p:Platform=""{0}""", $Platform)
-	$c += [string]::Format(" /t:""{0}"" ", $Target)
-	if ($Inputs) {
-		$c += [string]::Format(" /p:Inputs=""{0}"" ", $Inputs)
-	}
-	$c += Join-Path -Path $SolutionPath -ChildPath $Name
+	# Construct options in a structured manner
+	$options = @(
+		"/m:4",
+		"/p:Configuration=`"$Configuration`"",
+		"/p:Platform=`"$Platform`"",
+		"/t:`"$Target`""
+	)
 
-	Invoke-Expression $c
+	if ($Inputs) {
+		$options += "/p:Inputs=`"$Inputs`""
+	}
+
+	$options += (Join-Path -Path $SolutionPath -ChildPath $Name)
+
+	# Execute MSBuild with the options
+	Invoke-Expression -Command ("msbuild.exe " + [string]::Join(" ", $options))
+
 	if ($LASTEXITCODE -ne 0) {
 		Write-Host -ForegroundColor Red "ERROR: MSBuild failed, code:" $LASTEXITCODE
 		Exit $LASTEXITCODE
 	}
 }
 
+# Function to run MSBuild for SDV analysis with specific parameters
 Function Run-MSBuildSDV {
 	param(
 		[string]$SolutionPath,
@@ -67,21 +75,19 @@ Function Run-MSBuildSDV {
 	Set-Location $basepath
 }
 
-#
-# Script Body
-#
-
-$configuration = @{ "free" = "$ConfigurationBase Release"; "checked" = "$ConfigurationBase Debug"; "sdv" = "$ConfigurationBase Release"; }
+# Main script body
+$configuration = @{
+	"free" = "$ConfigurationBase Release";
+	"checked" = "$ConfigurationBase Debug";
+	"sdv" = "$ConfigurationBase Release"
+}
 $platform = @{ "x86" = "Win32"; "x64" = "x64" }
 $solutionpath = Resolve-Path $SolutionDir
 
 Set-ExecutionPolicy -Scope CurrentUser -Force Bypass
 
-if ($Type -eq "free") {
-	Run-MSBuild $solutionpath "xenvbd.sln" $configuration["free"] $platform[$Arch]
-}
-elseif ($Type -eq "checked") {
-	Run-MSBuild $solutionpath "xenvbd.sln" $configuration["checked"] $platform[$Arch]
+if ($Type -eq "free" -or $Type -eq "checked") {
+	Run-MSBuild $solutionpath "$SolutionName.sln" $configuration[$Type] $platform[$Arch]
 }
 elseif ($Type -eq "sdv") {
 	$archivepath = "xenvbd"

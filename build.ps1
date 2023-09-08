@@ -12,42 +12,47 @@ param(
 # Script Body
 #
 
-Function Build {
+$solutiondir = @{
+	"14.0" = "vs2015";
+	"15.0" = "vs2017";
+	"16.0" = "vs2019";
+	"17.0" = "vs2022";
+	"EWDK" = "ewdk";
+}
+
+$configurationbase = @{
+	"14.0" = "Windows 8";
+	"15.0" = "Windows 8";
+	"16.0" = "Windows 8";
+	"17.0" = "Windows 11";
+	"EWDK" = "Windows 10";
+}
+
+Function UnifiedBuild {
 	param(
-		[string]$Arch,
-		[string]$Type
+		[string]$Arch = "x64",
+		[string]$Type = "free",
+		[string]$BuildType = "normal"
 	)
-
+	
 	$visualstudioversion = $Env:VisualStudioVersion
-	$solutiondir = @{ "14.0" = "vs2015"; "15.0" = "vs2017"; "16.0" = "vs2019"; }
-	$configurationbase = @{ "14.0" = "Windows 8"; "15.0" = "Windows 8"; "16.0" = "Windows 8"; }
-
 	$params = @{
 		SolutionDir = $solutiondir[$visualstudioversion];
 		ConfigurationBase = $configurationbase[$visualstudioversion];
 		Arch = $Arch;
 		Type = $Type
-		}
+	}
+	
+	if ($BuildType -eq "sdv") {
+		$params["ConfigurationBase"] = "Windows 10"
+		$params["Type"] = "sdv"
+	}
+	
 	& ".\msbuild.ps1" @params
 	if ($LASTEXITCODE -ne 0) {
 		Write-Host -ForegroundColor Red "ERROR: Build failed, code:" $LASTEXITCODE
 		Exit $LASTEXITCODE
 	}
-}
-
-Function SdvBuild {
-	$visualstudioversion = $Env:VisualStudioVersion
-	$solutiondir = @{ "14.0" = "vs2015"; "15.0" = "vs2017"; "16.0" = "vs2019"; }
-	$configurationbase = @{ "14.0" = "Windows 10"; "15.0" = "Windows 10"; "16.0" = "Windows 10"; }
-	$arch = "x64"
-
-	$params = @{
-		SolutionDir = $solutiondir[$visualstudioversion];
-		ConfigurationBase = $configurationbase[$visualstudioversion];
-		Arch = $arch;
-		Type = "sdv"
-		}
-	& ".\msbuild.ps1" @params
 }
 
 if ($Type -ne "free" -and $Type -ne "checked") {
@@ -82,9 +87,9 @@ Set-Item -Path Env:MAJOR_VERSION -Value '9'
 Set-Item -Path Env:MINOR_VERSION -Value '1'
 Set-Item -Path Env:MICRO_VERSION -Value '0'
 
-Build "x86" $Type
-Build "x64" $Type
+UnifiedBuild -Arch "x86" -Type $Type
+UnifiedBuild -Arch "x64" -Type $Type
 
 if ($Sdv) {
-	SdvBuild
+	UnifiedBuild -BuildType "sdv"
 }
