@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -326,10 +327,6 @@ FrontendSetDeviceUsage(
         UsageName = "dump";
         Frontend->Caps.DumpFile = Value;
         break;
-    case DeviceUsageTypeUndefined:
-    case DeviceUsageTypeBoot:
-    case DeviceUsageTypePostDisplay:
-    case DeviceUsageTypeGuestAssigned:
     default:
         return;
     }
@@ -851,7 +848,6 @@ __ReadDiskInfo(
     if (!Changed)
         return;
 
-    Frontend->Caps.SurpriseRemovable = !!(Frontend->DiskInfo.DiskInfo & VDISK_REMOVABLE);
     if (Frontend->DiskInfo.DiskInfo & VDISK_READONLY) {
         Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n", Frontend->TargetId);
     }
@@ -872,10 +868,9 @@ __ReadDiskInfo(
     Trace("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
           Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
           Frontend->DiskInfo.PhysSectorSize);
-    Trace("Target[%d] : %d %s (%08x) %s\n", Frontend->TargetId,
+    Trace("Target[%d] : %d %s (%08x)\n", Frontend->TargetId,
           __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-          Frontend->DiskInfo.DiskInfo,
-          Frontend->Caps.SurpriseRemovable ? "SURPRISE_REMOVABLE" : "");
+          Frontend->DiskInfo.DiskInfo);
 }
 
 static FORCEINLINE VOID
@@ -887,7 +882,7 @@ FrontendReadFeatures(
 
     Changed = FrontendReadFeature(Frontend,
                                   FeatureRemovable,
-                                  &Frontend->Caps.Removable);
+                                  &Frontend->Features.Removable);
     Changed |= FrontendReadValue32(Frontend,
                                    FeatureMaxIndirectSegments,
                                    TRUE,
@@ -903,7 +898,7 @@ FrontendReadFeatures(
             Frontend->TargetId,
             Frontend->Features.Persistent ? "PERSISTENT " : "",
             Frontend->Features.Indirect ? "INDIRECT " : "",
-            Frontend->Caps.Removable ? "REMOVABLE" : "");
+            Frontend->Features.Removable ? "REMOVABLE" : "");
 
     if (Frontend->Features.Indirect) {
         Verbose("Target[%d] : INDIRECT %x\n",
@@ -1374,11 +1369,13 @@ FrontendDisconnect(
 
     Frontend->NumQueues = 0;
 
-    Base64Free(Frontend->Page80.Data);
+    if (Frontend->Page80.Data)
+        Base64Free(Frontend->Page80.Data);
     Frontend->Page80.Data = NULL;
     Frontend->Page80.Size = 0;
 
-    Base64Free(Frontend->Page83.Data);
+    if (Frontend->Page83.Data)
+        Base64Free(Frontend->Page83.Data);
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 }
@@ -1443,8 +1440,6 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
             default:
                 Failed = TRUE;
                 break;
@@ -1474,9 +1469,6 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_CLOSING:
-            case XENVBD_CLOSED:
             default:
                 Failed = TRUE;
                 break;
@@ -1509,9 +1501,6 @@ __FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_PREPARED:
             default:
                 Failed = TRUE;
                 break;
@@ -1530,9 +1519,6 @@ __FrontendSetState(
                 Status = FrontendClose(Frontend);
                 Frontend->State = XENVBD_CLOSING;
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_CONNECTED:
             default:
                 Failed = TRUE;
                 break;
@@ -1549,8 +1535,6 @@ __FrontendSetState(
                 FrontendDisconnect(Frontend);
                 Frontend->State = XENVBD_CLOSED;
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_CLOSING:
             default:
                 Failed = TRUE;
                 break;
@@ -1566,16 +1550,12 @@ __FrontendSetState(
                 FrontendDisable(Frontend);
                 Frontend->State = XENVBD_CONNECTED;
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_ENABLED:
             default:
                 Failed = TRUE;
                 break;
             }
             break;
 
-        case XENVBD_STATE_INVALID:
         default:
             Failed = TRUE;
             break;
@@ -1657,19 +1637,18 @@ FrontendDebugCallback(
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "Caps: %s%s%s%s%s%s\n",
+                 "Caps: %s%s%s%s\n",
                  Frontend->Caps.Connected ? "CONNECTED " : "",
-                 Frontend->Caps.Removable ? "REMOVABLE " : "",
-                 Frontend->Caps.SurpriseRemovable ? "SURPRISE " : "",
                  Frontend->Caps.Paging ? "PAGING " : "",
                  Frontend->Caps.Hibernation ? "HIBER " : "",
                  Frontend->Caps.DumpFile ? "DUMP " : "");
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "Features: %s%s%s%s%s\n",
+                 "Features: %s%s%s%s%s%s\n",
                  Frontend->Features.Persistent ? "PERSISTENT " : "",
                  Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
+                 Frontend->Features.Removable ? "REMOVABLE " : "",
                  Frontend->DiskInfo.Barrier ? "BARRIER " : "",
                  Frontend->DiskInfo.FlushCache ? "FLUSH " : "",
                  Frontend->DiskInfo.Discard ? "DISCARD " : "");
@@ -1994,11 +1973,13 @@ FrontendDestroy(
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
-    Base64Free(Frontend->Page80.Data);
+    if (Frontend->Page80.Data)
+        Base64Free(Frontend->Page80.Data);
     Frontend->Page80.Data = NULL;
     Frontend->Page80.Size = 0;
 
-    Base64Free(Frontend->Page83.Data);
+    if (Frontend->Page83.Data)
+        Base64Free(Frontend->Page83.Data);
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 

@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -99,30 +100,6 @@ ScsiAdapterControlTypeName(
     _SCSI_CONTROL_TYPE_NAME(RestartAdapter);
     _SCSI_CONTROL_TYPE_NAME(SetBootConfig);
     _SCSI_CONTROL_TYPE_NAME(SetRunningConfig);
-    _SCSI_CONTROL_TYPE_NAME(PowerSettingNotification);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPower);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxPowerRequired);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxPowerActive);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxPowerSetFState);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxPowerControl);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPrepareForBusReScan);
-    _SCSI_CONTROL_TYPE_NAME(AdapterSystemPowerHints);
-    _SCSI_CONTROL_TYPE_NAME(AdapterFilterResourceRequirements);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxMaxOperationalPower);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPoFxSetPerfState);
-    _SCSI_CONTROL_TYPE_NAME(AdapterSurpriseRemoval);
-    _SCSI_CONTROL_TYPE_NAME(AdapterSerialNumber);
-    _SCSI_CONTROL_TYPE_NAME(AdapterCryptoOperation);
-    _SCSI_CONTROL_TYPE_NAME(AdapterQueryFruId);
-    _SCSI_CONTROL_TYPE_NAME(AdapterSetEventLogging);
-    _SCSI_CONTROL_TYPE_NAME(AdapterReportInternalData);
-    _SCSI_CONTROL_TYPE_NAME(AdapterResetBusSynchronous);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPostHwInitialize);
-    _SCSI_CONTROL_TYPE_NAME(AdapterPrepareEarlyDumpData);
-    _SCSI_CONTROL_TYPE_NAME(AdapterRestoreEarlyDumpData);
-    _SCSI_CONTROL_TYPE_NAME(AdapterControlMax);
-    case MakeAdapterControlTypeSizeOfUlong:
-        return "MakeAdapterControlTypeSizeOfUlong";
     default:    return "UNKNOWN";
     }
 
@@ -139,8 +116,6 @@ StorPnPActionName(
     case StorQueryCapabilities:         return "QueryCapabilities";
     case StorFilterResourceRequirements:return "FilterResourceRequirements";
     case StorSurpriseRemoval:           return "SurpriseRemoval";
-    case StorRemoveDevice:              return "RemoveDevice";
-    case StorQueryResourceRequirements: return "QueryResourceRequirements";
     default:                            return "UNKNOWN";
     }
 }
@@ -265,7 +240,6 @@ PowerActionName(
     _POWER_ACTION_NAME(ShutdownReset);
     _POWER_ACTION_NAME(ShutdownOff);
     _POWER_ACTION_NAME(WarmEject);
-    _POWER_ACTION_NAME(DisplayOff);
     default:
         break;
     }

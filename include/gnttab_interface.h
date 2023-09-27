@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -72,12 +73,24 @@ typedef VOID
     IN  PINTERFACE  Interface
     );
 
+typedef NTSTATUS
+(*XENBUS_GNTTAB_CREATE_CACHE_V1)(
+    IN  PINTERFACE                  Interface,
+    IN  const CHAR                  *Name,
+    IN  ULONG                       Reservation,
+    IN  XENBUS_CACHE_ACQUIRE_LOCK   AcquireLock,
+    IN  XENBUS_CACHE_RELEASE_LOCK   ReleaseLock,
+    IN  PVOID                       Argument OPTIONAL,
+    OUT PXENBUS_GNTTAB_CACHE        *Cache
+    );
+
 /*! \typedef XENBUS_GNTTAB_CREATE_CACHE
     \brief Create a cache of grant table entries
 
     \param Interface The interface header
     \param Name A name for the cache which will be used in debug output
     \param Reservation The target minimum population of the cache
+    \param Cap The maximum population of the cache
     \param AcquireLock A callback invoked to acquire a spinlock
     \param ReleaseLock A callback invoked to release the spinlock
     \param Argument An optional context argument passed to the callbacks
@@ -88,6 +101,7 @@ typedef NTSTATUS
     IN  PINTERFACE                  Interface,
     IN  const CHAR                  *Name,
     IN  ULONG                       Reservation,
+    IN  ULONG                       Cap,
     IN  XENBUS_CACHE_ACQUIRE_LOCK   AcquireLock,
     IN  XENBUS_CACHE_RELEASE_LOCK   ReleaseLock,
     IN  PVOID                       Argument OPTIONAL,
@@ -220,21 +234,6 @@ typedef NTSTATUS
 DEFINE_GUID(GUID_XENBUS_GNTTAB_INTERFACE, 
 0x763679c5, 0xe5c2, 0x4a6d, 0x8b, 0x88, 0x6b, 0xb0, 0x2e, 0xc4, 0x2d, 0x8e);
 
-/*! \struct _XENBUS_GNTTAB_INTERFACE_V1
-    \brief GNTTAB interface version 1
-    \ingroup interfaces
-*/
-struct _XENBUS_GNTTAB_INTERFACE_V1 {
-    INTERFACE                           Interface;
-    XENBUS_GNTTAB_ACQUIRE               GnttabAcquire;
-    XENBUS_GNTTAB_RELEASE               GnttabRelease;
-    XENBUS_GNTTAB_CREATE_CACHE          GnttabCreateCache;
-    XENBUS_GNTTAB_PERMIT_FOREIGN_ACCESS GnttabPermitForeignAccess;
-    XENBUS_GNTTAB_REVOKE_FOREIGN_ACCESS GnttabRevokeForeignAccess;
-    XENBUS_GNTTAB_GET_REFERENCE         GnttabGetReference;
-    XENBUS_GNTTAB_DESTROY_CACHE         GnttabDestroyCache;
-};
-
 /*! \struct _XENBUS_GNTTAB_INTERFACE_V2
     \brief GNTTAB interface version 2
     \ingroup interfaces
@@ -243,7 +242,7 @@ struct _XENBUS_GNTTAB_INTERFACE_V2 {
     INTERFACE                           Interface;
     XENBUS_GNTTAB_ACQUIRE               GnttabAcquire;
     XENBUS_GNTTAB_RELEASE               GnttabRelease;
-    XENBUS_GNTTAB_CREATE_CACHE          GnttabCreateCache;
+    XENBUS_GNTTAB_CREATE_CACHE_V1       GnttabCreateCacheVersion1;
     XENBUS_GNTTAB_PERMIT_FOREIGN_ACCESS GnttabPermitForeignAccess;
     XENBUS_GNTTAB_REVOKE_FOREIGN_ACCESS GnttabRevokeForeignAccess;
     XENBUS_GNTTAB_GET_REFERENCE         GnttabGetReference;
@@ -260,6 +259,24 @@ struct _XENBUS_GNTTAB_INTERFACE_V3 {
     INTERFACE                           Interface;
     XENBUS_GNTTAB_ACQUIRE               GnttabAcquire;
     XENBUS_GNTTAB_RELEASE               GnttabRelease;
+    XENBUS_GNTTAB_CREATE_CACHE_V1       GnttabCreateCacheVersion1;
+    XENBUS_GNTTAB_PERMIT_FOREIGN_ACCESS GnttabPermitForeignAccess;
+    XENBUS_GNTTAB_REVOKE_FOREIGN_ACCESS GnttabRevokeForeignAccess;
+    XENBUS_GNTTAB_GET_REFERENCE         GnttabGetReference;
+    XENBUS_GNTTAB_QUERY_REFERENCE       GnttabQueryReference;
+    XENBUS_GNTTAB_DESTROY_CACHE         GnttabDestroyCache;
+    XENBUS_GNTTAB_MAP_FOREIGN_PAGES     GnttabMapForeignPages;
+    XENBUS_GNTTAB_UNMAP_FOREIGN_PAGES   GnttabUnmapForeignPages;
+};
+
+/*! \struct _XENBUS_GNTTAB_INTERFACE_V4
+    \brief GNTTAB interface version 4
+    \ingroup interfaces
+*/
+struct _XENBUS_GNTTAB_INTERFACE_V4 {
+    INTERFACE                           Interface;
+    XENBUS_GNTTAB_ACQUIRE               GnttabAcquire;
+    XENBUS_GNTTAB_RELEASE               GnttabRelease;
     XENBUS_GNTTAB_CREATE_CACHE          GnttabCreateCache;
     XENBUS_GNTTAB_PERMIT_FOREIGN_ACCESS GnttabPermitForeignAccess;
     XENBUS_GNTTAB_REVOKE_FOREIGN_ACCESS GnttabRevokeForeignAccess;
@@ -270,7 +287,7 @@ struct _XENBUS_GNTTAB_INTERFACE_V3 {
     XENBUS_GNTTAB_UNMAP_FOREIGN_PAGES   GnttabUnmapForeignPages;
 };
 
-typedef struct _XENBUS_GNTTAB_INTERFACE_V3 XENBUS_GNTTAB_INTERFACE, *PXENBUS_GNTTAB_INTERFACE;
+typedef struct _XENBUS_GNTTAB_INTERFACE_V4 XENBUS_GNTTAB_INTERFACE, *PXENBUS_GNTTAB_INTERFACE;
 
 /*! \def XENBUS_GNTTAB
     \brief Macro at assist in method invocation
@@ -280,8 +297,7 @@ typedef struct _XENBUS_GNTTAB_INTERFACE_V3 XENBUS_GNTTAB_INTERFACE, *PXENBUS_GNT
 
 #endif  // _WINDLL
 
-#define XENBUS_GNTTAB_INTERFACE_VERSION_MIN 1
-#define XENBUS_GNTTAB_INTERFACE_VERSION_MAX 3
+#define XENBUS_GNTTAB_INTERFACE_VERSION_MIN 2
+#define XENBUS_GNTTAB_INTERFACE_VERSION_MAX 4
 
 #endif  // _XENBUS_GNTTAB_INTERFACE_H
-

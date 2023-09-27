@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -44,15 +45,9 @@ Base64Allocate(
     IN  ULONG   Size
     )
 {
-    PVOID       Buffer;
-
-    Buffer = ALLOCATE_POOL(NonPagedPool,
-                                   Size,
-                                   BASE64_POOL_TAG);
-    if (Buffer)
-        RtlZeroMemory(Buffer, Size);
-
-    return Buffer;
+    return __AllocatePoolWithTag(NonPagedPool,
+                                 Size,
+                                 BASE64_POOL_TAG);
 }
 
 VOID
@@ -60,8 +55,7 @@ Base64Free(
     IN  PVOID   Buffer
     )
 {
-    if (Buffer)
-        ExFreePoolWithTag(Buffer, BASE64_POOL_TAG);
+    __FreePoolWithTag(Buffer, BASE64_POOL_TAG);
 }
 
 static FORCEINLINE UCHAR
@@ -164,9 +158,9 @@ fail4:
     Error("fail4\n");
 fail3:
     Error("fail3\n");
+    Base64Free(Buffer);
 fail2:
     Error("fail2\n");
-    Base64Free(Buffer);
 fail1:
     Error("fail1 %08x\n", status);
     *Binary = NULL;

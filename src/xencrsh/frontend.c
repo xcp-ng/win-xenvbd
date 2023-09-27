@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -460,13 +461,6 @@ __ReadFeatures(
     NTSTATUS    Status;
     PCHAR       Buffer;
 
-    Status = StoreRead(NULL, Frontend->BackendPath, 
-                        "removable", &Buffer);
-    if (NT_SUCCESS(Status)) {
-        Frontend->Removable = (strtoul(Buffer, NULL, 10) == 1);
-        AustereFree(Buffer);
-    }
-
     Status = StoreRead(NULL, Frontend->BackendPath,
                         "feature-barrier", &Buffer);
     if (NT_SUCCESS(Status)) {
@@ -485,9 +479,8 @@ __ReadFeatures(
         Frontend->FeatureDiscard = FALSE;
     }
 
-    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s %s\n", 
+    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s\n",
                 Frontend->BackendId,
-                Frontend->Removable ? "REMOVABLE" : "NOT_REMOVABLE",
                 Frontend->FeatureBarrier ? "BARRIER" : "NOT_BARRIER",
                 Frontend->FeatureDiscard ? "DISCARD" : "NOT_DISCARD");
 }
@@ -1000,8 +993,6 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
             default:
                 Failed = TRUE;
                 break;
@@ -1025,9 +1016,6 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_CLOSED:
             default:
                 Failed = TRUE;
                 break;
@@ -1059,9 +1047,6 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_PREPARED:
             default:
                 Failed = TRUE;
                 break;
@@ -1085,9 +1070,6 @@ FrontendSetState(
                     Failed = TRUE;
                 }
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_CONNECTED:
             default:
                 Failed = TRUE;
                 break;
@@ -1102,16 +1084,12 @@ FrontendSetState(
                 FrontendDisable(Frontend);
                 Frontend->State = XENVBD_CONNECTED;
                 break;
-            case XENVBD_STATE_INVALID:
-            case XENVBD_INITIALIZED:
-            case XENVBD_ENABLED:
             default:
                 Failed = TRUE;
                 break;
             }
             break;
 
-        case XENVBD_STATE_INVALID:
         default:
             Failed = TRUE;
             break;
@@ -1219,5 +1197,3 @@ fail1:
     LogError("Fail1 (%08x)\n", Status);
     return Status;
 }
-
-

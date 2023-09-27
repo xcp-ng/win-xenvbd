@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -65,6 +66,11 @@ extern BOOLEAN
 AdapterIsTargetEmulated(
     IN  PXENVBD_ADAPTER Adapter,
     IN  ULONG           TargetId
+    );
+
+extern BOOLEAN
+AdapterBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
     );
 
 extern VOID

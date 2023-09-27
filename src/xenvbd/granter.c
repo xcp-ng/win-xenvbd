@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -197,6 +198,7 @@ GranterConnect(
     status = XENBUS_GNTTAB(CreateCache,
                            &Granter->GnttabInterface,
                            Name,
+                           0,
                            0,
                            GranterAcquireLock,
                            GranterReleaseLock,

@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -142,4 +143,3 @@ _IsZeroMemory(
 #define EQUIV(_X, _Y)   (IMPLY((_X), (_Y)) && IMPLY((_Y), (_X)))
 
 #endif  // _XENCRSH_ASSERT_H
-

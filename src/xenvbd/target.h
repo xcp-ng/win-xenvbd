@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -133,7 +134,6 @@ TARGET_GET_PROPERTY(DeviceObject, PDEVICE_OBJECT)
 TARGET_GET_PROPERTY(TargetId, ULONG)
 TARGET_GET_PROPERTY(DeviceId, ULONG)
 TARGET_GET_PROPERTY(Removable, BOOLEAN)
-TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
 TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
 TARGET_GET_PROPERTY(Missing, BOOLEAN)
 

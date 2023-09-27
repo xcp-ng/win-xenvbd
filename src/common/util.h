@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -36,7 +37,6 @@
 #include <intrin.h>
 
 #include "assert.h"
-#include "debug.h"
 
 #define	P2ROUNDUP(_x, _a)   \
         (-(-(_x) & -(_a)))
@@ -89,21 +89,21 @@ __CpuId(
     OUT PULONG  EDX OPTIONAL
     )
 {
-    int  Value[4] = {0};
+    int         Value[4] = {0};
 
     __cpuid(Value, Leaf);
 
     if (EAX)
-        *EAX = Value[0];
+        *EAX = (ULONG)Value[0];
 
     if (EBX)
-        *EBX = Value[1];
+        *EBX = (ULONG)Value[1];
 
     if (ECX)
-        *ECX = Value[2];
+        *ECX = (ULONG)Value[2];
 
     if (EDX)
-        *EDX = Value[3];
+        *EDX = (ULONG)Value[3];
 }
 
 static FORCEINLINE LONG
@@ -140,12 +140,6 @@ __InterlockedSubtract(
     return New;
 }
 
-#if (NTDDI_VERSION >= NTDDI_WIN10_VB)
-#define ALLOCATE_POOL(a, b, c) ExAllocatePool2(a, b, c)
-#else
-#define ALLOCATE_POOL(a, b, c) ExAllocatePoolWithTag(a, b, c)
-#endif
-
 __checkReturn
 static FORCEINLINE PVOID
 __AllocatePoolWithTag(
@@ -159,8 +153,15 @@ __AllocatePoolWithTag(
     __analysis_assume(PoolType == NonPagedPool ||
                       PoolType == PagedPool);
 
+    if (NumberOfBytes == 0)
+        return NULL;
+
+#if (_MSC_VER >= 1928) // VS 16.9 (EWDK 20344 or later)
+    Buffer = ExAllocatePoolUninitialized(PoolType, NumberOfBytes, Tag);
+#else
 #pragma warning(suppress:28160) // annotation error
-    Buffer = ALLOCATE_POOL(PoolType, NumberOfBytes, Tag);
+    Buffer = ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag);
+#endif
     if (Buffer == NULL)
         return NULL;
 
@@ -177,25 +178,9 @@ __FreePoolWithTag(
     ExFreePoolWithTag(Buffer, Tag);
 }
 
-#define FAIL_WITH_ERROR(mdl, status) \
-    { \
-        /* Print an error message with the name of the failed function and the status code */ \
-        Error("%s failed (%08x)\n", __FUNCTION__, status); \
-        \
-        /* If an MDL was allocated, free the pages and memory associated with it */ \
-        if (mdl != NULL) { \
-            MmFreePagesFromMdl(mdl); \
-            ExFreePool(mdl); \
-        } \
-        \
-        /* Return NULL to indicate failure */ \
-        return NULL; \
-    }
-
 static FORCEINLINE PMDL
 __AllocatePages(
-    IN  ULONG           Count,
-    IN  BOOLEAN         zeroInitialize
+    IN  ULONG           Count
     )
 {
     PHYSICAL_ADDRESS    LowAddress;
@@ -204,23 +189,26 @@ __AllocatePages(
     SIZE_T              TotalBytes;
     PMDL                Mdl;
     PUCHAR              MdlMappedSystemVa;
+    NTSTATUS            status;
 
     LowAddress.QuadPart = 0ull;
     HighAddress.QuadPart = ~0ull;
     SkipBytes.QuadPart = 0ull;
     TotalBytes = (SIZE_T)PAGE_SIZE * Count;
 
-    ULONG allocFlags = zeroInitialize ? MM_ALLOCATE_FULLY_REQUIRED : MM_DONT_ZERO_ALLOCATION;
-
     Mdl = MmAllocatePagesForMdlEx(LowAddress,
                                   HighAddress,
                                   SkipBytes,
                                   TotalBytes,
                                   MmCached,
-                                  allocFlags);
+                                  MM_ALLOCATE_FULLY_REQUIRED);
 
-    if (Mdl == NULL || Mdl->ByteCount < TotalBytes)
-        FAIL_WITH_ERROR(Mdl, STATUS_NO_MEMORY);
+    status = STATUS_NO_MEMORY;
+    if (Mdl == NULL)
+        goto fail1;
+
+    if (Mdl->ByteCount < TotalBytes)
+        goto fail2;
 
     ASSERT((Mdl->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA |
                              MDL_PARTIAL_HAS_BEEN_MAPPED |
@@ -236,8 +224,9 @@ __AllocatePages(
                                                      FALSE,
                                                      NormalPagePriority);
 
+    status = STATUS_UNSUCCESSFUL;
     if (MdlMappedSystemVa == NULL)
-        FAIL_WITH_ERROR(Mdl, STATUS_UNSUCCESSFUL);
+        goto fail3;
 
     Mdl->StartVa = PAGE_ALIGN(MdlMappedSystemVa);
 
@@ -245,19 +234,18 @@ __AllocatePages(
     ASSERT3P(Mdl->StartVa, ==, MdlMappedSystemVa);
     ASSERT3P(Mdl->MappedSystemVa, ==, MdlMappedSystemVa);
 
-    if (!zeroInitialize) {
-        RtlZeroMemory(MdlMappedSystemVa, Mdl->ByteCount);
-    }
-
     return Mdl;
+
+fail3:
+fail2:
+    MmFreePagesFromMdl(Mdl);
+    ExFreePool(Mdl);
+
+fail1:
+    return NULL;
 }
 
-/*	__AllocatePage was implemented with MmAllocatePagesForMdlEx using flag MM_DONT_ZERO_ALLOCATION in xeniface
-	This inline function has been refatored and centralized with additional parameter zeroInitialize to account for this special usage
-	But xeniface doesn't call this function at all.
-	If it needs to be modified to use it, it would probably require using __AllocatePages(1, FALSE)	*/
-
-#define __AllocatePage()    __AllocatePages(1, TRUE)
+#define __AllocatePage()    __AllocatePages(1)
 
 static FORCEINLINE VOID
 __FreePages(

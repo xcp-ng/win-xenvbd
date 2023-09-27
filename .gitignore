@@ -5,22 +5,15 @@
 
 # Output
 /xenvbd
-*.log
-*.lastbuildstate
-*.db
-*.recipe
-*.sarif
-*.obj
-*.vsidx
-*.tlog
-*.pdb
-vs2019/Windows10*/
-vs2019/*/Windows10*/
+.build_number
 include/version.h
-vs2019/version/.revision
-vs2019/xenvbd.inf
-vs2019/*/x64/Windows10*/
-vs2019/.vs/xenvbd/v16/.suo
-*.db-shm
-*.db-wal
-*.opendb
+vs20??/.vs/
+vs20??/*/Windows10Debug/
+vs20??/*/Windows10Release/
+vs20??/*/x64/
+vs20??/*/x86/
+vs20??/Windows10Debug/
+vs20??/Windows10Release/
+vs20??/version/.revision
+vs20??/version/version.log
+vs20??/*.inf

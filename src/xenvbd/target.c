@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -641,10 +642,9 @@ TargetInquiryStd(
     IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PINQUIRYDATA            Data = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
-
-    UNREFERENCED_PARAMETER(Target);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -656,8 +656,12 @@ TargetInquiryStd(
         return;
 
     RtlZeroMemory(Data, Length);
-    Data->DeviceType            = DIRECT_ACCESS_DEVICE;
+    Data->DeviceType            = (DiskInfo->DiskInfo & VDISK_READONLY) ?
+                                  READ_ONLY_DIRECT_ACCESS_DEVICE :
+                                  DIRECT_ACCESS_DEVICE;
     Data->DeviceTypeQualifier   = DEVICE_CONNECTED;
+    Data->RemovableMedia        = (DiskInfo->DiskInfo & VDISK_CDROM) ||
+                                  (DiskInfo->DiskInfo & VDISK_REMOVABLE);
     Data->Versions              = 4;
     Data->ResponseDataFormat    = 2;
     Data->AdditionalLength      = INQUIRYDATABUFFERSIZE - 4;
@@ -1128,15 +1132,6 @@ __TargetRemoveDevice(
         TargetSetMissing(Target, "Surprise Remove");
         break;
 
-    case Invalid:
-    case Present:
-    case Enumerated:
-    case Added:
-    case Started:
-    case StopPending:
-    case Stopped:
-    case RemovePending:
-    case Deleted:
     default:
         TargetSetMissing(Target, "Removed");
         break;
@@ -1384,6 +1379,9 @@ TargetCreate(
     if (TargetId >= XENVBD_MAX_TARGETS)
         return STATUS_RETRY;
 
+    if (TargetId == 0 && AdapterBootEmulated(Adapter))
+        return STATUS_UNSUCCESSFUL;
+
     if (AdapterIsTargetEmulated(Adapter, TargetId))
         return STATUS_RETRY;
 
@@ -1485,16 +1483,7 @@ TargetGetRemovable(
     IN  PXENVBD_TARGET  Target
     )
 {
-    return FrontendGetCaps(Target->Frontend)->Removable;
-}
-
-//TARGET_GET_PROPERTY(SurpriseRemovable, BOOLEAN)
-BOOLEAN
-TargetGetSurpriseRemovable(
-    IN  PXENVBD_TARGET  Target
-    )
-{
-    return FrontendGetCaps(Target->Frontend)->SurpriseRemovable;
+    return FrontendGetFeatures(Target->Frontend)->Removable;
 }
 
 TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)

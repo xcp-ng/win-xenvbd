@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -46,8 +47,6 @@ typedef enum _XENVBD_STATE {
 
 typedef struct _XENVBD_CAPS {
     BOOLEAN                     Connected;
-    BOOLEAN                     Removable;
-    BOOLEAN                     SurpriseRemovable;
     BOOLEAN                     Paging;
     BOOLEAN                     Hibernation;
     BOOLEAN                     DumpFile;
@@ -56,6 +55,7 @@ typedef struct _XENVBD_CAPS {
 typedef struct _XENVBD_FEATURES {
     ULONG                       Indirect;
     BOOLEAN                     Persistent;
+    BOOLEAN                     Removable;
 } XENVBD_FEATURES, *PXENVBD_FEATURES;
 
 typedef struct _XENVBD_DISKINFO {

@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, 
@@ -52,4 +53,3 @@ typedef enum _XENVBD_DEVICE_TYPE {
 } XENVBD_DEVICE_TYPE, *PXENVBD_DEVICE_TYPE;
 
 #endif // _XENVBD_TYPES_H
-

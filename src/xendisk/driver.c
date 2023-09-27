@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -170,7 +171,19 @@ Dispatch(
     ASSERT3P(Dx->DeviceObject, ==, DeviceObject);
 
     if (Dx->DevicePnpState == Deleted) {
+        PIO_STACK_LOCATION  StackLocation = IoGetCurrentIrpStackLocation(Irp);
+        UCHAR               MajorFunction = StackLocation->MajorFunction;
+        UCHAR               MinorFunction = StackLocation->MinorFunction;
+
         status = STATUS_NO_SUCH_DEVICE;
+
+        if (MajorFunction == IRP_MJ_PNP) {
+            /* FDO and PDO deletions can block after being marked deleted, but before IoDeleteDevice */
+            if (MinorFunction == IRP_MN_SURPRISE_REMOVAL || MinorFunction == IRP_MN_REMOVE_DEVICE)
+                status = STATUS_SUCCESS;
+
+            ASSERT((MinorFunction != IRP_MN_CANCEL_REMOVE_DEVICE) && (MinorFunction != IRP_MN_CANCEL_STOP_DEVICE));
+        }
 
         Irp->IoStatus.Status = status;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);

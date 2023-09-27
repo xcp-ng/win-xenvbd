@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -89,6 +90,7 @@ struct _XENVBD_ADAPTER {
     PXENVBD_THREAD              ScanThread;
     KEVENT                      ScanEvent;
     PXENBUS_STORE_WATCH         ScanWatch;
+    BOOLEAN                     BootEmulated;
 
     ULONG                       BuildIo;
     ULONG                       StartIo;
@@ -101,13 +103,9 @@ __AdapterAllocate(
     IN  ULONG   Size
     )
 {
-    PVOID       Buffer;
-    Buffer = ALLOCATE_POOL(NonPagedPool,
-                                   Size,
-                                   ADAPTER_POOL_TAG);
-    if (Buffer)
-        RtlZeroMemory(Buffer, Size);
-    return Buffer;
+    return __AllocatePoolWithTag(NonPagedPool,
+                                 Size,
+                                 ADAPTER_POOL_TAG);
 }
 
 static FORCEINLINE VOID
@@ -115,7 +113,7 @@ __AdapterFree(
     IN  PVOID   Buffer
     )
 {
-    ExFreePoolWithTag(Buffer, ADAPTER_POOL_TAG);
+    __FreePoolWithTag(Buffer, ADAPTER_POOL_TAG);
 }
 
 static FORCEINLINE PANSI_STRING
@@ -410,6 +408,14 @@ AdapterIsTargetEmulated(
     XENFILT_EMULATED(Release, &Adapter->EmulatedInterface);
 
     return Emulated;
+}
+
+BOOLEAN
+AdapterBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    return Adapter->BootEmulated;
 }
 
 static FORCEINLINE VOID
@@ -1082,10 +1088,6 @@ AdapterDevicePowerThread(
                 AdapterD0ToD3(Adapter);
                 break;
 
-            case PowerDeviceUnspecified:
-            case PowerDeviceD1:
-            case PowerDeviceD2:
-            case PowerDeviceMaximum:
             default:
                 break;
             }
@@ -1161,7 +1163,7 @@ AdapterBounceDtor(
 
     Bounce->BouncePtr = NULL;
 
-    __FreePages(Bounce->BounceMdl);
+    __FreePage(Bounce->BounceMdl);
     Bounce->BounceMdl = NULL;
 }
 
@@ -1181,6 +1183,32 @@ AdapterReleaseLock(
 {
     PXENVBD_ADAPTER Adapter = Argument;
     KeReleaseSpinLockFromDpcLevel(&Adapter->Lock);
+}
+
+static FORCEINLINE VOID
+__AdapterSetBootEmulated(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    CHAR                Key[] = "XEN:BOOT_EMULATED=";
+    PANSI_STRING        Option;
+    PCHAR               Value;
+    NTSTATUS            status;
+
+    Adapter->BootEmulated = FALSE;
+
+    status = RegistryQuerySystemStartOption(Key, &Option);
+    if (!NT_SUCCESS(status))
+        return;
+
+    Value = Option->Buffer + sizeof (Key) - 1;
+
+    if (strcmp(Value, "TRUE") == 0)
+        Adapter->BootEmulated = TRUE;
+    else if (strcmp(Value, "FALSE") != 0)
+        Warning("UNRECOGNIZED VALUE OF %s: %s\n", Key, Value);
+
+    RegistryFreeSzValue(Option);
 }
 
 __drv_requiresIRQL(PASSIVE_LEVEL)
@@ -1351,6 +1379,7 @@ AdapterInitialize(
                           "vbd_bounce",
                           sizeof(XENVBD_BOUNCE),
                           32,
+                          0,
                           AdapterBounceCtor,
                           AdapterBounceDtor,
                           AdapterAcquireLock,
@@ -1359,6 +1388,8 @@ AdapterInitialize(
                           &Adapter->BounceCache);
     if (!NT_SUCCESS(status))
         goto fail10;
+
+    __AdapterSetBootEmulated(Adapter);
 
     status = ThreadCreate(AdapterScanThread,
                           Adapter,
@@ -1381,6 +1412,7 @@ fail12:
     Adapter->ScanThread = NULL;
 fail11:
     Error("fail11\n");
+    Adapter->BootEmulated = FALSE;
     XENBUS_CACHE(Destroy,
                  &Adapter->CacheInterface,
                  Adapter->BounceCache);
@@ -1465,6 +1497,8 @@ AdapterTeardown(
         // drop ref-count acquired in __AdapterGetTarget *before* destroying Target
         TargetDestroy(Target);
     }
+
+    Adapter->BootEmulated = FALSE;
 
     XENBUS_CACHE(Destroy,
                  &Adapter->CacheInterface,
@@ -1894,21 +1928,15 @@ __AdapterSrbPnp(
 
     switch (Srb->PnPAction) {
     case StorQueryCapabilities: {
-        PSTOR_DEVICE_CAPABILITIES Caps = Srb->DataBuffer;
+        PSTOR_DEVICE_CAPABILITIES_EX Caps = Srb->DataBuffer;
 
         Caps->Removable = TargetGetRemovable(Target);
         Caps->EjectSupported = TargetGetRemovable(Target);
-        Caps->SurpriseRemovalOK = TargetGetSurpriseRemovable(Target);
+        Caps->SurpriseRemovalOK = 1;
         Caps->UniqueID = 1;
 
         } break;
 
-    case StorStartDevice:
-    case StorRemoveDevice:
-    case StorStopDevice:
-    case StorQueryResourceRequirements:
-    case StorFilterResourceRequirements:
-    case StorSurpriseRemoval:
     default:
         break;
     }
@@ -2048,33 +2076,6 @@ AdapterHwAdapterControl(
         List->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
         break;
 
-    case ScsiStopAdapter:
-    case ScsiRestartAdapter:
-    case ScsiSetBootConfig:
-    case ScsiSetRunningConfig:
-    case ScsiPowerSettingNotification:
-    case ScsiAdapterPower:
-    case ScsiAdapterPoFxPowerRequired:
-    case ScsiAdapterPoFxPowerActive:
-    case ScsiAdapterPoFxPowerSetFState:
-    case ScsiAdapterPoFxPowerControl:
-    case ScsiAdapterPrepareForBusReScan:
-    case ScsiAdapterSystemPowerHints:
-    case ScsiAdapterFilterResourceRequirements:
-    case ScsiAdapterPoFxMaxOperationalPower:
-    case ScsiAdapterPoFxSetPerfState:
-    case ScsiAdapterSurpriseRemoval:
-    case ScsiAdapterSerialNumber:
-    case ScsiAdapterCryptoOperation:
-    case ScsiAdapterQueryFruId:
-    case ScsiAdapterSetEventLogging:
-    case ScsiAdapterReportInternalData:
-    case ScsiAdapterResetBusSynchronous:
-    case ScsiAdapterPostHwInitialize:
-    case ScsiAdapterPrepareEarlyDumpData:
-    case ScsiAdapterRestoreEarlyDumpData:
-    case ScsiAdapterControlMax:
-    case MakeAdapterControlTypeSizeOfUlong:
     default:
         break;
     }
@@ -2280,6 +2281,7 @@ AdapterDriverEntry(
     InitData.MultipleRequestPerLu       = TRUE;
     InitData.HwAdapterControl           = AdapterHwAdapterControl;
     InitData.HwBuildIo                  = AdapterHwBuildIo;
+    InitData.FeatureSupport             = STOR_FEATURE_FULL_PNP_DEVICE_CAPABILITIES;
 
     status = StorPortInitialize(DriverObject,
                                 RegistryPath,

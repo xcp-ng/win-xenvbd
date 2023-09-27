@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -625,21 +626,6 @@ PropertyIdName(
     _STORAGE_PROPERTY_NAME(AdapterPhysicalTopologyProperty);
     _STORAGE_PROPERTY_NAME(DevicePhysicalTopologyProperty);
     _STORAGE_PROPERTY_NAME(DeviceAttributesProperty);
-    _STORAGE_PROPERTY_NAME(AdapterRpmbProperty);
-    _STORAGE_PROPERTY_NAME(DeviceTieringProperty);
-    _STORAGE_PROPERTY_NAME(DeviceFaultDomainProperty);
-    _STORAGE_PROPERTY_NAME(DeviceClusportProperty);
-    _STORAGE_PROPERTY_NAME(DeviceDependantDevicesProperty);
-    _STORAGE_PROPERTY_NAME(DeviceManagementStatus);
-    _STORAGE_PROPERTY_NAME(AdapterSerialNumberProperty);
-    _STORAGE_PROPERTY_NAME(DeviceLocationProperty);
-    _STORAGE_PROPERTY_NAME(DeviceNumaProperty);
-    _STORAGE_PROPERTY_NAME(DeviceZonedDeviceProperty);
-    _STORAGE_PROPERTY_NAME(DeviceUnsafeShutdownCount);
-    _STORAGE_PROPERTY_NAME(DeviceEnduranceProperty);
-    _STORAGE_PROPERTY_NAME(DeviceLedStateProperty);
-    _STORAGE_PROPERTY_NAME(DeviceSelfEncryptionProperty);
-    _STORAGE_PROPERTY_NAME(FruIdProperty);
     default:
         break;
     }
@@ -662,8 +648,6 @@ QueryTypeName(
     _STORAGE_QUERY_NAME(Standard);
     _STORAGE_QUERY_NAME(Exists);
     _STORAGE_QUERY_NAME(Mask);
-    case PropertyQueryMaxDefined:
-        return "QueryMaxDefined";
     default:
         break;
     }
@@ -751,44 +735,6 @@ PdoQueryProperty(
         status = PdoCompleteIrp(Pdo, Irp, STATUS_SUCCESS);
         break;
     }
-    case StorageDeviceProperty:
-    case StorageAdapterProperty:
-    case StorageDeviceIdProperty:
-    case StorageDeviceUniqueIdProperty:
-    case StorageDeviceWriteCacheProperty:
-    case StorageMiniportProperty:
-    case StorageDeviceSeekPenaltyProperty:
-    case StorageDeviceWriteAggregationProperty:
-    case StorageDeviceDeviceTelemetryProperty:
-    case StorageDeviceLBProvisioningProperty:
-    case StorageDevicePowerProperty:
-    case StorageDeviceCopyOffloadProperty:
-    case StorageDeviceResiliencyProperty:
-    case StorageDeviceMediumProductType:
-    case StorageAdapterCryptoProperty:
-    case StorageDeviceTieringProperty:
-    case StorageDeviceFaultDomainProperty:
-    case StorageDeviceClusportProperty:
-    case StorageDeviceDependantDevicesProperty:
-    case StorageDeviceIoCapabilityProperty:
-    case StorageAdapterProtocolSpecificProperty:
-    case StorageDeviceProtocolSpecificProperty:
-    case StorageAdapterTemperatureProperty:
-    case StorageDeviceTemperatureProperty:
-    case StorageAdapterPhysicalTopologyProperty:
-    case StorageDevicePhysicalTopologyProperty:
-    case StorageDeviceAttributesProperty:
-    case StorageDeviceManagementStatus:
-    case StorageAdapterSerialNumberProperty:
-    case StorageDeviceLocationProperty:
-    case StorageDeviceNumaProperty:
-    case StorageDeviceZonedDeviceProperty:
-    case StorageDeviceUnsafeShutdownCount:
-    case StorageDeviceEnduranceProperty:
-    case StorageDeviceLedStateProperty:
-    case StorageDeviceSelfEncryptionProperty:
-    case StorageFruIdProperty:
-    case StorageAdapterRpmbProperty:
     default:
         status = PdoForwardIrpAndForget(Pdo, Irp);
         break;

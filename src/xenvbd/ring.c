@@ -1,4 +1,5 @@
-/* Copyright (c) Citrix Systems Inc.
+/* Copyright (c) Xen Project.
+ * Copyright (c) Cloud Software Group, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms,
@@ -47,6 +48,7 @@
 #include "srbext.h"
 #include "driver.h"
 #include "granter.h"
+#include "thread.h"
 
 #include "util.h"
 #include "debug.h"
@@ -90,6 +92,7 @@ typedef struct _XENVBD_BLKIF_RING {
     ULONG                           ResponsesProcessed;
     PXENBUS_DEBUG_CALLBACK          DebugCallback;
     LARGE_INTEGER                   TimeOfLastErrorLog;
+    PXENVBD_THREAD                  WatchdogThread;
 } XENVBD_BLKIF_RING, *PXENVBD_BLKIF_RING;
 
 typedef enum _XENVBD_STAT {
@@ -175,8 +178,6 @@ __StatName(
     case XENVBD_STAT_BLKIF_OP_DISCARD:          return "BLKIF_OP_DISCARD";
     case XENVBD_STAT_SEGMENTS_GRANTED:          return "SegmentsGranted";
     case XENVBD_STAT_SEGMENTS_BOUNCED:          return "SegmentsBounced";
-    case XENVBD_STAT_BLKIF_OP_UNKNOWN:          return "BLKIF_OP_UNKNOWN";
-    case XENVBD_STAT__MAX:                      return "_MAX";
     default:                                    return "UNKNOWN";
     }
 }
@@ -494,7 +495,7 @@ BlkifRingIndirectDtor(
 
     UNREFERENCED_PARAMETER(Argument);
 
-    __FreePages(Indirect->Mdl);
+    __FreePage(Indirect->Mdl);
     Indirect->Page = NULL;
     Indirect->Mdl = NULL;
 }
@@ -1625,6 +1626,230 @@ BlkifRingDpc(
                   TRUE);
 }
 
+#define TIME_US(_us)        ((_us) * 10)
+#define TIME_MS(_ms)        (TIME_US((_ms) * 1000))
+#define TIME_S(_s)          (TIME_MS((_s) * 1000))
+#define TIME_RELATIVE(_t)   (-(_t))
+
+#define XENVBD_WATCHDOG_PERIOD 30
+
+static NTSTATUS
+RingWatchdog(
+    IN  PXENVBD_THREAD  Self,
+    IN  PVOID           Context
+    )
+{
+    PXENVBD_BLKIF_RING  BlkifRing = Context;
+    PXENVBD_RING        Ring = BlkifRing->Ring;
+    PROCESSOR_NUMBER    ProcNumber;
+    GROUP_AFFINITY      Affinity;
+    LARGE_INTEGER       Timeout;
+    RING_IDX            rsp_prod;
+    RING_IDX            rsp_cons;
+    NTSTATUS            status;
+
+    Verbose("====> (%u)\n", BlkifRing->Index);
+
+    status = KeGetProcessorNumberFromIndex(BlkifRing->Index, &ProcNumber);
+    ASSERT(NT_SUCCESS(status));
+
+    Affinity.Group = ProcNumber.Group;
+    Affinity.Mask = (KAFFINITY)1 << ProcNumber.Number;
+    KeSetSystemGroupAffinityThread(&Affinity, NULL);
+
+    Timeout.QuadPart = TIME_RELATIVE(TIME_S(XENVBD_WATCHDOG_PERIOD));
+
+    rsp_prod = 0;
+    rsp_cons = 0;
+
+    for (;;) {
+        PKEVENT Event;
+        KIRQL   Irql;
+
+        Event = ThreadGetEvent(Self);
+
+        (VOID) KeWaitForSingleObject(Event,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     &Timeout);
+        KeClearEvent(Event);
+
+        if (ThreadIsAlerted(Self))
+            break;
+
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        __BlkifRingAcquireLock(BlkifRing);
+
+        if (BlkifRing->Enabled) {
+            KeMemoryBarrier();
+
+            if (BlkifRing->Shared->rsp_prod != rsp_prod &&
+                BlkifRing->Front.rsp_cons == rsp_cons) {
+                XENBUS_DEBUG(Trigger,
+                             &Ring->DebugInterface,
+                             BlkifRing->DebugCallback);
+
+                // Try to move things along
+                __BlkifRingSend(BlkifRing);
+                (VOID) BlkifRingPoll(BlkifRing);
+            }
+
+            KeMemoryBarrier();
+
+            rsp_prod = BlkifRing->Shared->rsp_prod;
+            rsp_cons = BlkifRing->Front.rsp_cons;
+        }
+
+        __BlkifRingReleaseLock(BlkifRing);
+        KeLowerIrql(Irql);
+    }
+
+    Verbose("<====\n");
+
+    return STATUS_SUCCESS;
+}
+
+static FORCEINLINE NTSTATUS
+BlkifRingCacheCreate(
+    IN  PXENVBD_BLKIF_RING  BlkifRing
+    )
+{
+    PXENVBD_RING            Ring;
+    PXENVBD_FRONTEND        Frontend;
+    CHAR                    Name[MAX_NAME_LEN];
+    NTSTATUS                status;
+
+    Ring = BlkifRing->Ring;
+    Frontend = Ring->Frontend;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_queue_%u_request",
+                                FrontendGetTargetId(Frontend),
+                                BlkifRing->Index);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = XENBUS_CACHE(Create,
+                          &Ring->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_REQUEST),
+                          0,
+                          0,
+                          BlkifRingRequestCtor,
+                          BlkifRingRequestDtor,
+                          BlkifRingAcquireLock,
+                          BlkifRingReleaseLock,
+                          BlkifRing,
+                          &BlkifRing->RequestCache);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_queue_%u_segment",
+                                FrontendGetTargetId(Frontend),
+                                BlkifRing->Index);
+    if (!NT_SUCCESS(status))
+        goto fail3;
+
+    status = XENBUS_CACHE(Create,
+                          &Ring->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_SEGMENT),
+                          0,
+                          0,
+                          BlkifRingSegmentCtor,
+                          BlkifRingSegmentDtor,
+                          BlkifRingAcquireLock,
+                          BlkifRingReleaseLock,
+                          BlkifRing,
+                          &BlkifRing->SegmentCache);
+    if (!NT_SUCCESS(status))
+        goto fail4;
+
+    status = RtlStringCbPrintfA(Name,
+                                sizeof(Name),
+                                "vbd_%u_queue_%u_indirect",
+                                FrontendGetTargetId(Frontend),
+                                BlkifRing->Index);
+    if (!NT_SUCCESS(status))
+        goto fail5;
+
+    status = XENBUS_CACHE(Create,
+                          &Ring->CacheInterface,
+                          Name,
+                          sizeof(XENVBD_INDIRECT),
+                          0,
+                          0,
+                          BlkifRingIndirectCtor,
+                          BlkifRingIndirectDtor,
+                          BlkifRingAcquireLock,
+                          BlkifRingReleaseLock,
+                          BlkifRing,
+                          &BlkifRing->IndirectCache);
+    if (!NT_SUCCESS(status))
+        goto fail6;
+
+    return STATUS_SUCCESS;
+
+fail6:
+    Error("fail6\n");
+
+fail5:
+    Error("fail5\n");
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 BlkifRing->SegmentCache);
+    BlkifRing->SegmentCache = NULL;
+
+fail4:
+    Error("fail4\n");
+
+fail3:
+    Error("fail3\n");
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 BlkifRing->RequestCache);
+    BlkifRing->RequestCache = NULL;
+
+fail2:
+    Error("fail2\n");
+
+fail1:
+    Error("fail1 %08x\n", status);
+
+    return status;
+}
+
+static FORCEINLINE VOID
+BlkifRingCacheDestroy(
+    IN  PXENVBD_BLKIF_RING  BlkifRing
+    )
+{
+    PXENVBD_RING            Ring;
+
+    Ring = BlkifRing->Ring;
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 BlkifRing->IndirectCache);
+    BlkifRing->IndirectCache = NULL;
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 BlkifRing->SegmentCache);
+    BlkifRing->SegmentCache = NULL;
+
+    XENBUS_CACHE(Destroy,
+                 &Ring->CacheInterface,
+                 BlkifRing->RequestCache);
+    BlkifRing->RequestCache = NULL;
+}
+
 static NTSTATUS
 BlkifRingCreate(
     IN  PXENVBD_RING        Ring,
@@ -1635,7 +1860,6 @@ BlkifRingCreate(
     PXENVBD_FRONTEND        Frontend;
     ULONG                   Length;
     PCHAR                   Path;
-    CHAR                    Name[MAX_NAME_LEN];
     NTSTATUS                status;
 
     Frontend = Ring->Frontend;
@@ -1675,92 +1899,14 @@ BlkifRingCreate(
 
     KeInitializeThreadedDpc(&(*BlkifRing)->Dpc, BlkifRingDpc, *BlkifRing);
 
-    status = RtlStringCbPrintfA(Name,
-                                sizeof(Name),
-                                "vbd_%u_queue_%u_request",
-                                FrontendGetTargetId(Frontend),
-                                Index);
+    status = ThreadCreate(RingWatchdog,
+                          *BlkifRing,
+                          &(*BlkifRing)->WatchdogThread);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    status = XENBUS_CACHE(Create,
-                          &Ring->CacheInterface,
-                          Name,
-                          sizeof(XENVBD_REQUEST),
-                          0,
-                          BlkifRingRequestCtor,
-                          BlkifRingRequestDtor,
-                          BlkifRingAcquireLock,
-                          BlkifRingReleaseLock,
-                          *BlkifRing,
-                          &(*BlkifRing)->RequestCache);
-    if (!NT_SUCCESS(status))
-        goto fail5;
-
-    status = RtlStringCbPrintfA(Name,
-                                sizeof(Name),
-                                "vbd_%u_queue_%u_segment",
-                                FrontendGetTargetId(Frontend),
-                                Index);
-    if (!NT_SUCCESS(status))
-        goto fail6;
-
-    status = XENBUS_CACHE(Create,
-                          &Ring->CacheInterface,
-                          Name,
-                          sizeof(XENVBD_SEGMENT),
-                          0,
-                          BlkifRingSegmentCtor,
-                          BlkifRingSegmentDtor,
-                          BlkifRingAcquireLock,
-                          BlkifRingReleaseLock,
-                          *BlkifRing,
-                          &(*BlkifRing)->SegmentCache);
-    if (!NT_SUCCESS(status))
-        goto fail7;
-
-    status = RtlStringCbPrintfA(Name,
-                                sizeof(Name),
-                                "vbd_%u_queue_%u_indirect",
-                                FrontendGetTargetId(Frontend),
-                                Index);
-    if (!NT_SUCCESS(status))
-        goto fail8;
-
-    status = XENBUS_CACHE(Create,
-                          &Ring->CacheInterface,
-                          Name,
-                          sizeof(XENVBD_INDIRECT),
-                          0,
-                          BlkifRingIndirectCtor,
-                          BlkifRingIndirectDtor,
-                          BlkifRingAcquireLock,
-                          BlkifRingReleaseLock,
-                          *BlkifRing,
-                          &(*BlkifRing)->IndirectCache);
-    if (!NT_SUCCESS(status))
-        goto fail9;
-
     return STATUS_SUCCESS;
 
-fail9:
-    Error("fail9\n");
-fail8:
-    Error("fail8\n");
-    XENBUS_CACHE(Destroy,
-                 &Ring->CacheInterface,
-                 (*BlkifRing)->SegmentCache);
-    (*BlkifRing)->SegmentCache = NULL;
-fail7:
-    Error("fail7\n");
-fail6:
-    Error("fail6\n");
-    XENBUS_CACHE(Destroy,
-                 &Ring->CacheInterface,
-                 (*BlkifRing)->RequestCache);
-    (*BlkifRing)->RequestCache = NULL;
-fail5:
-    Error("fail5\n");
 fail4:
     Error("fail4\n");
 
@@ -1794,22 +1940,9 @@ BlkifRingDestroy(
     IN  PXENVBD_BLKIF_RING  BlkifRing
     )
 {
-    PXENVBD_RING            Ring = BlkifRing->Ring;
-
-    XENBUS_CACHE(Destroy,
-                 &Ring->CacheInterface,
-                 BlkifRing->IndirectCache);
-    BlkifRing->IndirectCache = NULL;
-
-    XENBUS_CACHE(Destroy,
-                 &Ring->CacheInterface,
-                 BlkifRing->SegmentCache);
-    BlkifRing->SegmentCache = NULL;
-
-    XENBUS_CACHE(Destroy,
-                 &Ring->CacheInterface,
-                 BlkifRing->RequestCache);
-    BlkifRing->RequestCache = NULL;
+    ThreadAlert(BlkifRing->WatchdogThread);
+    ThreadJoin(BlkifRing->WatchdogThread);
+    BlkifRing->WatchdogThread = NULL;
 
     RtlZeroMemory(&BlkifRing->Dpc, sizeof(KDPC));
 
@@ -1860,11 +1993,15 @@ BlkifRingConnect(
     }
     KeSetImportanceDpc(&BlkifRing->Dpc, MediumHighImportance);
 
-    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order, TRUE);
+    status = BlkifRingCacheCreate(BlkifRing);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order);
 
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Mdl == NULL)
-        goto fail1;
+        goto fail2;
 
     BlkifRing->Shared = MmGetSystemAddressForMdlSafe(BlkifRing->Mdl,
                                                      NormalPagePriority);
@@ -1883,7 +2020,7 @@ BlkifRingConnect(
                             FALSE,
                             &BlkifRing->Grants[Index]);
         if (!NT_SUCCESS(status))
-            goto fail2;
+            goto fail3;
     }
 
     BlkifRing->Channel = XENBUS_EVTCHN(Open,
@@ -1895,7 +2032,7 @@ BlkifRingConnect(
                                        TRUE);
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Channel == NULL)
-        goto fail3;
+        goto fail4;
 
     XENBUS_EVTCHN(Unmask,
                   &Ring->EvtchnInterface,
@@ -1908,7 +2045,7 @@ BlkifRingConnect(
                                  __MODULE__"|RING[%u]",
                                  BlkifRing->Index);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail5;
 
     status = XENBUS_DEBUG(Register,
                           &Ring->DebugInterface,
@@ -1917,25 +2054,25 @@ BlkifRingConnect(
                           BlkifRing,
                           &BlkifRing->DebugCallback);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail6;
 
     BlkifRing->Connected = TRUE;
     Trace("<==== %u\n", BlkifRing->Index);
 
     return STATUS_SUCCESS;
 
+fail6:
+    Error("fail6\n");
 fail5:
     Error("fail5\n");
-fail4:
-    Error("fail4\n");
     XENBUS_EVTCHN(Close,
                   &Ring->EvtchnInterface,
                   BlkifRing->Channel);
     BlkifRing->Channel = NULL;
+fail4:
+    Error("fail4\n");
 fail3:
     Error("fail3\n");
-fail2:
-    Error("fail2\n");
     for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
         if (BlkifRing->Grants[Index] == NULL)
             continue;
@@ -1949,6 +2086,9 @@ fail2:
     __FreePages(BlkifRing->Mdl);
     BlkifRing->Shared = NULL;
     BlkifRing->Mdl = NULL;
+fail2:
+    Error("fail2\n");
+    BlkifRingCacheDestroy(BlkifRing);
 fail1:
     Error("fail1 %08x\n", status);
     return status;
@@ -2055,7 +2195,6 @@ BlkifRingDisable(
 
     Trace("====> %u\n", BlkifRing->Index);
 
-    __BlkifRingAcquireLock(BlkifRing);
     ASSERT(BlkifRing->Enabled);
 
     status = XENBUS_STORE(Read,
@@ -2085,8 +2224,10 @@ BlkifRingDisable(
                 break;
 
             // Try to move things along
+            __BlkifRingAcquireLock(BlkifRing);
             __BlkifRingSend(BlkifRing);
             (VOID) BlkifRingPoll(BlkifRing);
+            __BlkifRingReleaseLock(BlkifRing);
 
             // We are waiting for a watch event at DISPATCH_LEVEL so
             // it is our responsibility to poll the store ring.
@@ -2097,6 +2238,7 @@ BlkifRingDisable(
         }
     }
 
+    __BlkifRingAcquireLock(BlkifRing);
     BlkifRing->Enabled = FALSE;
 
     while (!IsListEmpty(&BlkifRing->SubmittedList)) {
@@ -2165,6 +2307,8 @@ BlkifRingDisconnect(
     __FreePages(BlkifRing->Mdl);
     BlkifRing->Shared = NULL;
     BlkifRing->Mdl = NULL;
+
+    BlkifRingCacheDestroy(BlkifRing);
 
     BlkifRing->Events = 0;
     BlkifRing->Dpcs = 0;
