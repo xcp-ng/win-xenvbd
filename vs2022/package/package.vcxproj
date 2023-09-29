@@ -43,9 +43,6 @@
     <ArchiveDir>..\..\$(SolutionName)\x64</ArchiveDir>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\xenvbd_coinst\xenvbd_coinst.vcxproj">
-      <Project>{50c08437-c1f3-4349-bf6a-7b55a06bf999}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\xencrsh\xencrsh.vcxproj">
       <Project>{58f5bc43-b92e-4a2b-975d-0066eab29092}</Project>
     </ProjectReference>
