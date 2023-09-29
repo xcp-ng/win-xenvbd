@@ -37,10 +37,10 @@ Provider=%Vendor%
 CatalogFile=xenvbd.cat
 DriverVer=@INF_DATE@,@MAJOR_VERSION@.@MINOR_VERSION@.@MICRO_VERSION@.@BUILD_NUMBER@
 DriverPackageDisplayName=%DiskDesc%
+PnpLockdown=1
 
 [DestinationDirs] 
 DefaultDestDir=12 
-CoInst_CopyFiles=11
 
 [SourceDisksNames]
 0=%DiskDesc%
@@ -49,15 +49,14 @@ CoInst_CopyFiles=11
 xenvbd.sys=0,,
 xencrsh.sys=0,,
 xendisk.sys=0,,
-xenvbd_coinst.dll=0,,
 
 [Manufacturer] 
 %Vendor%=Inst,NT@INF_ARCH@
 
 [Inst.NT@INF_ARCH@]
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_09000009
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_09000009
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_09000009
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_0900000A
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_0900000A
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_0900000A
 
 [XenVbd_Inst] 
 CopyFiles=XenVbd_Copyfiles
@@ -96,7 +95,7 @@ StartType=%SERVICE_BOOT_START%
 ErrorControl=%SERVICE_ERROR_NORMAL% 
 ServiceBinary=%12%\xenvbd.sys 
 LoadOrderGroup="Scsi Miniport"
-AddReg=XenVbd_Parameters
+AddReg=XenVbd_Parameters, XenVbd_Unplug, XenVbd_Extras
 
 [XenVbd_Parameters] 
 HKR,"Parameters",,0x00000010
@@ -106,23 +105,26 @@ HKR,"Parameters","RequestKey",0x00000000,%RequestKey%
 HKR,"Parameters","max-ring-page-order",0x00010001,0x00000001
 HKR,"Parameters","multi-queue-max-queues",0x00010001,0x00000002
 
-[XenVbd_Inst.CoInstallers]
-CopyFiles=CoInst_CopyFiles
-AddReg=CoInst_AddReg
+[XenVbd_Unplug]
+HKLM,%UnplugKey%,"DISKS",0x00010001,0
 
-[CoInst_CopyFiles]
-xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@MICRO_VERSION@_@BUILD_NUMBER@.dll,xenvbd_coinst.dll
+[XenVbd_Extras]
+HKLM,%PnpKey%,"DisableCDDB",0x00010001,0
+HKLM,%PnpKey%,"DontStartRawDevices",0x00010001,0
+HKLM,%PartMgrKey%,"SanPolicy",0x00010001,1
+HKLM,%DiskKey%,"TimeOutValue",0x00010001,120
 
-[CoInst_AddReg]
-HKR,,CoInstallers32,0x00010000,"xenvbd_coinst_@MAJOR_VERSION@_@MINOR_VERSION@_@MICRO_VERSION@_@BUILD_NUMBER@.dll,Entry"
-
-[Strings] 
+[Strings]
 
 Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
 XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
 RequestKey="SYSTEM\CurrentControlSet\Services\xenbus_monitor\Request"
+UnplugKey="SYSTEM\CurrentControlSet\Services\XEN\Unplug"
+PnpKey="SYSTEM\CurrentControlSet\Control\Pnp"
+PartMgrKey="SYSTEM\CurrentControlSet\Services\PartMgr\Parameters"
+DiskKey="SYSTEM\CurrentControlSet\Services\Disk"
 
 SERVICE_BOOT_START = 0x0 
 SERVICE_SYSTEM_START = 0x1 
