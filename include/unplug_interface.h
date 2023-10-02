@@ -85,16 +85,16 @@ typedef VOID
     IN  BOOLEAN                     Make
     );
 
-/*! \typedef XENBUS_UNPLUG_GETSTATE
+/*! \typedef XENBUS_UNPLUG_IS_REQUESTED
     \brief Has a type of emulated device been unplugged
 
     \param Interface The interface header
     \param Type The type of device
 
-    \return TRUE The type of device has been unplugged this boot
+    \return TRUE The type of device has been unplugged this boot.
 */
 typedef BOOLEAN
-(*XENBUS_UNPLUG_GETSTATE)(
+(*XENBUS_UNPLUG_IS_REQUESTED)(
     IN  PINTERFACE                  Interface,
     IN  XENBUS_UNPLUG_DEVICE_TYPE   Type
     );
@@ -119,11 +119,11 @@ struct _XENBUS_UNPLUG_INTERFACE_V1 {
     \ingroup interfaces
 */
 struct _XENBUS_UNPLUG_INTERFACE_V2 {
-    INTERFACE               Interface;
-    XENBUS_UNPLUG_ACQUIRE   UnplugAcquire;
-    XENBUS_UNPLUG_RELEASE   UnplugRelease;
-    XENBUS_UNPLUG_REQUEST   UnplugRequest;
-    XENBUS_UNPLUG_GETSTATE  UnplugGetState;
+    INTERFACE                   Interface;
+    XENBUS_UNPLUG_ACQUIRE       UnplugAcquire;
+    XENBUS_UNPLUG_RELEASE       UnplugRelease;
+    XENBUS_UNPLUG_REQUEST       UnplugRequest;
+    XENBUS_UNPLUG_IS_REQUESTED  UnplugIsRequested;
 };
 
 typedef struct _XENBUS_UNPLUG_INTERFACE_V2 XENBUS_UNPLUG_INTERFACE, *PXENBUS_UNPLUG_INTERFACE;
