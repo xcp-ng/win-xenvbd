@@ -54,9 +54,9 @@ xendisk.sys=0,,
 %Vendor%=Inst,NT@INF_ARCH@
 
 [Inst.NT@INF_ARCH@]
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_0900000A
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_0900000A
-%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_0900000A
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@@VENDOR_DEVICE_ID@&DEV_VBD&REV_0900000B
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0001&DEV_VBD&REV_0900000B
+%XenVbdName%=XenVbd_Inst,XENBUS\VEN_@VENDOR_PREFIX@0002&DEV_VBD&REV_0900000B
 
 [XenVbd_Inst] 
 CopyFiles=XenVbd_Copyfiles
@@ -101,7 +101,6 @@ AddReg=XenVbd_Parameters, XenVbd_Unplug, XenVbd_Extras
 HKR,"Parameters",,0x00000010
 HKR,"Parameters","BusType",0x00010001,0x00000001 
 HKR,"Parameters\PnpInterface","5",0x00010001,0x00000001 
-HKR,"Parameters","RequestKey",0x00000000,%RequestKey%
 HKR,"Parameters","max-ring-page-order",0x00010001,0x00000001
 HKR,"Parameters","multi-queue-max-queues",0x00010001,0x00000002
 
@@ -120,7 +119,6 @@ Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
 XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
-RequestKey="SYSTEM\CurrentControlSet\Services\xenbus_monitor\Request"
 UnplugKey="SYSTEM\CurrentControlSet\Services\XEN\Unplug"
 PnpKey="SYSTEM\CurrentControlSet\Control\Pnp"
 PartMgrKey="SYSTEM\CurrentControlSet\Services\PartMgr\Parameters"

@@ -74,6 +74,11 @@ AdapterBootEmulated(
     );
 
 extern VOID
+AdapterRequestReboot(
+    IN  PXENVBD_ADAPTER Adapter
+    );
+
+extern VOID
 AdapterCompleteSrb(
     IN  PXENVBD_ADAPTER Adapter,
     IN  PXENVBD_SRBEXT  SrbExt

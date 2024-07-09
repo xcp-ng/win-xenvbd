@@ -62,12 +62,6 @@ DriverDispatchPower(
     IN  PIRP            Irp
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
-extern VOID
-DriverRequestReboot(
-    VOID
-    );
-
 // Registry overrides for driver features
 typedef enum _XENVBD_FEATURE {
     FeatureRemovable = 0,

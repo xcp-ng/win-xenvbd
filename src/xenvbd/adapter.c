@@ -418,6 +418,24 @@ AdapterBootEmulated(
     return Adapter->BootEmulated;
 }
 
+VOID
+AdapterRequestReboot(
+    IN  PXENVBD_ADAPTER Adapter
+    )
+{
+    NTSTATUS            status;
+
+    status = XENBUS_UNPLUG(Acquire, &Adapter->UnplugInterface);
+    if (!NT_SUCCESS(status))
+        return;
+
+    XENBUS_UNPLUG(Reboot,
+                  &Adapter->UnplugInterface,
+                  __MODULE__);
+
+    XENBUS_UNPLUG(Release, &Adapter->UnplugInterface);
+}
+
 static FORCEINLINE VOID
 __AdapterEnumerate(
     IN  PXENVBD_ADAPTER Adapter,
@@ -508,7 +526,7 @@ __AdapterEnumerate(
     if (NeedInvalidate)
         AdapterTargetListChanged(Adapter);
     if (NeedReboot)
-        DriverRequestReboot();
+        AdapterRequestReboot(Adapter);
 }
 
 static DECLSPEC_NOINLINE NTSTATUS
@@ -1190,25 +1208,18 @@ __AdapterSetBootEmulated(
     IN  PXENVBD_ADAPTER Adapter
     )
 {
-    CHAR                Key[] = "XEN:BOOT_EMULATED=";
-    PANSI_STRING        Option;
-    PCHAR               Value;
     NTSTATUS            status;
 
     Adapter->BootEmulated = FALSE;
 
-    status = RegistryQuerySystemStartOption(Key, &Option);
+    status = XENBUS_UNPLUG(Acquire, &Adapter->UnplugInterface);
     if (!NT_SUCCESS(status))
         return;
 
-    Value = Option->Buffer + sizeof (Key) - 1;
+    Adapter->BootEmulated = XENBUS_UNPLUG(BootEmulated,
+                                          &Adapter->UnplugInterface);
 
-    if (strcmp(Value, "TRUE") == 0)
-        Adapter->BootEmulated = TRUE;
-    else if (strcmp(Value, "FALSE") != 0)
-        Warning("UNRECOGNIZED VALUE OF %s: %s\n", Key, Value);
-
-    RegistryFreeSzValue(Option);
+    XENBUS_UNPLUG(Release, &Adapter->UnplugInterface);
 }
 
 __drv_requiresIRQL(PASSIVE_LEVEL)
