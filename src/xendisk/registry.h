@@ -37,7 +37,8 @@
 
 extern NTSTATUS
 RegistryInitialize(
-    IN PUNICODE_STRING  Path
+    IN  PDRIVER_OBJECT  DriverObject,
+    IN  PUNICODE_STRING Path
     );
 
 extern VOID
@@ -69,6 +70,12 @@ RegistryOpenServiceKey(
 
 extern NTSTATUS
 RegistryCreateServiceKey(
+    OUT PHANDLE     Key
+    );
+
+extern NTSTATUS
+RegistryOpenParametersKey(
+    IN  ACCESS_MASK DesiredAccess,
     OUT PHANDLE     Key
     );
 

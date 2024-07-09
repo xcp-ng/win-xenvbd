@@ -221,7 +221,6 @@ DriverEntry(
     IN  PUNICODE_STRING RegistryPath
     )
 {
-    HANDLE              ServiceKey;
     HANDLE              ParametersKey;
     ULONG               Index;
     NTSTATUS            status;
@@ -246,24 +245,15 @@ DriverEntry(
             MONTH,
             YEAR);
 
-    status = RegistryInitialize(RegistryPath);
+    status = RegistryInitialize(DriverObject, RegistryPath);
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    status = RegistryOpenServiceKey(KEY_ALL_ACCESS, &ServiceKey);
+    status = RegistryOpenParametersKey(KEY_READ, &ParametersKey);
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = RegistryOpenSubKey(ServiceKey,
-                                "Parameters",
-                                KEY_READ,
-                                &ParametersKey);
-    if (!NT_SUCCESS(status))
-        goto fail3;
-
     __DriverSetParametersKey(ParametersKey);
-
-    RegistryCloseKey(ServiceKey);
 
     DriverObject->DriverExtension->AddDevice = AddDevice;
 
@@ -276,11 +266,6 @@ DriverEntry(
     Trace("<====\n");
 
     return STATUS_SUCCESS;
-
-fail3:
-    Error("fail3\n");
-
-    RegistryCloseKey(ServiceKey);
 
 fail2:
     Error("fail2\n");

@@ -351,7 +351,6 @@ DriverEntry(
     IN  PUNICODE_STRING     RegistryPath
     )
 {
-    HANDLE                  ServiceKey;
     HANDLE                  ParametersKey;
     NTSTATUS                status;
 
@@ -371,20 +370,13 @@ DriverEntry(
          MONTH,
          YEAR);
 
-    status = RegistryInitialize(RegistryPath);
+    status = RegistryInitialize(DriverObject, RegistryPath);
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    status = RegistryOpenServiceKey(KEY_ALL_ACCESS, &ServiceKey);
+    status = RegistryOpenParametersKey(KEY_READ, &ParametersKey);
     if (!NT_SUCCESS(status))
         goto fail2;
-
-    status = RegistryOpenSubKey(ServiceKey,
-                                "Parameters",
-                                KEY_READ,
-                                &ParametersKey);
-    if (!NT_SUCCESS(status))
-        goto fail3;
 
     Driver.ParametersKey = ParametersKey;
     Driver.Adapter = NULL;
@@ -394,7 +386,7 @@ DriverEntry(
     status = AdapterDriverEntry(RegistryPath,
                                 DriverObject);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail3;
 
     Driver.StorPortDispatchPnp   = DriverObject->MajorFunction[IRP_MJ_PNP];
     Driver.StorPortDispatchPower = DriverObject->MajorFunction[IRP_MJ_POWER];
@@ -404,22 +396,13 @@ DriverEntry(
     DriverObject->MajorFunction[IRP_MJ_POWER] = DispatchPower;
     DriverObject->DriverUnload                = DriverUnload;
 
-    RegistryCloseKey(ServiceKey);
-    ServiceKey = NULL;
-
     return STATUS_SUCCESS;
-
-fail4:
-    Error("fail4\n");
-
-    RegistryCloseKey(Driver.ParametersKey);
-    Driver.ParametersKey = NULL;
 
 fail3:
     Error("fail3\n");
 
-    RegistryCloseKey(ServiceKey);
-    ServiceKey = NULL;
+    RegistryCloseKey(Driver.ParametersKey);
+    Driver.ParametersKey = NULL;
 
 fail2:
     Error("fail2\n");
