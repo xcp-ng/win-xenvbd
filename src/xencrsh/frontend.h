@@ -62,6 +62,7 @@ typedef struct _XENVBD_FRONTEND {
     // Capabilities
     BOOLEAN                     Connected;
     BOOLEAN                     FeatureBarrier;
+    BOOLEAN                     FeatureFlush;
     BOOLEAN                     FeatureDiscard;
     BOOLEAN                     Paging;
     BOOLEAN                     Hibernation;

@@ -564,17 +564,31 @@ PrepareSyncCache(
 {
     PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
     PXENVBD_REQUEST         Request;
-    
+    UCHAR                   Operation;
+
+    if (Pdo->Frontend.FeatureBarrier) {
+        Operation = BLKIF_OP_WRITE_BARRIER;
+    } else if (Pdo->Frontend.FeatureFlush) {
+        Operation = BLKIF_OP_FLUSH_DISKCACHE;
+    } else {
+        // cannot submit this to backend, just complete the SRB
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+        Srb->ScsiStatus = 0x00; // SCSI_GOOD
+
+        FdoCompleteSrb(Pdo->Fdo, Srb);
+        return;
+    }
+
     SrbExt->NumRequests = 1;
     Request = &SrbExt->Requests[0];
     Request->Srb = Srb;
 
-    Request->Operation      = BLKIF_OP_WRITE_BARRIER;
+    Request->Operation      = Operation;
     Request->NrSegments     = 0;
     Request->FirstSector    = Cdb_LogicalBlock(Srb);
     Request->NrSectors      = 0;
 
-    __UpdateStats(Pdo, BLKIF_OP_WRITE_BARRIER);
+    __UpdateStats(Pdo, Operation);
     QueueInsertTail(&Pdo->PreparedSrbs, Srb);
 }
 
@@ -690,6 +704,13 @@ PdoCompleteSubmittedRequest(
         if (Status == BLKIF_RSP_EOPNOTSUPP) {
             // remove supported feature
             Pdo->Frontend.FeatureBarrier = FALSE;
+        }
+        break;
+    case BLKIF_OP_FLUSH_DISKCACHE:
+        LogVerbose("FLUSH\n");
+        if (Status == BLKIF_RSP_EOPNOTSUPP) {
+            // remove supported feature
+            Pdo->Frontend.FeatureFlush = FALSE;
         }
         break;
     case BLKIF_OP_DISCARD:
