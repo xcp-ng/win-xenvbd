@@ -268,6 +268,7 @@ FrontendInsertRequestOnRing(
         }
         break;
     case BLKIF_OP_WRITE_BARRIER:
+    case BLKIF_OP_FLUSH_DISKCACHE:
         RingReq->operation          = Request->Operation;
         RingReq->nr_segments        = 0;
         RingReq->handle             = (USHORT)Frontend->DeviceId;
@@ -471,6 +472,15 @@ __ReadFeatures(
     }
 
     Status = StoreRead(NULL, Frontend->BackendPath,
+                        "feature-flush-cache", &Buffer);
+    if (NT_SUCCESS(Status)) {
+        Frontend->FeatureFlush = (strtoul(Buffer, NULL, 10) == 1);
+        AustereFree(Buffer);
+    } else {
+        Frontend->FeatureFlush = FALSE;
+    }
+
+    Status = StoreRead(NULL, Frontend->BackendPath,
                         "feature-discard", &Buffer);
     if (NT_SUCCESS(Status)) {
         Frontend->FeatureDiscard = (strtoul(Buffer, NULL, 10) == 1);
@@ -479,9 +489,10 @@ __ReadFeatures(
         Frontend->FeatureDiscard = FALSE;
     }
 
-    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s\n",
+    LogVerbose("Features: DomId=%d, RingOrder=0, %s %s %s\n",
                 Frontend->BackendId,
                 Frontend->FeatureBarrier ? "BARRIER" : "NOT_BARRIER",
+                Frontend->FeatureFlush ? "FLUSH" : "NOT_FLUSH",
                 Frontend->FeatureDiscard ? "DISCARD" : "NOT_DISCARD");
 }
 static VOID
