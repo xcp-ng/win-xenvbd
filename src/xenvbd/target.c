@@ -691,16 +691,17 @@ TargetInquiry00(
         return;
     RtlZeroMemory(Data, Length);
 
-    if (Length < 8)
+    if (Length < 9)
         return;
 
-    Data->PageLength = 4;
+    Data->PageLength = 5;
     Data->SupportedPageList[0] = 0x00;
     Data->SupportedPageList[1] = 0x80;
     Data->SupportedPageList[2] = 0x83;
     Data->SupportedPageList[3] = 0xB0;
+    Data->SupportedPageList[4] = 0xB1;
 
-    Srb->DataTransferLength = 8;
+    Srb->DataTransferLength = 9;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
@@ -830,6 +831,37 @@ TargetInquiryB0(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
+static FORCEINLINE VOID
+TargetInquiryB1(
+    IN  PXENVBD_TARGET                     Target,
+    IN  PSCSI_REQUEST_BLOCK                Srb
+    )
+{
+    PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE Data = Srb->DataBuffer;
+    ULONG                                  Length = Srb->DataTransferLength;
+
+    UNREFERENCED_PARAMETER(Target);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(VPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE))
+        return;
+
+    Data->PageCode = 0xB1;
+    Data->PageLength = 0x3C; // as per spec
+
+    Data->MediumRotationRateMsb = 0;
+    Data->MediumRotationRateLsb = 1; // SSD
+
+    Srb->DataTransferLength = sizeof(VPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE);
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
 static DECLSPEC_NOINLINE VOID
 TargetInquiry(
     IN  PXENVBD_TARGET      Target,
@@ -842,6 +874,7 @@ TargetInquiry(
         case 0x80:  TargetInquiry80(Target, Srb);       break;
         case 0x83:  TargetInquiry83(Target, Srb);       break;
         case 0xB0:  TargetInquiryB0(Target, Srb);       break;
+        case 0xB1:  TargetInquiryB1(Target, Srb);       break;
         default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
         }
     } else {
