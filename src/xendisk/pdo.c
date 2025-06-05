@@ -416,9 +416,9 @@ PdoSendAwaitSrb(
         goto fail2;
 
 #pragma warning(disable:6320)
-    try {
+    __try {
         MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
-    } except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
         status = GetExceptionCode();
 
         goto fail3;
