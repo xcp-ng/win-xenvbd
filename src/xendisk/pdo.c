@@ -36,6 +36,11 @@
 #include <wdmguid.h>
 #include <ntstrsafe.h>
 #include <stdlib.h>
+// AFAIK 10.0.26100 is the only WDK version that contains this brokenness
+// Fixed in 10.0.26100.4202 but workaround temporarily left in
+#if (NTDDI_VERSION == NTDDI_WIN11_GE)
+#include "storport_workaround.h"
+#endif
 #include <storport.h>
 #include <Ntddstor.h>
 #include <Ntddscsi.h>
