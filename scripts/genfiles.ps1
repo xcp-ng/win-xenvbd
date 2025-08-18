@@ -71,6 +71,8 @@ $Replacements = [ordered]@{
 	'MICRO_VERSION' = $Env:MICRO_VERSION;
 	'BUILD_NUMBER' = $Env:BUILD_NUMBER;
 
+	'FORCE_UNPLUG' = $Env:FORCE_UNPLUG;
+
 	# generated values
 	'GIT_REVISION' = $GitRevision;
 

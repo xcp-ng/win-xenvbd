@@ -109,6 +109,7 @@ HKR,"Parameters","multi-queue-max-queues",0x00010001,0x00000002
 
 [XenVbd_Unplug]
 HKLM,%UnplugKey%,"DISKS",0x00010001,0
+HKLM,%ForceUnplugKey%,"DISKS",0x00010001,1  ; @FORCE_UNPLUG@
 
 [XenVbd_Extras]
 HKLM,%PnpKey%,"DisableCDDB",0x00010001,0
@@ -123,6 +124,7 @@ DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package"
 XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
 XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
 UnplugKey="SYSTEM\CurrentControlSet\Services\XEN\Unplug"
+ForceUnplugKey="SYSTEM\CurrentControlSet\Services\XEN\ForceUnplug"
 PnpKey="SYSTEM\CurrentControlSet\Control\Pnp"
 PartMgrKey="SYSTEM\CurrentControlSet\Services\PartMgr\Parameters"
 DiskKey="SYSTEM\CurrentControlSet\Services\Disk"
