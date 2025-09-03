@@ -912,17 +912,15 @@ FrontendReadDiskInfo(
     IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    BOOLEAN                 Changed;
-    BOOLEAN                 Discard;
     BOOLEAN                 DiscardFeature = FALSE;
     BOOLEAN                 DiscardEnable = TRUE;
 
-    Changed = FrontendReadFeature(Frontend,
-                                  FeatureBarrier,
-                                  &Frontend->DiskInfo.Barrier);
-    Changed |= FrontendReadFeature(Frontend,
-                                   FeatureFlushCache,
-                                   &Frontend->DiskInfo.FlushCache);
+    FrontendReadFeature(Frontend,
+                        FeatureBarrier,
+                        &Frontend->DiskInfo.Barrier);
+    FrontendReadFeature(Frontend,
+                        FeatureFlushCache,
+                        &Frontend->DiskInfo.FlushCache);
 
     // discard related
     FrontendReadFeature(Frontend,
@@ -932,26 +930,19 @@ FrontendReadDiskInfo(
                         FeatureDiscardEnable,
                         &DiscardEnable);
 
-    Discard = DiscardFeature && DiscardEnable;
+    Frontend->DiskInfo.Discard = DiscardFeature && DiscardEnable;
 
-    Changed |= (Discard != Frontend->DiskInfo.Discard);
-
-    Frontend->DiskInfo.Discard = Discard;
-
-    Changed |= FrontendReadFeature(Frontend,
-                                   FeatureDiscardSecure,
-                                   &Frontend->DiskInfo.DiscardSecure);
-    Changed |= FrontendReadValue32(Frontend,
-                                   FeatureDiscardAlignment,
-                                   TRUE,
-                                   &Frontend->DiskInfo.DiscardAlignment);
-    Changed |= FrontendReadValue32(Frontend,
-                                   FeatureDiscardGranularity,
-                                   TRUE,
-                                   &Frontend->DiskInfo.DiscardGranularity);
-
-    if (!Changed)
-        return;
+    FrontendReadFeature(Frontend,
+                        FeatureDiscardSecure,
+                        &Frontend->DiskInfo.DiscardSecure);
+    FrontendReadValue32(Frontend,
+                        FeatureDiscardAlignment,
+                        TRUE,
+                        &Frontend->DiskInfo.DiscardAlignment);
+    FrontendReadValue32(Frontend,
+                        FeatureDiscardGranularity,
+                        TRUE,
+                        &Frontend->DiskInfo.DiscardGranularity);
 
     Verbose("Target[%d] : Features: %s%s%s\n",
                 Frontend->TargetId,
@@ -1378,6 +1369,15 @@ FrontendDisconnect(
         Base64Free(Frontend->Page83.Data);
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
+
+    // clear some disk info values, so they can be re-read on connect
+    // allows migration to a backend with different supported features
+    Frontend->DiskInfo.Barrier = FALSE;
+    Frontend->DiskInfo.FlushCache = FALSE;
+    Frontend->DiskInfo.Discard = FALSE;
+    Frontend->DiskInfo.DiscardSecure = FALSE;
+    Frontend->DiskInfo.DiscardAlignment = 0;
+    Frontend->DiskInfo.DiscardGranularity = 0;
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static FORCEINLINE VOID
