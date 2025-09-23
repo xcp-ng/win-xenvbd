@@ -914,7 +914,7 @@ BlkifRingPrepareSyncCache(
     InitializeListHead(&List);
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
-    if (FrontendGetDiskInfo(Frontend)->FlushCache)
+    if (FrontendGetFeatures(Frontend)->FlushCache)
         Operation = BLKIF_OP_FLUSH_DISKCACHE;
     else
         Operation = BLKIF_OP_WRITE_BARRIER;

@@ -184,7 +184,7 @@ FrontendGetDiscard(
     IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    return Frontend->DiskInfo.Discard;
+    return Frontend->Features.Discard;
 }
 //FRONTEND_GET_PROPERTY(FlushCache, BOOLEAN)
 BOOLEAN
@@ -192,7 +192,7 @@ FrontendGetFlushCache(
     IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    return Frontend->DiskInfo.FlushCache;
+    return Frontend->Features.FlushCache;
 }
 //FRONTEND_GET_PROPERTY(Barrier, BOOLEAN)
 BOOLEAN
@@ -200,7 +200,7 @@ FrontendGetBarrier(
     IN  PXENVBD_FRONTEND    Frontend
     )
 {
-    return Frontend->DiskInfo.Barrier;
+    return Frontend->Features.Barrier;
 }
 FRONTEND_GET_PROPERTY(MaxQueues, ULONG)
 FRONTEND_GET_PROPERTY(NumQueues, ULONG)
@@ -240,15 +240,15 @@ FrontendRemoveFeature(
     switch (BlkifOperation) {
     case BLKIF_OP_FLUSH_DISKCACHE:
         Verbose("FLUSH_DISKCACHE\n");
-        Frontend->DiskInfo.FlushCache = FALSE;
+        Frontend->Features.FlushCache = FALSE;
         break;
     case BLKIF_OP_WRITE_BARRIER:    
         Verbose("WRITE_BARRIER\n");
-        Frontend->DiskInfo.Barrier = FALSE;
+        Frontend->Features.Barrier = FALSE;
         break;
     case BLKIF_OP_DISCARD:
         Verbose("DISCARD\n");
-        Frontend->DiskInfo.Discard = FALSE;
+        Frontend->Features.Discard = FALSE;
         break;
     case BLKIF_OP_INDIRECT:
         Verbose("INDIRECT\n");
@@ -824,10 +824,78 @@ __Units(
     return "GB";
 }
 
-__drv_requiresIRQL(DISPATCH_LEVEL)
-static VOID
-__ReadDiskInfo(
-    __in  PXENVBD_FRONTEND  Frontend
+static FORCEINLINE VOID
+FrontendReadFeatures(
+    IN  PXENVBD_FRONTEND    Frontend
+    )
+{
+    BOOLEAN                 DiscardFeature = FALSE;
+    BOOLEAN                 DiscardEnable = TRUE;
+
+    FrontendReadFeature(Frontend,
+                        FeatureRemovable,
+                        &Frontend->Features.Removable);
+    FrontendReadValue32(Frontend,
+                        FeatureMaxIndirectSegments,
+                        TRUE,
+                        &Frontend->Features.Indirect);
+    FrontendReadFeature(Frontend,
+                        FeaturePersistent,
+                        &Frontend->Features.Persistent);
+    FrontendReadFeature(Frontend,
+                        FeatureBarrier,
+                        &Frontend->Features.Barrier);
+    FrontendReadFeature(Frontend,
+                        FeatureFlushCache,
+                        &Frontend->Features.FlushCache);
+
+    FrontendReadFeature(Frontend,
+                        FeatureDiscard,
+                        &DiscardFeature);
+    FrontendReadFeature(Frontend,
+                        FeatureDiscardEnable,
+                        &DiscardEnable);
+    Frontend->Features.Discard = DiscardFeature && DiscardEnable;
+
+    FrontendReadFeature(Frontend,
+                        FeatureDiscardSecure,
+                        &Frontend->Features.DiscardSecure);
+    FrontendReadValue32(Frontend,
+                        FeatureDiscardAlignment,
+                        TRUE,
+                        &Frontend->Features.DiscardAlignment);
+    FrontendReadValue32(Frontend,
+                        FeatureDiscardGranularity,
+                        TRUE,
+                        &Frontend->Features.DiscardGranularity);
+
+    Verbose("Target[%d] : Features: %s%s%s%s%s%s\n",
+            Frontend->TargetId,
+            Frontend->Features.Persistent ? "PERSISTENT " : "",
+            Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
+            Frontend->Features.Removable ? "REMOVABLE " : "",
+            Frontend->Features.Barrier ? "BARRIER " : "",
+            Frontend->Features.FlushCache ? "FLUSH " : "",
+            Frontend->Features.Discard ? "DISCARD " : "");
+
+    if (Frontend->Features.Indirect) {
+        Verbose("Target[%d] : INDIRECT %x\n",
+                    Frontend->TargetId,
+                    Frontend->Features.Indirect);
+    }
+
+    if (Frontend->Features.Discard) {
+        Verbose("Target[%d] : DISCARD %s%x/%x\n",
+                    Frontend->TargetId,
+                    Frontend->Features.DiscardSecure ? "SECURE " : "",
+                    Frontend->Features.DiscardAlignment,
+                    Frontend->Features.DiscardGranularity);
+    }
+}
+
+static FORCEINLINE VOID
+FrontendReadDiskInfo(
+    IN  PXENVBD_FRONTEND    Frontend
     )
 {
     BOOLEAN                 Changed;
@@ -871,92 +939,6 @@ __ReadDiskInfo(
     Trace("Target[%d] : %d %s (%08x)\n", Frontend->TargetId,
           __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
           Frontend->DiskInfo.DiskInfo);
-}
-
-static FORCEINLINE VOID
-FrontendReadFeatures(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    BOOLEAN                 Changed;
-
-    Changed = FrontendReadFeature(Frontend,
-                                  FeatureRemovable,
-                                  &Frontend->Features.Removable);
-    Changed |= FrontendReadValue32(Frontend,
-                                   FeatureMaxIndirectSegments,
-                                   TRUE,
-                                   &Frontend->Features.Indirect);
-    Changed |= FrontendReadFeature(Frontend,
-                                   FeaturePersistent,
-                                   &Frontend->Features.Persistent);
-
-    if (!Changed)
-        return;
-
-    Verbose("Target[%d] : Features: %s%s%s\n",
-            Frontend->TargetId,
-            Frontend->Features.Persistent ? "PERSISTENT " : "",
-            Frontend->Features.Indirect ? "INDIRECT " : "",
-            Frontend->Features.Removable ? "REMOVABLE" : "");
-
-    if (Frontend->Features.Indirect) {
-        Verbose("Target[%d] : INDIRECT %x\n",
-                    Frontend->TargetId,
-                    Frontend->Features.Indirect);
-    }
-}
-
-static FORCEINLINE VOID
-FrontendReadDiskInfo(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    BOOLEAN                 DiscardFeature = FALSE;
-    BOOLEAN                 DiscardEnable = TRUE;
-
-    FrontendReadFeature(Frontend,
-                        FeatureBarrier,
-                        &Frontend->DiskInfo.Barrier);
-    FrontendReadFeature(Frontend,
-                        FeatureFlushCache,
-                        &Frontend->DiskInfo.FlushCache);
-
-    // discard related
-    FrontendReadFeature(Frontend,
-                        FeatureDiscard,
-                        &DiscardFeature);
-    FrontendReadFeature(Frontend,
-                        FeatureDiscardEnable,
-                        &DiscardEnable);
-
-    Frontend->DiskInfo.Discard = DiscardFeature && DiscardEnable;
-
-    FrontendReadFeature(Frontend,
-                        FeatureDiscardSecure,
-                        &Frontend->DiskInfo.DiscardSecure);
-    FrontendReadValue32(Frontend,
-                        FeatureDiscardAlignment,
-                        TRUE,
-                        &Frontend->DiskInfo.DiscardAlignment);
-    FrontendReadValue32(Frontend,
-                        FeatureDiscardGranularity,
-                        TRUE,
-                        &Frontend->DiskInfo.DiscardGranularity);
-
-    Verbose("Target[%d] : Features: %s%s%s\n",
-                Frontend->TargetId,
-                Frontend->DiskInfo.Barrier ? "BARRIER " : "",
-                Frontend->DiskInfo.FlushCache ?  "FLUSH " : "",
-                Frontend->DiskInfo.Discard ? "DISCARD " : "");
-
-    if (Frontend->DiskInfo.Discard) {
-        Verbose("Target[%d] : DISCARD %s%x/%x\n",
-                    Frontend->TargetId,
-                    Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
-                    Frontend->DiskInfo.DiscardAlignment,
-                    Frontend->DiskInfo.DiscardGranularity);
-    }
 }
 
 static FORCEINLINE VOID
@@ -1142,8 +1124,6 @@ FrontendPrepare(
             Frontend->BackendDomain,
             Frontend->BackendPath);
 
-    FrontendReadFeatures(Frontend);
-    
     return STATUS_SUCCESS;
 
 fail7:
@@ -1314,7 +1294,6 @@ abort:
         goto fail6;
 
     // read disk info
-    __ReadDiskInfo(Frontend);
     FrontendReadDiskInfo(Frontend);
 
     // read inquiry data
@@ -1332,6 +1311,7 @@ abort:
 
 fail7:
     Error("Fail7\n");
+    RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
 fail6:
     Error("Fail6\n");
 fail5:
@@ -1370,14 +1350,7 @@ FrontendDisconnect(
     Frontend->Page83.Data = NULL;
     Frontend->Page83.Size = 0;
 
-    // clear some disk info values, so they can be re-read on connect
-    // allows migration to a backend with different supported features
-    Frontend->DiskInfo.Barrier = FALSE;
-    Frontend->DiskInfo.FlushCache = FALSE;
-    Frontend->DiskInfo.Discard = FALSE;
-    Frontend->DiskInfo.DiscardSecure = FALSE;
-    Frontend->DiskInfo.DiscardAlignment = 0;
-    Frontend->DiskInfo.DiscardGranularity = 0;
+    RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
 }
 __drv_requiresIRQL(DISPATCH_LEVEL)
 static FORCEINLINE VOID
@@ -1649,9 +1622,9 @@ FrontendDebugCallback(
                  Frontend->Features.Persistent ? "PERSISTENT " : "",
                  Frontend->Features.Indirect > 0 ? "INDIRECT " : "",
                  Frontend->Features.Removable ? "REMOVABLE " : "",
-                 Frontend->DiskInfo.Barrier ? "BARRIER " : "",
-                 Frontend->DiskInfo.FlushCache ? "FLUSH " : "",
-                 Frontend->DiskInfo.Discard ? "DISCARD " : "");
+                 Frontend->Features.Barrier ? "BARRIER " : "",
+                 Frontend->Features.FlushCache ? "FLUSH " : "",
+                 Frontend->Features.Discard ? "DISCARD " : "");
 
     if (Frontend->Features.Indirect > 0) {
         XENBUS_DEBUG(Printf,
@@ -1659,13 +1632,13 @@ FrontendDebugCallback(
                      "INDIRECT %x\n",
                      Frontend->Features.Indirect);
     }
-    if (Frontend->DiskInfo.Discard) {
+    if (Frontend->Features.Discard) {
         XENBUS_DEBUG(Printf,
                      &Frontend->DebugInterface,
                      "DISCARD %s%x/%x\n",
-                     Frontend->DiskInfo.DiscardSecure ? "SECURE " : "",
-                     Frontend->DiskInfo.DiscardAlignment,
-                     Frontend->DiskInfo.DiscardGranularity);
+                     Frontend->Features.DiscardSecure ? "SECURE " : "",
+                     Frontend->Features.DiscardAlignment,
+                     Frontend->Features.DiscardGranularity);
     }
 
     XENBUS_DEBUG(Printf,
@@ -1834,7 +1807,7 @@ FrontendBackend(
         KeAcquireSpinLock(&Frontend->StateLock, &Irql);
         // Only attempt this if Active, Active is set/cleared on D3->D0/D0->D3
         if (Frontend->Active) {
-            __ReadDiskInfo(Frontend);
+            FrontendReadDiskInfo(Frontend);
             __CheckBackendForEject(Frontend);
         }
         KeReleaseSpinLock(&Frontend->StateLock, Irql);

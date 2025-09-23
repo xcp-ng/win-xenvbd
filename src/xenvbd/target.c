@@ -806,7 +806,7 @@ TargetInquiryB0(
     IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    PXENVBD_FEATURES        Features = FrontendGetFeatures(Target->Frontend);
     PVPD_BLOCK_LIMITS_PAGE  Data = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
 
@@ -822,10 +822,10 @@ TargetInquiryB0(
     Data->PageCode = 0xB0;
     Data->PageLength[1] = 0x3C; // as per spec
 
-    *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(DiskInfo->DiscardGranularity);
-    *(PULONG)Data->UnmapGranularityAlignment = _byteswap_ulong(DiskInfo->DiscardAlignment);
+    *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(Features->DiscardGranularity);
+    *(PULONG)Data->UnmapGranularityAlignment = _byteswap_ulong(Features->DiscardAlignment);
     // alignment is only valid if a granularity has been set
-    Data->UGAValid = (DiskInfo->DiscardGranularity != 0) ? 1 : 0;
+    Data->UGAValid = (Features->DiscardGranularity != 0) ? 1 : 0;
 
     Srb->DataTransferLength = sizeof(VPD_BLOCK_LIMITS_PAGE);
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
