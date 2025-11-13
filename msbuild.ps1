@@ -12,6 +12,16 @@ param(
 	[switch]$CodeAnalysis
 )
 
+#
+# Globals
+#
+$SolutionName = "xenvbd.sln"
+$ArchivePath = "xenvbd"
+$ProjectList = @( "xencrsh", "xendisk", "xenvbd" )
+
+#
+# Functions
+#
 Function Run-MSBuild {
 	param(
 		[string]$SolutionPath,
@@ -63,6 +73,23 @@ Function Run-MSBuildSDV {
 	Run-MSBuild $projpath $project $Configuration $Platform "Build"
 	Run-MSBuild $projpath $project $Configuration $Platform "sdv" "/clean"
 	Run-MSBuild $projpath $project $Configuration $Platform "sdv" "/check:default.sdv /debug"
+
+	Set-Location $basepath
+}
+
+Function Run-MSBuildDVL {
+	param(
+		[string]$SolutionPath,
+		[string]$Name,
+		[string]$Configuration,
+		[string]$Platform
+	)
+
+	$basepath = Get-Location
+	$projpath = Join-Path -Path $SolutionPath -ChildPath $Name
+	Set-Location $projpath
+
+	$project = [string]::Format("{0}.vcxproj", $Name)
 	Run-MSBuild $projpath $project $Configuration $Platform "Build" -CodeAnalysis
 	Run-MSBuild $projpath $project $Configuration $Platform "dvl"
 
@@ -149,22 +176,17 @@ $configuration = @{ "free" = "$ConfigurationBase Release"; "checked" = "$Configu
 $platform = @{ "x86" = "Win32"; "x64" = "x64" }
 $solutionpath = Resolve-Path $SolutionDir
 
-$archivepath = "xenvbd"
-$projectlist = @( "xencrsh", "xendisk", "xenvbd" )
-
 Set-ExecutionPolicy -Scope CurrentUser -Force Bypass
 
-if ($Type -eq "free") {
-	Run-MSBuild $solutionpath "xenvbd.sln" $configuration["free"] $platform[$Arch] -CodeAnalysis:$CodeAnalysis
+if (-Not (Test-Path -Path $archivepath)) {
+	New-Item -Name $archivepath -ItemType Directory | Out-Null
 }
-elseif ($Type -eq "checked") {
-	Run-MSBuild $solutionpath "xenvbd.sln" $configuration["checked"] $platform[$Arch] -CodeAnalysis:$CodeAnalysis
-}
-elseif ($Type -eq "codeql") {
-	if (-Not (Test-Path -Path $archivepath)) {
-		New-Item -Name $archivepath -ItemType Directory | Out-Null
-	}
 
+if (($Type -eq "free") -or ($Type -eq "checked")) {
+	Run-MSBuild $solutionpath $SolutionName $configuration[$Type] $platform[$Arch] -CodeAnalysis:$CodeAnalysis
+}
+
+if ($Type -eq "codeql") {
 	if ([string]::IsNullOrEmpty($Env:CODEQL_QUERY_SUITE)) {
 		$searchpath = Resolve-Path ".."
 	} else {
@@ -176,20 +198,21 @@ elseif ($Type -eq "codeql") {
 	}
 	New-Item -ItemType Directory "database" | Out-Null
 
-	$projectlist | ForEach {
-		Run-CodeQL $solutionpath $_ $configuration["codeql"] $platform[$Arch] $searchpath
+	ForEach ($project in $ProjectList) {
+		Run-CodeQL $solutionpath $project $configuration["codeql"] $platform[$Arch] $searchpath
 	}
-
 	Copy-Item -Path (Join-Path -Path $SolutionPath -ChildPath "*.sarif") -Destination $archivepath
 }
-elseif ($Type -eq "sdv") {
-	if (-Not (Test-Path -Path $archivepath)) {
-		New-Item -Name $archivepath -ItemType Directory | Out-Null
-	}
 
-	$projectlist | ForEach {
-		Run-MSBuildSDV $solutionpath $_ $configuration["sdv"] $platform[$Arch]
+if ($Type -eq "sdv") {
+	ForEach ($project in $ProjectList) {
+		Run-MSBuildSDV $solutionpath $project $configuration["sdv"] $platform[$Arch]
 	}
+}
 
+if (($Type -eq "codeql") -or ($Type -eq "sdv")) {
+	ForEach ($project in $ProjectList) {
+		Run-MSBuildDVL $solutionpath $project $configuration["sdv"] $platform[$Arch]
+	}
 	Copy-Item -Path (Join-Path -Path $SolutionPath -ChildPath "*DVL*") -Destination $archivepath
 }
