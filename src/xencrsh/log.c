@@ -34,6 +34,7 @@
 #include "driver.h"
 #include "assert.h"
 #include <stdio.h>
+#include <ntstrsafe.h>
 
 static PVOID Port12 = ((PVOID)(ULONG_PTR)0x12);
 
@@ -252,10 +253,18 @@ LogVDebug(
     IN  va_list     Args
     )
 {
-    static CHAR Buffer[256];
+    static CHAR     Buffer[256];
+    NTSTATUS        status;
 
-#pragma warning(suppress : 28719) // SDV
-    sprintf(Buffer, "%s|%s|%s:", Module, __Mode(), Function);
+    status = RtlStringCbPrintfA(Buffer,
+                                sizeof(Buffer),
+                                "%s|%s|%s:",
+                                Module,
+                                __Mode(),
+                                Function);
+    if (!NT_SUCCESS(status))
+        return; // Buffer is not safe to use
+
     Buffer[255] = 0;
 
     vDbgPrintExWithPrefix(Buffer,
