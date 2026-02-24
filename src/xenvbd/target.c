@@ -223,11 +223,11 @@ TargetReadWrite(
     ULONG                   NumSectors;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
-    if (!FrontendGetConnected(Frontend))
+    if (!FrontendGetCaps(Frontend)->Connected)
         goto fail1;
 
     // disallow writes to read-only disks
-    if (FrontendGetReadOnly(Frontend) &&
+    if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY &&
         Cdb_OperationEx(Srb) == SCSIOP_WRITE)
         goto fail2;
 
@@ -266,15 +266,15 @@ TargetSyncCache(
     PXENVBD_RING            Ring = FrontendGetRing(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
-    if (!FrontendGetConnected(Frontend))
+    if (!FrontendGetCaps(Frontend)->Connected)
         goto fail1;
 
-    if (FrontendGetReadOnly(Frontend))
+    if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY)
         goto fail2;
 
     // If neither FLUSH or BARRIER is supported, just succceed the SRB
-    if (!(FrontendGetFlushCache(Frontend) ||
-          FrontendGetBarrier(Frontend)))
+    if (!(FrontendGetFeatures(Frontend)->FlushCache ||
+          FrontendGetFeatures(Frontend)->Barrier))
         goto succeed;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
@@ -302,13 +302,13 @@ TargetUnmap(
     PXENVBD_RING            Ring = FrontendGetRing(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
-    if (!FrontendGetConnected(Frontend))
+    if (!FrontendGetCaps(Frontend)->Connected)
         goto fail1;
 
-    if (FrontendGetReadOnly(Frontend))
+    if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY)
         goto fail2;
 
-    if (!FrontendGetDiscard(Frontend))
+    if (!FrontendGetFeatures(Frontend)->Discard)
         goto succeed;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
@@ -359,7 +359,7 @@ __TargetModeSense(
         // Fill in CachingParams
         Caching->PageCode           = MODE_PAGE_CACHING;
         Caching->PageLength         = sizeof(MODE_CACHING_PAGE);
-        Caching->WriteCacheEnable   = FrontendGetFlushCache(Target->Frontend) ? 1 : 0;
+        Caching->WriteCacheEnable   = FrontendGetFeatures(Target->Frontend)->FlushCache ? 1 : 0;
 
         *ModeDataLength += sizeof(MODE_CACHING_PAGE);
         *Size           += sizeof(MODE_CACHING_PAGE);
@@ -386,11 +386,14 @@ TargetModeSense(
     IN  PSCSI_REQUEST_BLOCK Srb
     )
 {
+    PXENVBD_FRONTEND        Frontend = Target->Frontend;
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
     PMODE_PARAMETER_HEADER  Data  = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
     ULONG                   BlockDescrLength = 0;
     ULONG                   ModeDataLength = 0;
     ULONG                   Size;
+
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -403,7 +406,7 @@ TargetModeSense(
 
     // Header
     Data->MediumType                = 0;
-    Data->DeviceSpecificParameter   = FrontendGetReadOnly(Target->Frontend) ? 
+    Data->DeviceSpecificParameter   = (DiskInfo->DiskInfo & VDISK_READONLY) ?
                                                     MODE_DSP_WRITE_PROTECT : 0;
     Size = sizeof(MODE_PARAMETER_HEADER);
 
@@ -431,6 +434,8 @@ TargetModeSense10(
     IN  PSCSI_REQUEST_BLOCK     Srb
     )
 {
+    PXENVBD_FRONTEND            Frontend = Target->Frontend;
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Frontend);
     PMODE_PARAMETER_HEADER10    Data  = Srb->DataBuffer;
     ULONG                       Length = Srb->DataTransferLength;
     ULONG                       BlockDescrLength = 0;
@@ -448,7 +453,7 @@ TargetModeSense10(
 
     // Header
     Data->MediumType                = 0;
-    Data->DeviceSpecificParameter   = FrontendGetReadOnly(Target->Frontend) ? 
+    Data->DeviceSpecificParameter   = (DiskInfo->DiskInfo & VDISK_READONLY) ?
                                                     MODE_DSP_WRITE_PROTECT : 0;
     Size = sizeof(MODE_PARAMETER_HEADER10);
 

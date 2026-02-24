@@ -130,6 +130,23 @@ FrontendGet ## _name ## (                       \
     return __FrontendGet ## _name ## (Frontend);\
 }
 
+
+#define FRONTEND_GET_PROPERTY_PTR(_name, _type) \
+static FORCEINLINE _type                        \
+__FrontendGet ## _name ## (                     \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return &Frontend-> ## _name ## ;            \
+}                                               \
+_type                                           \
+FrontendGet ## _name ## (                       \
+    IN  PXENVBD_FRONTEND    Frontend            \
+    )                                           \
+{                                               \
+    return __FrontendGet ## _name ## (Frontend);\
+}
+
 FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
 FRONTEND_GET_PROPERTY(Ring, PXENVBD_RING)
 FRONTEND_GET_PROPERTY(Granter, PXENVBD_GRANTER)
@@ -138,74 +155,14 @@ FRONTEND_GET_PROPERTY(DeviceId, ULONG)
 FRONTEND_GET_PROPERTY(BackendDomain, ULONG)
 FRONTEND_GET_PROPERTY(BackendPath, PCHAR)
 FRONTEND_GET_PROPERTY(FrontendPath, PCHAR)
-//FRONTEND_GET_PROPERTY(Caps, PXENVBD_CAPS)
-PXENVBD_CAPS
-FrontendGetCaps(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->Caps;
-}
-//FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
-PXENVBD_FEATURES
-FrontendGetFeatures(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->Features;
-}
-//FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
-PXENVBD_DISKINFO
-FrontendGetDiskInfo(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return &Frontend->DiskInfo;
-}
-//FRONTEND_GET_PROPERTY(Connected, BOOLEAN)
-BOOLEAN
-FrontendGetConnected(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->Caps.Connected;
-}
-//FRONTEND_GET_PROPERTY(ReadOnly, BOOLEAN)
-BOOLEAN
-FrontendGetReadOnly(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return !!(Frontend->DiskInfo.DiskInfo & VDISK_READONLY);
-}
-//FRONTEND_GET_PROPERTY(Discard, BOOLEAN)
-BOOLEAN
-FrontendGetDiscard(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->Features.Discard;
-}
-//FRONTEND_GET_PROPERTY(FlushCache, BOOLEAN)
-BOOLEAN
-FrontendGetFlushCache(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->Features.FlushCache;
-}
-//FRONTEND_GET_PROPERTY(Barrier, BOOLEAN)
-BOOLEAN
-FrontendGetBarrier(
-    IN  PXENVBD_FRONTEND    Frontend
-    )
-{
-    return Frontend->Features.Barrier;
-}
 FRONTEND_GET_PROPERTY(MaxQueues, ULONG)
 FRONTEND_GET_PROPERTY(NumQueues, ULONG)
+FRONTEND_GET_PROPERTY_PTR(Caps, PXENVBD_CAPS)
+FRONTEND_GET_PROPERTY_PTR(Features, PXENVBD_FEATURES)
+FRONTEND_GET_PROPERTY_PTR(DiskInfo, PXENVBD_DISKINFO)
 
 #undef FRONTEND_GET_PROPERTY
+#undef FRONTEND_GET_PROPERTY_PTR
 
 //=============================================================================
 #define FRONTEND_POOL_TAG            'tnFX'
