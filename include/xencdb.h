@@ -261,6 +261,14 @@ FORCEINLINE UCHAR Cdb_EVPD(const SCSI_REQUEST_BLOCK* const srb)
     return Cdb_EVPDRaw(srb->CdbLength, srb->Cdb);
 }
 
+FORCEINLINE UCHAR Cdb_ServiceAction(const SCSI_REQUEST_BLOCK* const srb)
+{
+    if (srb->CdbLength > 6)
+        return srb->Cdb[1] & 0x1F;
+    else
+        return 0;
+}
+
 FORCEINLINE const char* Cdb_OperationName(UCHAR op)
 {
 #define _SCSIOP_NAME(x) case x: return #x;

@@ -641,6 +641,28 @@ fail1:
     Error("fail1\n");
 }
 
+static DECLSPEC_NOINLINE VOID
+TargetServiceActionIn16(
+    IN  PXENVBD_TARGET      Target,
+    IN  PSCSI_REQUEST_BLOCK Srb
+    )
+{
+    UCHAR                   ServiceAction = Cdb_ServiceAction(Srb);
+
+    switch (ServiceAction){
+    case SERVICE_ACTION_READ_CAPACITY16:
+        TargetReadCapacity16(Target, Srb);
+        return;
+    default:
+        Trace("Target[%d] : Unsupported SCSIOP_SERVICE_ACTION_IN16 "
+              "service action (%02hhx)\n",
+              TargetGetTargetId(Target),
+              ServiceAction);
+        Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
+        break;
+    }
+}
+
 static FORCEINLINE VOID
 TargetInquiryStd(
     IN  PXENVBD_TARGET      Target,
@@ -1068,8 +1090,8 @@ TargetStartIo(
         TargetReadCapacity(Target, Srb);
         break;
 
-    case SCSIOP_READ_CAPACITY16:
-        TargetReadCapacity16(Target, Srb);
+    case SCSIOP_SERVICE_ACTION_IN16:
+        TargetServiceActionIn16(Target, Srb);
         break;
 
     case SCSIOP_MEDIUM_REMOVAL:
