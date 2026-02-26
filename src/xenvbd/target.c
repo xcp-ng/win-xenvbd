@@ -685,6 +685,7 @@ static const UCHAR SupportedPages[] = {
     VPD_DEVICE_IDENTIFIERS,
     VPD_BLOCK_LIMITS,
     VPD_BLOCK_DEVICE_CHARACTERISTICS,
+    VPD_LOGICAL_BLOCK_PROVISIONING,
 };
 
 static FORCEINLINE VOID
@@ -884,6 +885,39 @@ TargetInquiryB1(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
+static VOID
+TargetInquiryB2(
+    IN  PXENVBD_TARGET                      Target,
+    IN  PSCSI_REQUEST_BLOCK                 Srb
+    )
+{
+    PVPD_LOGICAL_BLOCK_PROVISIONING_PAGE    Data = Srb->DataBuffer;
+    ULONG                                   Length = Srb->DataTransferLength;
+
+    UNREFERENCED_PARAMETER(Target);
+
+    Srb->SrbStatus = SRB_STATUS_ERROR;
+
+    if (Data == NULL)
+        return;
+
+    RtlZeroMemory(Data, Length);
+
+    if (Length < sizeof(VPD_LOGICAL_BLOCK_PROVISIONING_PAGE))
+        return;
+
+    Data->PageCode = VPD_LOGICAL_BLOCK_PROVISIONING;
+    Data->PageLength[1] = 4;
+
+    // Even if the current backend doesn't support discard, we might want to
+    // offer discard again when the backend changes. So we have to say that
+    // discard is unconditionally supported here.
+    Data->LBPU = 1;
+
+    Srb->DataTransferLength = sizeof(VPD_LOGICAL_BLOCK_PROVISIONING_PAGE);
+    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+}
+
 static DECLSPEC_NOINLINE VOID
 TargetInquiry(
     IN  PXENVBD_TARGET      Target,
@@ -906,6 +940,9 @@ TargetInquiry(
             break;
         case VPD_BLOCK_DEVICE_CHARACTERISTICS:
             TargetInquiryB1(Target, Srb);
+            break;
+        case VPD_LOGICAL_BLOCK_PROVISIONING:
+            TargetInquiryB2(Target, Srb);
             break;
         default:
             Srb->SrbStatus = SRB_STATUS_ERROR;
