@@ -746,7 +746,7 @@ TargetInquiry80(
         if (Length < sizeof(VPD_SERIAL_NUMBER_PAGE) + 4)
             return;
 
-        Data->PageCode      = 0x80;
+        Data->PageCode      = VPD_SERIAL_NUMBER;
         Data->PageLength    = 4;
         (VOID) RtlStringCbPrintfA(Serial,
                                   sizeof(Serial),
@@ -792,7 +792,7 @@ TargetInquiry83(
                      sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16)
             return;
 
-        Data->PageCode = 0x83;
+        Data->PageCode = VPD_DEVICE_IDENTIFIERS;
         Data->PageLength = sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + 16;
 
         Id->CodeSet         = VpdCodeSetAscii;
@@ -831,7 +831,7 @@ TargetInquiryB0(
     if (Length < sizeof(VPD_BLOCK_LIMITS_PAGE))
         return;
 
-    Data->PageCode = 0xB0;
+    Data->PageCode = VPD_BLOCK_LIMITS;
     Data->PageLength[1] = 0x3C; // as per spec
 
     *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(Features->DiscardGranularity);
@@ -864,7 +864,7 @@ TargetInquiryB1(
     if (Length < sizeof(VPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE))
         return;
 
-    Data->PageCode = 0xB1;
+    Data->PageCode = VPD_BLOCK_DEVICE_CHARACTERISTICS;
     Data->PageLength = 0x3C; // as per spec
 
     Data->MediumRotationRateMsb = 0;
@@ -882,17 +882,33 @@ TargetInquiry(
 {
     if (Cdb_EVPD(Srb)) {
         switch (Cdb_PageCode(Srb)) {
-        case 0x00:  TargetInquiry00(Target, Srb);       break;
-        case 0x80:  TargetInquiry80(Target, Srb);       break;
-        case 0x83:  TargetInquiry83(Target, Srb);       break;
-        case 0xB0:  TargetInquiryB0(Target, Srb);       break;
-        case 0xB1:  TargetInquiryB1(Target, Srb);       break;
-        default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
+        case VPD_SUPPORTED_PAGES:
+            TargetInquiry00(Target, Srb);
+            break;
+        case VPD_SERIAL_NUMBER:
+            TargetInquiry80(Target, Srb);
+            break;
+        case VPD_DEVICE_IDENTIFIERS:
+            TargetInquiry83(Target, Srb);
+            break;
+        case VPD_BLOCK_LIMITS:
+            TargetInquiryB0(Target, Srb);
+            break;
+        case VPD_BLOCK_DEVICE_CHARACTERISTICS:
+            TargetInquiryB1(Target, Srb);
+            break;
+        default:
+            Srb->SrbStatus = SRB_STATUS_ERROR;
+            break;
         }
     } else {
         switch (Cdb_PageCode(Srb)) {
-        case 0x00:  TargetInquiryStd(Target, Srb);      break;
-        default:    Srb->SrbStatus = SRB_STATUS_ERROR;  break;
+        case VPD_SUPPORTED_PAGES:
+            TargetInquiryStd(Target, Srb);
+            break;
+        default:
+            Srb->SrbStatus = SRB_STATUS_ERROR;
+            break;
         }
     }
 }
