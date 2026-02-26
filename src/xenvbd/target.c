@@ -679,6 +679,14 @@ TargetInquiryStd(
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
+static const UCHAR SupportedPages[] = {
+    VPD_SUPPORTED_PAGES,
+    VPD_SERIAL_NUMBER,
+    VPD_DEVICE_IDENTIFIERS,
+    VPD_BLOCK_LIMITS,
+    VPD_BLOCK_DEVICE_CHARACTERISTICS,
+};
+
 static FORCEINLINE VOID
 TargetInquiry00(
     IN  PXENVBD_TARGET          Target,
@@ -696,17 +704,16 @@ TargetInquiry00(
         return;
     RtlZeroMemory(Data, Length);
 
-    if (Length < 9)
+    if (Length < sizeof(VPD_SUPPORTED_PAGES_PAGE) + sizeof(SupportedPages))
         return;
 
-    Data->PageLength = 5;
-    Data->SupportedPageList[0] = 0x00;
-    Data->SupportedPageList[1] = 0x80;
-    Data->SupportedPageList[2] = 0x83;
-    Data->SupportedPageList[3] = 0xB0;
-    Data->SupportedPageList[4] = 0xB1;
+    Data->PageLength = sizeof(SupportedPages);
+    RtlCopyMemory(Data->SupportedPageList,
+                  SupportedPages,
+                  sizeof(SupportedPages));
 
-    Srb->DataTransferLength = 9;
+    Srb->DataTransferLength = sizeof(VPD_SUPPORTED_PAGES_PAGE) +
+        Data->PageLength;
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
 }
 
