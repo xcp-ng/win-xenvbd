@@ -834,6 +834,16 @@ TargetInquiryB0(
     Data->PageCode = VPD_BLOCK_LIMITS;
     Data->PageLength[1] = 0x3C; // as per spec
 
+    *(PULONG)Data->MaximumUnmapLBACount = _byteswap_ulong(ULONG_MAX);
+    /*
+     * Each discarded extent requires its own BLKIF_OP_DISCARD request. We don't
+     * want to consume the entire ring at once, but the optimal value might not
+     * be 1 either.
+     * Since the ring can hold anywhere from 32 requests (with 1 ring page) to
+     * 512 requests (using XENVBD_MAX_RING_PAGE_ORDER), use 8 as a conservative
+     * default.
+     */
+    *(PULONG)Data->MaximumUnmapBlockDescriptorCount = _byteswap_ulong(8);
     *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(Features->DiscardGranularity);
     *(PULONG)Data->UnmapGranularityAlignment = _byteswap_ulong(Features->DiscardAlignment);
     // alignment is only valid if a granularity has been set
