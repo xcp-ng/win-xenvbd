@@ -48,7 +48,6 @@ DefaultDestDir=12
 [SourceDisksFiles]
 xenvbd.sys=0,,
 xencrsh.sys=0,,
-xendisk.sys=0,,
 
 [Manufacturer] 
 %Vendor%=Inst,NT@INF_ARCH@
@@ -67,29 +66,9 @@ FeatureScore=0xFE
 [XenVbd_Copyfiles]
 xenvbd.sys
 xencrsh.sys
-xendisk.sys
-
-[XenVbd_Inst.HW]
-AddReg=XenVbd_AddReg
-
-[XenVbd_AddReg]
-HKR,,"UpperFilters",0x00010000,"xendisk"
 
 [XenVbd_Inst.Services] 
 AddService=xenvbd,2,XenVbd_Service,
-AddService=xendisk,,XenDisk_Service,
-
-[XenDisk_Service]
-DisplayName=%XenDiskName%
-ServiceType=%SERVICE_KERNEL_DRIVER%
-StartType=%SERVICE_BOOT_START%
-ErrorControl=%SERVICE_ERROR_NORMAL%
-ServiceBinary=%12%\xendisk.sys
-LoadOrderGroup="Scsi Miniport"
-AddReg=XenDisk_Parameters
-
-[XenDisk_Parameters]
-HKR,"Parameters",,0x00000010
 
 [XenVbd_Service] 
 DisplayName=%XenVbdName%
@@ -122,7 +101,6 @@ HKLM,%DiskKey%,"TimeOutValue",0x00010001,120
 Vendor = "@VENDOR_NAME@"
 DiskDesc = "@PRODUCT_NAME@ PV Storage Host Adapter Package" 
 XenVbdName= "@PRODUCT_NAME@ PV Storage Host Adapter"
-XenDiskName= "@PRODUCT_NAME@ PV Storage Filter"
 UnplugKey="SYSTEM\CurrentControlSet\Services\XEN\Unplug"
 ForceUnplugKey="SYSTEM\CurrentControlSet\Services\XEN\ForceUnplug"
 PnpKey="SYSTEM\CurrentControlSet\Control\Pnp"

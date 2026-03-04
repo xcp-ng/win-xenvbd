@@ -18,7 +18,7 @@ param(
 #
 $SolutionName = "xenvbd.sln"
 $ArchivePath = "xenvbd"
-$ProjectList = @( "xencrsh", "xendisk", "xenvbd" )
+$ProjectList = @( "xencrsh", "xenvbd" )
 
 #
 # Functions
