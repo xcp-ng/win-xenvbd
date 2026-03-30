@@ -1612,18 +1612,21 @@ BlkifRingDpc(
         KeRaiseIrql(DISPATCH_LEVEL, &Irql);
         __BlkifRingAcquireLock(BlkifRing);
         Retry = BlkifRingPoll(BlkifRing);
+
+        if (!Retry && BlkifRing->Enabled) {
+            (VOID) XENBUS_EVTCHN(Unmask,
+                                 &Ring->EvtchnInterface,
+                                 BlkifRing->Channel,
+                                 FALSE,
+                                 TRUE);
+        }
+
         __BlkifRingReleaseLock(BlkifRing);
         KeLowerIrql(Irql);
 
         if (!Retry)
             break;
     }
-
-    XENBUS_EVTCHN(Unmask,
-                  &Ring->EvtchnInterface,
-                  BlkifRing->Channel,
-                  FALSE,
-                  TRUE);
 }
 
 #define TIME_US(_us)        ((_us) * 10)
