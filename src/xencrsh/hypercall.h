@@ -35,8 +35,10 @@
 
 #include "driver.h"
 
-typedef UCHAR           HYPERCALL_GATE[32];
-typedef HYPERCALL_GATE  *PHYPERCALL_GATE;
+extern NTSTATUS
+HypercallInitialize(
+    VOID
+    );
 
 extern ULONG_PTR
 ___Hypercall2(
