@@ -845,6 +845,7 @@ TargetInquiryB0(
     )
 {
     PXENVBD_FEATURES        Features = FrontendGetFeatures(Target->Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     PVPD_BLOCK_LIMITS_PAGE  Data = Srb->DataBuffer;
     ULONG                   Length = Srb->DataTransferLength;
 
@@ -870,8 +871,10 @@ TargetInquiryB0(
      * default.
      */
     *(PULONG)Data->MaximumUnmapBlockDescriptorCount = _byteswap_ulong(8);
-    *(PULONG)Data->OptimalUnmapGranularity = _byteswap_ulong(Features->DiscardGranularity);
-    *(PULONG)Data->UnmapGranularityAlignment = _byteswap_ulong(Features->DiscardAlignment);
+    *(PULONG)Data->OptimalUnmapGranularity =
+        _byteswap_ulong(Features->DiscardGranularity / DiskInfo->SectorSize);
+    *(PULONG)Data->UnmapGranularityAlignment =
+        _byteswap_ulong(Features->DiscardAlignment / DiskInfo->SectorSize);
     // alignment is only valid if a granularity has been set
     Data->UGAValid = (Features->DiscardGranularity != 0) ? 1 : 0;
 
