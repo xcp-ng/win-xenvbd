@@ -523,22 +523,29 @@ __ReadDiskInfo(
     Status = StoreRead(NULL, Frontend->BackendPath, 
                         "sectors", &Buffer);
     if (NT_SUCCESS(Status)) {
-        Frontend->SectorCount = _strtoui64(Buffer, NULL, 10);
+        Frontend->BlkifSectorCount = _strtoui64(Buffer, NULL, 10);
         AustereFree(Buffer);
         Updated = TRUE;
     }
 
-    if (Frontend->SectorCount == 0) {
-        LogError("Invalid SectorCount!\n");
+    if (Frontend->BlkifSectorCount == 0) {
+        LogError("Invalid BlkifSectorCount!\n");
     }
-    if (Frontend->SectorSize == 0) {
+    if (Frontend->SectorSize < BLKIF_SECTOR_SIZE ||
+        (Frontend->SectorSize & (Frontend->SectorSize - 1)) != 0) {
         LogError("Invalid SectorSize!\n");
+        Frontend->SectorSize = BLKIF_SECTOR_SIZE;
     }
+    BitScanForward(&Frontend->SectorShift, Frontend->SectorSize);
+    Frontend->SectorShift -= BLKIF_SECTOR_SHIFT;
     if (Updated) {
-        LogVerbose("DiskInfo: %08x, %lld sectors of %d bytes (%lld KB or %lld MB)\n", 
-                    Frontend->DiskInfo, Frontend->SectorCount, Frontend->SectorSize, 
-                    (Frontend->SectorSize * Frontend->SectorCount) / 1024,
-                    (Frontend->SectorSize * Frontend->SectorCount) / (1024 * 1024));
+        LogVerbose("DiskInfo: %llu %luB blocks, %luB logical sectors (2^%lu), "
+                   "info %08x\n",
+                   Frontend->BlkifSectorCount,
+                   BLKIF_SECTOR_SIZE,
+                   Frontend->SectorSize,
+                   Frontend->SectorShift,
+                   Frontend->DiskInfo);
     }
     if (Frontend->DiskInfo & VDISK_READONLY) {
         LogWarning("DiskInfo contains VDISK_READONLY flag!\n");
@@ -919,7 +926,7 @@ FrontendCreate(
     Frontend->TargetId = TargetId;
     Frontend->DeviceId = strtoul(DeviceId, NULL, 10);
     Frontend->State = XENVBD_INITIALIZED;
-    Frontend->SectorSize = 512; // default value
+    Frontend->SectorSize = BLKIF_SECTOR_SIZE; // default value
 
     Frontend->FrontendPath = DriverFormat("device/vbd/%s", DeviceId);
     if (Frontend->FrontendPath == NULL)

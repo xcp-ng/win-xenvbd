@@ -32,6 +32,8 @@
 
 #include "pdo.h"
 
+#include <limits.h>
+
 #include "driver.h"
 #include "fdo.h"
 #include "frontend.h"
@@ -52,6 +54,8 @@
 #include "log.h"
 #include "assert.h"
 #include "util.h"
+
+#define SECTORS_PER_PAGE            ((ULONG)(PAGE_SIZE / BLKIF_SECTOR_SIZE))
 
 typedef struct _XENVBD_SG_INDEX {
     ULONG       Index;
@@ -305,13 +309,6 @@ static FORCEINLINE ULONG __SectorSize(
     ASSERT3U(Pdo->Frontend.SectorSize, !=, 0);
     return Pdo->Frontend.SectorSize;
 }
-static FORCEINLINE ULONG __SectorsPerPage(
-    IN  ULONG                   SectorSize
-    )
-{
-    ASSERT3U(SectorSize, !=, 0);
-    return PAGE_SIZE / SectorSize;
-}
 static FORCEINLINE VOID
 __Operation(
     IN  UCHAR                   CdbOp,
@@ -402,12 +399,12 @@ PrepareReadWrite(
     PSTOR_SCATTER_GATHER_LIST   SGList;
     XENVBD_SG_INDEX             SGIndex;
 
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
+    PXENVBD_FRONTEND            Frontend = &Pdo->Frontend;
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
 
-    const ULONG64   StartSector     = Cdb_LogicalBlock(Srb);
-    const ULONG     NumSectors      = Cdb_TransferBlock(Srb);
+    const ULONG64   StartSector     = Cdb_LogicalBlock(Srb) << Frontend->SectorShift;
+    const ULONG     NumSectors      = Cdb_TransferBlock(Srb) << Frontend->SectorShift;
     const ULONG     SectorSize      = __SectorSize(Pdo);
-    const ULONG     SectorsPerPage  = __SectorsPerPage(SectorSize);
     __Operation(Cdb_OperationEx(Srb), &Operation, &ReadOnly);
 
     SGList = StorPortGetScatterGatherList(Pdo->Fdo, Srb);
@@ -439,13 +436,15 @@ PrepareReadWrite(
                 ULONG Type;
 
                 // get first sector, last sector and count
-                FirstSector = (__Offset(PhysAddr) + SectorSize - 1) / SectorSize;
-                SectorsNow  = __Min(NumSectors - SectorsDone, SectorsPerPage - FirstSector);
+                FirstSector = (__Offset(PhysAddr) + BLKIF_SECTOR_SIZE - 1) /
+                    BLKIF_SECTOR_SIZE;
+                SectorsNow  = __Min(NumSectors - SectorsDone,
+                                    SECTORS_PER_PAGE - FirstSector);
                 LastSector  = FirstSector + SectorsNow - 1;
 
-                ASSERT3U((PhysLen / SectorSize), ==, SectorsNow);
-                ASSERT3U((PhysLen & (SectorSize - 1)), ==, 0);
-               
+                ASSERT3U((PhysLen / BLKIF_SECTOR_SIZE), ==, SectorsNow);
+                ASSERT3U((PhysLen & (BLKIF_SECTOR_SIZE - 1)), ==, 0);
+
                 // simples - grab Pfn of PhysAddr
                 Pfn         = __Pfn(PhysAddr);
 
@@ -471,7 +470,7 @@ PrepareReadWrite(
 
                 // get first sector, last sector and count
                 FirstSector = 0;
-                SectorsNow  = __Min(NumSectors - SectorsDone, SectorsPerPage);
+                SectorsNow  = __Min(NumSectors - SectorsDone, SECTORS_PER_PAGE);
                 LastSector  = SectorsNow - 1;
 
                 // map PhysAddr to 1 or 2 pages and lock for VirtAddr
@@ -489,19 +488,19 @@ PrepareReadWrite(
                 Request->Segments[Index2].Pfn[0] = __Pfn(PhysAddr);
 #pragma warning(pop)
 
-                if (PhysLen < SectorsNow * SectorSize) {
+                if (PhysLen < SectorsNow * BLKIF_SECTOR_SIZE) {
                     __GetPhysAddr(SGList, &SGIndex, &PhysAddr, &PhysLen);
                     Mdl->Size       += sizeof(PFN_NUMBER);
                     Mdl->ByteCount  = Mdl->ByteCount + PhysLen;
                     Request->Segments[Index2].Pfn[1] = __Pfn(PhysAddr);
                 }
 
-                ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
+                ASSERT((Mdl->ByteCount & (BLKIF_SECTOR_SIZE - 1)) == 0);
                 ASSERT3U(Mdl->ByteCount, <=, PAGE_SIZE);
-                ASSERT3U(SectorsNow, ==, (Mdl->ByteCount / SectorSize));
-                
+                ASSERT3U(SectorsNow, ==, (Mdl->ByteCount / BLKIF_SECTOR_SIZE));
+
                 Length = __Min(Mdl->ByteCount, PAGE_SIZE);
-                Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode, 
+                Buffer = MmMapLockedPagesSpecifyCache(Mdl, KernelMode,
                                         MmCached, NULL, FALSE, HighPagePriority);
                 if (!Buffer) {
                     Pdo->NeedsWake = TRUE;
@@ -585,7 +584,7 @@ PrepareSyncCache(
 
     Request->Operation      = Operation;
     Request->NrSegments     = 0;
-    Request->FirstSector    = Cdb_LogicalBlock(Srb);
+    Request->FirstSector    = Cdb_LogicalBlock(Srb) << Pdo->Frontend.SectorShift;
     Request->NrSectors      = 0;
 
     __UpdateStats(Pdo, Operation);
@@ -743,13 +742,27 @@ PdoCompleteSubmittedRequest(
 
 static FORCEINLINE BOOLEAN
 __ValidateSectors(
-    IN  ULONG64                 SectorCount,
-    IN  ULONG64                 Start,
-    IN  ULONG                   Length
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ ULONG64            StartLBA,
+    _In_ ULONG64            CountLBA
     )
 {
-    // Deal with overflow
-    return (Start < SectorCount) && ((Start + Length) < SectorCount);
+    ULONG64                 BlkifSectorStart;
+    ULONG64                 BlkifSectorEnd;
+
+    if (StartLBA > (ULLONG_MAX >> Frontend->SectorShift) ||
+        CountLBA > (ULLONG_MAX >> Frontend->SectorShift))
+        return FALSE;
+
+    BlkifSectorStart = StartLBA << Frontend->SectorShift;
+    BlkifSectorEnd = BlkifSectorStart + (CountLBA << Frontend->SectorShift);
+    if (BlkifSectorEnd < BlkifSectorStart)
+        return FALSE;
+
+    if (BlkifSectorEnd > Frontend->BlkifSectorCount)
+        return FALSE;
+
+    return TRUE;
 }
 static BOOLEAN
 PdoReadWrite(
@@ -765,8 +778,13 @@ PdoReadWrite(
         return TRUE;
     }
     // check valid sectors
-    if (!__ValidateSectors(Pdo->Frontend.SectorCount, Cdb_LogicalBlock(Srb), Cdb_TransferBlock(Srb))) {
-        LogTrace("Target[%d] : Invalid Sectors (%lld, %lld, %d)\n", Pdo->Frontend.TargetId, Pdo->Frontend.SectorCount, Cdb_LogicalBlock(Srb), Cdb_TransferBlock(Srb));
+    if (!__ValidateSectors(&Pdo->Frontend,
+                           Cdb_LogicalBlock(Srb),
+                           Cdb_TransferBlock(Srb))) {
+        LogTrace("Target[%lu] : Invalid Sectors (%llu, %lu)\n",
+                 Pdo->Frontend.TargetId,
+                 Cdb_LogicalBlock(Srb),
+                 Cdb_TransferBlock(Srb));
         Srb->ScsiStatus = 0x40; // SCSI_ABORT
         return TRUE; // Complete now
     }
@@ -791,7 +809,18 @@ PdoSyncCache(
         Srb->ScsiStatus = 0x40; // SCSI_ABORT;
         return TRUE;
     }
- 
+    // check valid sectors
+    if (!__ValidateSectors(&Pdo->Frontend,
+                           Cdb_LogicalBlock(Srb),
+                           Cdb_TransferBlock(Srb))) {
+        LogTrace("Target[%lu] : Invalid Sectors (%llu, %lu)\n",
+                 Pdo->Frontend.TargetId,
+                 Cdb_LogicalBlock(Srb),
+                 Cdb_TransferBlock(Srb));
+        Srb->ScsiStatus = 0x40; // SCSI_ABORT
+        return TRUE; // Complete now
+    }
+
     PrepareSyncCache(Pdo, Srb);
     PdoSubmitPrepared(Pdo);
     return FALSE;
@@ -964,13 +993,14 @@ PdoReadCapacity(
     IN  PSCSI_REQUEST_BLOCK     Srb
     )
 {
+    PXENVBD_FRONTEND        Frontend = &Pdo->Frontend;
     PREAD_CAPACITY_DATA     Capacity = Srb->DataBuffer;
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
     ULONG                   LastBlock;
-    
-    SectorCount = Pdo->Frontend.SectorCount;
-    SectorSize = Pdo->Frontend.SectorSize;
+
+    SectorCount = Frontend->BlkifSectorCount >> Frontend->SectorShift;
+    SectorSize = Frontend->SectorSize;
 
     if (SectorCount == (ULONG)SectorCount)
         LastBlock = (ULONG)SectorCount - 1;
@@ -990,12 +1020,13 @@ PdoReadCapacity16(
     IN  PSCSI_REQUEST_BLOCK     Srb
     )
 {
+    PXENVBD_FRONTEND        Frontend = &Pdo->Frontend;
     PREAD_CAPACITY_DATA_EX  Capacity = Srb->DataBuffer;
     ULONG64                 SectorCount;
     ULONG                   SectorSize;
 
-    SectorCount = Pdo->Frontend.SectorCount;
-    SectorSize = Pdo->Frontend.SectorSize;
+    SectorCount = Frontend->BlkifSectorCount >> Frontend->SectorShift;
+    SectorSize = Frontend->SectorSize;
 
     if (Capacity) {
         Capacity->LogicalBlockAddress.QuadPart = _byteswap_uint64(SectorCount - 1);

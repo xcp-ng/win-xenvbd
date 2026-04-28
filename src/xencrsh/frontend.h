@@ -39,6 +39,10 @@
 #include "pdo.h"
 #include "ring.h"
 
+// This is the fixed size, in bytes, of a sector used in the blkif protocol.
+#define BLKIF_SECTOR_SHIFT      9
+#define BLKIF_SECTOR_SIZE       (1U << BLKIF_SECTOR_SHIFT)
+
 typedef enum _XENVBD_STATE {
     XENVBD_STATE_INVALID,
     XENVBD_INITIALIZED,
@@ -69,8 +73,12 @@ typedef struct _XENVBD_FRONTEND {
     BOOLEAN                     DumpFile;
 
     // Disk Info
+    // each "sector" here is of size BLKIF_SECTOR_SIZE
+    ULONG64                     BlkifSectorCount;
+    // logical sector size as used by Windows for addressing
     ULONG                       SectorSize;
-    ULONG64                     SectorCount;
+    // log2(sector size / BLKIF_SECTOR_SIZE)
+    ULONG                       SectorShift;
     ULONG                       DiskInfo;
 
     // Inquiry
