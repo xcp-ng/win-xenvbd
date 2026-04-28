@@ -671,11 +671,6 @@ __WriteRing(
             goto abort;
 
         Status = StoreWrite(Transaction, Frontend->FrontendPath,
-                        "feature-large-sector-size", "1");
-        if (!NT_SUCCESS(Status))
-            goto abort;
-
-        Status = StoreWrite(Transaction, Frontend->FrontendPath,
                         "multi-queue-num-queues", "1");
         if (!NT_SUCCESS(Status))
             goto abort;
