@@ -33,24 +33,31 @@
 #ifndef XENCDB_H
 #define XENCDB_H
 
+#include <intrin.h>
+
 #define XENCDB_SCSIOP_INVALID 0xFF
 
 FORCEINLINE USHORT Cdb_get_big_endian_word(const UCHAR src[2])
 {
-    return src[1] | ((USHORT)src[0] << 8);
+    USHORT      Result;
+
+    memcpy(&Result, src, 2);
+    return _byteswap_ushort(Result);
 }
 FORCEINLINE ULONG Cdb_get_big_endian_dword(const UCHAR src[4])
 {
-    return src[3] | ((ULONG)src[2] << 8) | ((ULONG)src[1] << 16) |
-            ((ULONG)src[0] << 24);
+    ULONG       Result;
+
+    memcpy(&Result, src, 4);
+    return _byteswap_ulong(Result);
 }
 
 FORCEINLINE ULONG64 Cdb_get_big_endian_qword(const UCHAR src[8])
 {
-    return src[7] | ((ULONG64)src[6] << 8) | ((ULONG64)src[5] << 16) |
-        ((ULONG64)src[4] << 24) | ((ULONG64)src[3] << 32) |
-        ((ULONG64)src[2] << 40) | ((ULONG64)src[1] << 48) |
-        ((ULONG64)src[0] << 56);
+    ULONG64     Result;
+
+    memcpy(&Result, src, 8);
+    return _byteswap_uint64(Result);
 }
 
 FORCEINLINE UCHAR Cdb_CheckLen6(UCHAR op)
