@@ -126,6 +126,8 @@ struct _XENVBD_RING {
 #define RING_POOL_TAG               'gnRX'
 #define XEN_IO_PROTO_ABI            "x86_64-abi"
 
+#define SECTORS_PER_PAGE            ((ULONG)(PAGE_SIZE / BLKIF_SECTOR_SIZE))
+
 static FORCEINLINE PVOID
 __RingAllocate(
     IN  ULONG                       Length
@@ -182,15 +184,6 @@ __StatName(
     }
 }
 
-static FORCEINLINE ULONG
-__SectorsPerPage(
-    IN  ULONG   SectorSize
-    )
-{
-    ASSERT3U(SectorSize, != , 0);
-    return PAGE_SIZE / SectorSize;
-}
-
 static FORCEINLINE VOID
 __Operation(
     IN  UCHAR       CdbOp,
@@ -214,7 +207,6 @@ __Operation(
 
 static FORCEINLINE ULONG
 __UseIndirect(
-    IN  ULONG           SectorsPerPage,
     IN  ULONG           MaxIndirectSegs,
     IN  ULONG           SectorsLeft
     )
@@ -222,7 +214,7 @@ __UseIndirect(
     if (MaxIndirectSegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST)
         return BLKIF_MAX_SEGMENTS_PER_REQUEST; // not supported
 
-    if (SectorsLeft < BLKIF_MAX_SEGMENTS_PER_REQUEST * SectorsPerPage)
+    if (SectorsLeft < BLKIF_MAX_SEGMENTS_PER_REQUEST * SECTORS_PER_PAGE)
         return BLKIF_MAX_SEGMENTS_PER_REQUEST; // first into a single BLKIF_OP_{READ/WRITE}
 
     return MaxIndirectSegs;
@@ -647,7 +639,6 @@ BlkifRingPrepareSegment(
     PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Target);
 
     const ULONG             SectorSize = FrontendGetDiskInfo(Ring->Frontend)->SectorSize;
-    const ULONG             SectorsPerPage = __SectorsPerPage(SectorSize);
 
     Pfn = AdapterGetNextSGEntry(Adapter,
                                 SrbExt,
@@ -659,11 +650,11 @@ BlkifRingPrepareSegment(
         InterlockedIncrement(&Ring->Stats[XENVBD_STAT_SEGMENTS_GRANTED]);
 
         // get first sector, last sector and count
-        Segment->FirstSector = (UCHAR)((Offset + SectorSize - 1) / SectorSize);
-        *SectorsNow = __min(SectorsLeft, SectorsPerPage - Segment->FirstSector);
+        Segment->FirstSector = (UCHAR)((Offset + BLKIF_SECTOR_SIZE - 1) / BLKIF_SECTOR_SIZE);
+        *SectorsNow = __min(SectorsLeft, SECTORS_PER_PAGE - Segment->FirstSector);
         Segment->LastSector = (UCHAR)(Segment->FirstSector + *SectorsNow - 1);
 
-        ASSERT3U((Length / SectorSize), == , *SectorsNow);
+        ASSERT3U((Length / BLKIF_SECTOR_SIZE), == , *SectorsNow);
     } else {
         PXENVBD_BOUNCE      Bounce;
         PMDL                Mdl;
@@ -673,7 +664,7 @@ BlkifRingPrepareSegment(
 
         // get first sector, last sector and count
         Segment->FirstSector = 0;
-        *SectorsNow = __min(SectorsLeft, SectorsPerPage);
+        *SectorsNow = __min(SectorsLeft, SECTORS_PER_PAGE);
         Segment->LastSector = (UCHAR)(*SectorsNow - 1);
 
         Bounce = AdapterGetBounce(Adapter);
@@ -694,7 +685,7 @@ BlkifRingPrepareSegment(
         Mdl->ByteOffset = Offset;
         Bounce->SourcePfn[0] = Pfn;
 
-        if (Length < *SectorsNow * SectorSize) {
+        if (Length < *SectorsNow * BLKIF_SECTOR_SIZE) {
             Pfn = AdapterGetNextSGEntry(Adapter,
                                         SrbExt,
                                         Length,
@@ -706,9 +697,9 @@ BlkifRingPrepareSegment(
         }
 #pragma warning(pop)
 
-        ASSERT((Mdl->ByteCount & (SectorSize - 1)) == 0);
+        ASSERT((Mdl->ByteCount & (BLKIF_SECTOR_SIZE - 1)) == 0);
         ASSERT3U(Mdl->ByteCount, <= , PAGE_SIZE);
-        ASSERT3U(*SectorsNow, == , (Mdl->ByteCount / SectorSize));
+        ASSERT3U(*SectorsNow, == , (Mdl->ByteCount / BLKIF_SECTOR_SIZE));
 
         Bounce->SourcePtr = MmMapLockedPagesSpecifyCache(Mdl,
                                                          KernelMode,
@@ -754,15 +745,13 @@ BlkifRingPrepareReadWrite(
     PXENVBD_RING            Ring = BlkifRing->Ring;
     PXENVBD_FRONTEND        Frontend = Ring->Frontend;
     PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
-    ULONG64                 SectorStart = Cdb_LogicalBlock(Srb);
-    ULONG                   SectorsLeft = Cdb_TransferBlock(Srb);
     UCHAR                   Operation;
     BOOLEAN                 ReadOnly;
     LIST_ENTRY              List;
-
-    const ULONG             SectorSize = FrontendGetDiskInfo(Frontend)->SectorSize;
-    const ULONG             SectorsPerPage = __SectorsPerPage(SectorSize);
     const ULONG             MaxIndirect = FrontendGetFeatures(Frontend)->Indirect;
+    const ULONG             SectorShift = FrontendGetDiskInfo(Frontend)->SectorShift;
+    ULONG64                 SectorStart = Cdb_LogicalBlock(Srb) << SectorShift;
+    ULONG                   SectorsLeft = Cdb_TransferBlock(Srb) << SectorShift;
 
     InitializeListHead(&List);
 
@@ -785,9 +774,7 @@ BlkifRingPrepareReadWrite(
 
         Request->SrbExt = SrbExt;
 
-        MaxSegments = __UseIndirect(SectorsPerPage,
-                                    MaxIndirect,
-                                    SectorsLeft);
+        MaxSegments = __UseIndirect(MaxIndirect, SectorsLeft);
 
         Request->Operation = Operation;
         Request->NrSegments = 0;
@@ -858,11 +845,14 @@ BlkifRingPrepareUnmap(
     IN  PXENVBD_SRBEXT      SrbExt
     )
 {
+    PXENVBD_RING            Ring = BlkifRing->Ring;
+    PXENVBD_FRONTEND        Frontend = Ring->Frontend;
     PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
     PUNMAP_LIST_HEADER      Unmap = Srb->DataBuffer;
     ULONG                   Count;
     ULONG                   Index;
     LIST_ENTRY              List;
+    const ULONG             SectorShift = FrontendGetDiskInfo(Frontend)->SectorShift;
 
     InitializeListHead(&List);
 
@@ -874,6 +864,8 @@ BlkifRingPrepareUnmap(
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
         PXENVBD_REQUEST         Request;
+        ULONG64                 FirstSector;
+        ULONG                   NrSectors;
 
         Request = BlkifRingGetRequest(BlkifRing);
         if (Request == NULL)
@@ -881,10 +873,13 @@ BlkifRingPrepareUnmap(
         InsertTailList(&List, &Request->ListEntry);
         SrbExt->RequestCount++;
 
+        FirstSector = _byteswap_uint64(*(PULONG64)Descr->StartingLba) << SectorShift;
+        NrSectors = _byteswap_ulong(*(PULONG)Descr->LbaCount) << SectorShift;
+
         Request->SrbExt = SrbExt;
         Request->Operation = BLKIF_OP_DISCARD;
-        Request->FirstSector = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
-        Request->NrSectors = _byteswap_ulong(*(PULONG)Descr->LbaCount);
+        Request->FirstSector = FirstSector;
+        Request->NrSectors = NrSectors;
         Request->Flags = 0;
     }
 
@@ -910,6 +905,7 @@ BlkifRingPrepareSyncCache(
     PXENVBD_REQUEST         Request;
     UCHAR                   Operation;
     LIST_ENTRY              List;
+    const ULONG             SectorShift = FrontendGetDiskInfo(Frontend)->SectorShift;
 
     InitializeListHead(&List);
     Srb->SrbStatus = SRB_STATUS_PENDING;
@@ -929,7 +925,7 @@ BlkifRingPrepareSyncCache(
 
     Request->SrbExt = SrbExt;
     Request->Operation = Operation;
-    Request->FirstSector = Cdb_LogicalBlock(Srb);
+    Request->FirstSector = Cdb_LogicalBlock(Srb) << SectorShift;
 
     BlkifRingQueueRequests(BlkifRing, &List);
     return STATUS_SUCCESS;

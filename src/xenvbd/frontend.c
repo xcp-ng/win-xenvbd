@@ -761,7 +761,7 @@ __Size(
     __in  PXENVBD_DISKINFO  Info
     )
 {
-    ULONG64                 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024);
+    ULONG64                 MBytes = Info->BlkifSectorCount >> (20 - BLKIF_SECTOR_SHIFT);
 
     if (MBytes < 10240)
         return (ULONG)MBytes;
@@ -773,7 +773,7 @@ __Units(
     __in  PXENVBD_DISKINFO  Info
     )
 {
-    ULONG64                 MBytes = (Info->SectorSize * Info->SectorCount) >> 20; // / (1024 * 1024);
+    ULONG64                 MBytes = Info->BlkifSectorCount >> (20 - BLKIF_SECTOR_SHIFT);
 
     if (MBytes < 10240)
         return "MB";
@@ -856,46 +856,73 @@ FrontendReadDiskInfo(
     )
 {
     BOOLEAN                 Changed;
+    PXENVBD_DISKINFO        DiskInfo = &Frontend->DiskInfo;
 
     Changed = FrontendReadDiskValue32(Frontend,
                                       "info",
-                                      &Frontend->DiskInfo.DiskInfo);
+                                      &DiskInfo->DiskInfo);
     Changed |= FrontendReadDiskValue32(Frontend,
                                        "sector-size",
-                                       &Frontend->DiskInfo.SectorSize);
+                                       &DiskInfo->SectorSize);
     Changed |= FrontendReadDiskValue32(Frontend,
                                        "physical-sector-size",
-                                       &Frontend->DiskInfo.PhysSectorSize);
+                                       &DiskInfo->PhysSectorSize);
     Changed |= FrontendReadValue64(Frontend,
                                    "sectors",
-                                   &Frontend->DiskInfo.SectorCount);
+                                   &DiskInfo->BlkifSectorCount);
 
     if (!Changed)
         return;
 
-    if (Frontend->DiskInfo.DiskInfo & VDISK_READONLY) {
-        Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n", Frontend->TargetId);
+    if (DiskInfo->DiskInfo & VDISK_READONLY) {
+        Warning("Target[%d] : DiskInfo contains VDISK_READONLY flag!\n",
+                Frontend->TargetId);
     }
-    if (Frontend->DiskInfo.DiskInfo & VDISK_CDROM) {
-        Warning("Target[%d] : DiskInfo contains VDISK_CDROM flag!\n", Frontend->TargetId);
+    if (DiskInfo->DiskInfo & VDISK_CDROM) {
+        Warning("Target[%d] : DiskInfo contains VDISK_CDROM flag!\n",
+                Frontend->TargetId);
     }
-    if (Frontend->DiskInfo.SectorSize == 0) {
-        Error("Target[%d] : Invalid SectorSize!\n", Frontend->TargetId);
+    if (DiskInfo->SectorSize < BLKIF_SECTOR_SIZE ||
+        (DiskInfo->SectorSize & (DiskInfo->SectorSize - 1)) != 0) {
+        Error("Target[%d] : Invalid SectorSize %lu, defaulting to %u!\n",
+              Frontend->TargetId,
+              DiskInfo->SectorSize,
+              BLKIF_SECTOR_SIZE);
+        DiskInfo->SectorSize = BLKIF_SECTOR_SIZE;
     }
-    if (Frontend->DiskInfo.SectorCount == 0) {
-        Error("Target[%d] : Invalid SectorCount!\n", Frontend->TargetId);
+    // infallible due to check above
+    BitScanForward(&DiskInfo->SectorShift, DiskInfo->SectorSize);
+    DiskInfo->SectorShift -= BLKIF_SECTOR_SHIFT;
+    if (DiskInfo->PhysSectorSize < DiskInfo->SectorSize ||
+        DiskInfo->PhysSectorSize % DiskInfo->SectorSize != 0) {
+        Error("Target[%d] : Invalid PhysSectorSize %lu, defaulting to %lu!\n",
+              Frontend->TargetId,
+              DiskInfo->PhysSectorSize,
+              DiskInfo->SectorSize);
+        DiskInfo->PhysSectorSize = DiskInfo->SectorSize;
     }
-    if (Frontend->DiskInfo.PhysSectorSize == 0) {
-        Frontend->DiskInfo.PhysSectorSize = Frontend->DiskInfo.SectorSize;
+    if (DiskInfo->BlkifSectorCount == 0 ||
+        DiskInfo->BlkifSectorCount % (DiskInfo->PhysSectorSize >>
+                                               DiskInfo->SectorShift) != 0) {
+        Error("Target[%d] : Invalid BlkifSectorCount %llu!\n",
+              Frontend->TargetId,
+              DiskInfo->BlkifSectorCount);
     }
 
     // dump actual values
-    Trace("Target[%d] : %lld sectors of %d bytes (%d)\n", Frontend->TargetId,
-          Frontend->DiskInfo.SectorCount, Frontend->DiskInfo.SectorSize,
-          Frontend->DiskInfo.PhysSectorSize);
-    Trace("Target[%d] : %d %s (%08x)\n", Frontend->TargetId,
-          __Size(&Frontend->DiskInfo), __Units(&Frontend->DiskInfo),
-          Frontend->DiskInfo.DiskInfo);
+    Trace("Target[%d] : %llu %luB blocks, %luB logical sectors (2^%lu), "
+          "%luB physical sectors\n",
+          Frontend->TargetId,
+          DiskInfo->BlkifSectorCount,
+          BLKIF_SECTOR_SIZE,
+          DiskInfo->SectorSize,
+          DiskInfo->SectorShift,
+          DiskInfo->PhysSectorSize);
+    Trace("Target[%d] : %d %s (%08x)\n",
+          Frontend->TargetId,
+          __Size(&Frontend->DiskInfo),
+          __Units(&Frontend->DiskInfo),
+          DiskInfo->DiskInfo);
 }
 
 static FORCEINLINE VOID
@@ -1590,9 +1617,12 @@ FrontendDebugCallback(
 
     XENBUS_DEBUG(Printf,
                  &Frontend->DebugInterface,
-                 "DiskInfo: %llu @ %u (%u) %08x\n",
-                 Frontend->DiskInfo.SectorCount,
+                 "DiskInfo: %llu %luB blocks, %luB logical sectors (2^%lu), "
+                 "%luB physical sectors, info %08x\n",
+                 Frontend->DiskInfo.BlkifSectorCount,
+                 BLKIF_SECTOR_SIZE,
                  Frontend->DiskInfo.SectorSize,
+                 Frontend->DiskInfo.SectorShift,
                  Frontend->DiskInfo.PhysSectorSize,
                  Frontend->DiskInfo.DiskInfo);
 }
@@ -1814,7 +1844,7 @@ FrontendCreate(
     Frontend->TargetId = TargetId;
     Frontend->DeviceId = strtoul(DeviceId, NULL, 10);
     Frontend->State = XENVBD_INITIALIZED;
-    Frontend->DiskInfo.SectorSize = 512; // default sector size
+    Frontend->DiskInfo.SectorSize = BLKIF_SECTOR_SIZE; // default sector size
     Frontend->BackendDomain = DOMID_INVALID;
 
     Frontend->MaxQueues = DriverGetMaxQueues();

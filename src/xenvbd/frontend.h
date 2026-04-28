@@ -35,6 +35,10 @@
 
 #include <ntddk.h>
 
+// This is the fixed size, in bytes, of a sector used in the blkif protocol.
+#define BLKIF_SECTOR_SHIFT      9
+#define BLKIF_SECTOR_SIZE       (1U << BLKIF_SECTOR_SHIFT)
+
 typedef enum _XENVBD_STATE {
     XENVBD_STATE_INVALID,
     XENVBD_INITIALIZED, // -> { CLOSED }
@@ -65,8 +69,12 @@ typedef struct _XENVBD_FEATURES {
 } XENVBD_FEATURES, *PXENVBD_FEATURES;
 
 typedef struct _XENVBD_DISKINFO {
-    ULONG64                     SectorCount;
+    // each "sector" here is of size BLKIF_SECTOR_SIZE
+    ULONG64                     BlkifSectorCount;
+    // logical sector size as used by Windows for addressing
     ULONG                       SectorSize;
+    // log2(sector size / BLKIF_SECTOR_SIZE)
+    ULONG                       SectorShift;
     ULONG                       PhysSectorSize;
     ULONG                       DiskInfo;
 } XENVBD_DISKINFO, *PXENVBD_DISKINFO;

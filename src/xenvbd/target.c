@@ -218,6 +218,7 @@ TargetReadWrite(
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
     PXENVBD_FRONTEND        Frontend = Target->Frontend;
     PXENVBD_RING            Ring = FrontendGetRing(Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
     ULONG64                 SectorCount;
     ULONG64                 SectorStart;
     ULONG                   NumSectors;
@@ -227,14 +228,14 @@ TargetReadWrite(
         goto fail1;
 
     // disallow writes to read-only disks
-    if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY &&
+    if (DiskInfo->DiskInfo & VDISK_READONLY &&
         Cdb_OperationEx(Srb) == SCSIOP_WRITE)
         goto fail2;
 
     // check Sectors requested is on the disk
-    SectorCount = FrontendGetDiskInfo(Frontend)->SectorCount;
-    SectorStart = Cdb_LogicalBlock(Srb);
-    NumSectors = Cdb_TransferBlock(Srb);
+    SectorCount = DiskInfo->BlkifSectorCount;
+    SectorStart = Cdb_LogicalBlock(Srb) << DiskInfo->SectorShift;
+    NumSectors = Cdb_TransferBlock(Srb) << DiskInfo->SectorShift;
 
     if (SectorStart >= SectorCount)
         goto fail3;
@@ -560,7 +561,7 @@ TargetReadCapacity(
     if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
         goto fail3;
 
-    SectorCount = DiskInfo->SectorCount;
+    SectorCount = DiskInfo->BlkifSectorCount >> DiskInfo->SectorShift;
     SectorSize = DiskInfo->SectorSize;
 
     if (SectorCount == (ULONG)SectorCount)
@@ -611,7 +612,7 @@ TargetReadCapacity16(
     if (Cdb_PMI(Srb) == 0 && Cdb_LogicalBlock(Srb) != 0)
         goto fail3;
 
-    SectorCount = DiskInfo->SectorCount;
+    SectorCount = DiskInfo->BlkifSectorCount >> DiskInfo->SectorShift;
     SectorSize = DiskInfo->SectorSize;
     PhysSectorSize = DiskInfo->PhysSectorSize;
 
