@@ -218,10 +218,7 @@ TargetReadWrite(
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
     PXENVBD_FRONTEND        Frontend = Target->Frontend;
     PXENVBD_RING            Ring = FrontendGetRing(Frontend);
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    ULONG64                 SectorCount;
-    ULONG64                 SectorStart;
-    ULONG                   NumSectors;
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
     if (!FrontendGetCaps(Frontend)->Connected)
@@ -232,21 +229,15 @@ TargetReadWrite(
         Cdb_OperationEx(Srb) == SCSIOP_WRITE)
         goto fail2;
 
-    // check Sectors requested is on the disk
-    SectorCount = DiskInfo->BlkifSectorCount;
-    SectorStart = Cdb_LogicalBlock(Srb) << DiskInfo->SectorShift;
-    NumSectors = Cdb_TransferBlock(Srb) << DiskInfo->SectorShift;
-
-    if (SectorStart >= SectorCount)
+    Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
+    if (!DiskInfoIsValidExtent(DiskInfo,
+                               Cdb_LogicalBlock(Srb),
+                               Cdb_TransferBlock(Srb)))
         goto fail3;
-    if ((SectorStart + NumSectors) > SectorCount)
-        goto fail4;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
     return RingQueueRequest(Ring, SrbExt);
 
-fail4:
-     Error("fail4\n");
 fail3:
     Error("fail3\n");
 fail2:
@@ -265,13 +256,20 @@ TargetSyncCache(
     PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
     PXENVBD_FRONTEND        Frontend = Target->Frontend;
     PXENVBD_RING            Ring = FrontendGetRing(Frontend);
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
     if (!FrontendGetCaps(Frontend)->Connected)
         goto fail1;
 
-    if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY)
+    if (DiskInfo->DiskInfo & VDISK_READONLY)
         goto fail2;
+
+    Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
+    if (!DiskInfoIsValidExtent(DiskInfo,
+                               Cdb_LogicalBlock(Srb),
+                               Cdb_TransferBlock(Srb)))
+        goto fail3;
 
     // If neither FLUSH or BARRIER is supported, just succceed the SRB
     if (!(FrontendGetFeatures(Frontend)->FlushCache ||
@@ -285,6 +283,8 @@ succeed:
     Srb->SrbStatus = SRB_STATUS_SUCCESS;
     return FALSE; // not-queued
 
+fail3:
+    Error("fail3\n");
 fail2:
     Error("fail2\n");
 fail1:
@@ -308,6 +308,8 @@ TargetUnmap(
 
     if (FrontendGetDiskInfo(Frontend)->DiskInfo & VDISK_READONLY)
         goto fail2;
+
+    // Extents are checked in BlkifRingPrepareUnmap.
 
     if (!FrontendGetFeatures(Frontend)->Discard)
         goto succeed;

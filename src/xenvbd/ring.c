@@ -847,12 +847,12 @@ BlkifRingPrepareUnmap(
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
     PXENVBD_FRONTEND        Frontend = Ring->Frontend;
+    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
     PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
     PUNMAP_LIST_HEADER      Unmap = Srb->DataBuffer;
     ULONG                   Count;
     ULONG                   Index;
     LIST_ENTRY              List;
-    const ULONG             SectorShift = FrontendGetDiskInfo(Frontend)->SectorShift;
 
     InitializeListHead(&List);
 
@@ -864,8 +864,8 @@ BlkifRingPrepareUnmap(
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
         PXENVBD_REQUEST         Request;
-        ULONG64                 FirstSector;
-        ULONG                   NrSectors;
+        ULONG64                 StartLBA;
+        ULONG                   CountLBA;
 
         Request = BlkifRingGetRequest(BlkifRing);
         if (Request == NULL)
@@ -873,19 +873,23 @@ BlkifRingPrepareUnmap(
         InsertTailList(&List, &Request->ListEntry);
         SrbExt->RequestCount++;
 
-        FirstSector = _byteswap_uint64(*(PULONG64)Descr->StartingLba) << SectorShift;
-        NrSectors = _byteswap_ulong(*(PULONG)Descr->LbaCount) << SectorShift;
+        StartLBA = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
+        CountLBA = _byteswap_ulong(*(PULONG)Descr->LbaCount);
+
+        if (!DiskInfoIsValidExtent(DiskInfo, StartLBA, CountLBA))
+            goto fail2;
 
         Request->SrbExt = SrbExt;
         Request->Operation = BLKIF_OP_DISCARD;
-        Request->FirstSector = FirstSector;
-        Request->NrSectors = NrSectors;
+        Request->FirstSector = StartLBA << DiskInfo->SectorShift;
+        Request->NrSectors = CountLBA << DiskInfo->SectorShift;
         Request->Flags = 0;
     }
 
     BlkifRingQueueRequests(BlkifRing, &List);
     return STATUS_SUCCESS;
 
+fail2:
 fail1:
     BlkifRingUnprepareRequest(BlkifRing, &List);
     SrbExt->RequestCount = 0;

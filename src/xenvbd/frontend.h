@@ -34,6 +34,7 @@
 #define _XENVBD_FRONTEND_H
 
 #include <ntddk.h>
+#include <limits.h>
 
 // This is the fixed size, in bytes, of a sector used in the blkif protocol.
 #define BLKIF_SECTOR_SHIFT      9
@@ -174,5 +175,30 @@ FRONTEND_GET_PROPERTY(Features, PXENVBD_FEATURES)
 FRONTEND_GET_PROPERTY(DiskInfo, PXENVBD_DISKINFO)
 
 #undef FRONTEND_GET_PROPERTY
+
+static inline BOOLEAN
+DiskInfoIsValidExtent(
+    _In_ PXENVBD_DISKINFO   DiskInfo,
+    _In_ ULONG64            StartLBA,
+    _In_ ULONG64            CountLBA
+    )
+{
+    ULONG64                 BlkifSectorStart;
+    ULONG64                 BlkifSectorEnd;
+
+    if (StartLBA > (ULLONG_MAX >> DiskInfo->SectorShift) ||
+        CountLBA > (ULLONG_MAX >> DiskInfo->SectorShift))
+        return FALSE;
+
+    BlkifSectorStart = StartLBA << DiskInfo->SectorShift;
+    BlkifSectorEnd = BlkifSectorStart + (CountLBA << DiskInfo->SectorShift);
+    if (BlkifSectorEnd < BlkifSectorStart)
+        return FALSE;
+
+    if (BlkifSectorEnd > DiskInfo->BlkifSectorCount)
+        return FALSE;
+
+    return TRUE;
+}
 
 #endif // _XENVBD_FRONTEND_H
