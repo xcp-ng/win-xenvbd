@@ -79,7 +79,9 @@ typedef struct _XENVBD_BLKIF_RING {
     BOOLEAN                         Enabled;
     BOOLEAN                         Stopped;
     PVOID                           Lock;
+#if DBG
     PKTHREAD                        LockThread;
+#endif
     LIST_ENTRY                      SrbQueue;
     LIST_ENTRY                      PreparedQueue;
     LIST_ENTRY                      SubmittedList;
@@ -1322,7 +1324,9 @@ BlkifRingSwizzle(
     LIST_ENTRY              List;
     ULONG                   Count;
 
+#if DBG
     ASSERT3P(BlkifRing->LockThread, == , KeGetCurrentThread());
+#endif
 
     InitializeListHead(&List);
 
@@ -1465,11 +1469,13 @@ __BlkifRingTryAcquireLock(
 
     KeMemoryBarrier();
 
+#if DBG
     if (Acquired) {
         ASSERT3P(BlkifRing->LockThread, == , NULL);
         BlkifRing->LockThread = KeGetCurrentThread();
         KeMemoryBarrier();
     }
+#endif
 
     return Acquired;
 }
@@ -1508,13 +1514,17 @@ __BlkifRingTryReleaseLock(
     ULONG_PTR               New;
     BOOLEAN                 Released;
 
+#if DBG
     ASSERT3U(KeGetCurrentIrql(), == , DISPATCH_LEVEL);
     ASSERT3P(KeGetCurrentThread(), == , BlkifRing->LockThread);
+#endif
 
     Old = XENVBD_LOCK_BIT;
     New = 0;
 
+#if DBG
     BlkifRing->LockThread = NULL;
+#endif
 
     KeMemoryBarrier();
 
@@ -1524,11 +1534,13 @@ __BlkifRingTryReleaseLock(
 
     KeMemoryBarrier();
 
+#if DBG
     if (!Released) {
         ASSERT3P(BlkifRing->LockThread, == , NULL);
         BlkifRing->LockThread = KeGetCurrentThread();
         KeMemoryBarrier();
     }
+#endif
 
     return Released;
 }
