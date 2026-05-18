@@ -1203,7 +1203,7 @@ __BlkifRingCompleteResponse(
     BlkifRingPutRequest(BlkifRing, Request);
 
     // complete srb
-    if (InterlockedDecrement(&SrbExt->RequestCount) == 0) {
+    if (--SrbExt->RequestCount == 0) {
         __BlkifRingCompleteSrb(BlkifRing, SrbExt);
     }
 }
@@ -1228,15 +1228,15 @@ BlkifRingPoll(
         RING_IDX            rsp_prod;
         RING_IDX            rsp_cons;
 
-        KeMemoryBarrier();
+        xen_mb();
 
         rsp_prod = BlkifRing->Shared->rsp_prod;
         rsp_cons = BlkifRing->Front.rsp_cons;
 
-        KeMemoryBarrier();
-
         if (rsp_cons == rsp_prod || Retry)
             break;
+
+        xen_rmb();
 
         while (rsp_cons != rsp_prod && !Retry) {
             blkif_response_t    *rsp;
@@ -1260,7 +1260,8 @@ BlkifRingPoll(
                 Retry = TRUE;
         }
 
-        KeMemoryBarrier();
+        xen_rmb();
+        xen_wmb();
 
         BlkifRing->Front.rsp_cons = rsp_cons;
         BlkifRing->Shared->rsp_event = rsp_cons + 1;
@@ -1455,8 +1456,6 @@ __BlkifRingTryAcquireLock(
 
     ASSERT3U(KeGetCurrentIrql(), == , DISPATCH_LEVEL);
 
-    KeMemoryBarrier();
-
     Old = (ULONG_PTR)BlkifRing->Lock & ~XENVBD_LOCK_BIT;
     New = Old | XENVBD_LOCK_BIT;
 
@@ -1464,13 +1463,10 @@ __BlkifRingTryAcquireLock(
         (PVOID)New,
                                                              (PVOID)Old) == Old) ? TRUE : FALSE;
 
-    KeMemoryBarrier();
-
 #if DBG
     if (Acquired) {
         ASSERT3P(BlkifRing->LockThread, == , NULL);
         BlkifRing->LockThread = KeGetCurrentThread();
-        KeMemoryBarrier();
     }
 #endif
 
@@ -1523,19 +1519,14 @@ __BlkifRingTryReleaseLock(
     BlkifRing->LockThread = NULL;
 #endif
 
-    KeMemoryBarrier();
-
     Released = ((ULONG_PTR)InterlockedCompareExchangePointer(&BlkifRing->Lock,
         (PVOID)New,
                                                              (PVOID)Old) == Old) ? TRUE : FALSE;
-
-    KeMemoryBarrier();
 
 #if DBG
     if (!Released) {
         ASSERT3P(BlkifRing->LockThread, == , NULL);
         BlkifRing->LockThread = KeGetCurrentThread();
-        KeMemoryBarrier();
     }
 #endif
 
@@ -1694,8 +1685,6 @@ RingWatchdog(
         __BlkifRingAcquireLock(BlkifRing);
 
         if (BlkifRing->Enabled) {
-            KeMemoryBarrier();
-
             if (BlkifRing->Shared->rsp_prod != rsp_prod &&
                 BlkifRing->Front.rsp_cons == rsp_cons) {
                 XENBUS_DEBUG(Trigger,
@@ -1706,8 +1695,6 @@ RingWatchdog(
                 __BlkifRingSend(BlkifRing);
                 (VOID) BlkifRingPoll(BlkifRing);
             }
-
-            KeMemoryBarrier();
 
             rsp_prod = BlkifRing->Shared->rsp_prod;
             rsp_cons = BlkifRing->Front.rsp_cons;
