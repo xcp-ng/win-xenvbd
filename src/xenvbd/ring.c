@@ -57,9 +57,6 @@
 #define XENVBD_MAX_RING_PAGE_ORDER  (4)
 #define XENVBD_MAX_RING_PAGES       (1 << XENVBD_MAX_RING_PAGE_ORDER)
 
-#define xen_mb  KeMemoryBarrier
-#define xen_wmb KeMemoryBarrier
-
 typedef struct _XENVBD_BLKIF_RING {
     PXENVBD_RING                    Ring;
     ULONG                           Index;
