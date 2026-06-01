@@ -1228,7 +1228,7 @@ BlkifRingPoll(
         RING_IDX            rsp_prod;
         RING_IDX            rsp_cons;
 
-        xen_mb();
+        KeMemoryBarrier();
 
         rsp_prod = BlkifRing->Shared->rsp_prod;
         rsp_cons = BlkifRing->Front.rsp_cons;
@@ -1236,7 +1236,7 @@ BlkifRingPoll(
         if (rsp_cons == rsp_prod || Retry)
             break;
 
-        xen_rmb();
+        KeMemoryBarrier();
 
         while (rsp_cons != rsp_prod && !Retry) {
             blkif_response_t    *rsp;
@@ -1260,8 +1260,7 @@ BlkifRingPoll(
                 Retry = TRUE;
         }
 
-        xen_rmb();
-        xen_wmb();
+        KeMemoryBarrier();
 
         BlkifRing->Front.rsp_cons = rsp_cons;
         BlkifRing->Shared->rsp_event = rsp_cons + 1;
