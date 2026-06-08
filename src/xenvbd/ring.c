@@ -2418,7 +2418,7 @@ RingCreate(
     PXENVBD_TARGET          Target = FrontendGetTarget(Frontend);
     PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Target);
     ULONG                   MaxQueues;
-    ULONG                   Index;
+    LONG                    Index;
     NTSTATUS                status;
 
     *Ring = __RingAllocate(sizeof(XENVBD_RING));
@@ -2447,7 +2447,7 @@ RingCreate(
         goto fail2;
 
     Index = 0;
-    while (Index < MaxQueues) {
+    while (Index < (LONG) MaxQueues) {
         PXENVBD_BLKIF_RING  BlkifRing;
 
         status = BlkifRingCreate(*Ring, Index, &BlkifRing);
@@ -2463,7 +2463,7 @@ RingCreate(
 fail3:
     Error("fail3\n");
 
-    while (--Index > 0) {
+    while (--Index >= 0) {
         PXENVBD_BLKIF_RING  BlkifRing = (*Ring)->Ring[Index];
 
         (*Ring)->Ring[Index] = NULL;
@@ -2503,12 +2503,12 @@ RingDestroy(
     IN  PXENVBD_RING    Ring
     )
 {
-    ULONG               Index;
+    LONG                Index;
 
-    Index = FrontendGetMaxQueues(Ring->Frontend);
+    Index = (LONG) FrontendGetMaxQueues(Ring->Frontend);
     ASSERT3U(Index, !=, 0);
 
-    while (--Index != 0) {
+    while (--Index >= 0) {
         PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
         Ring->Ring[Index] = NULL;
@@ -2543,8 +2543,8 @@ RingConnect(
     IN  PXENVBD_RING    Ring
     )
 {
-    ULONG               MaxQueues;
-    ULONG               Index;
+    LONG                MaxQueues;
+    LONG                Index;
     PCHAR               Buffer;
     NTSTATUS            status;
 
@@ -2619,11 +2619,8 @@ fail6:
 fail5:
     Error("fail5\n");
 
-    while (Index != 0) {
-        PXENVBD_BLKIF_RING  BlkifRing;
-
-        --Index;
-        BlkifRing = Ring->Ring[Index];
+    while (--Index >= 0) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
         BlkifRingDisconnect(BlkifRing);
     }
@@ -2736,14 +2733,12 @@ RingDisable(
     IN  PXENVBD_RING    Ring
     )
 {
-    ULONG               Index;
+    LONG                Index;
 
     Index = FrontendGetNumQueues(Ring->Frontend);
-    while (Index != 0) {
-        PXENVBD_BLKIF_RING  BlkifRing;
+    while (--Index >= 0) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
-        --Index;
-        BlkifRing = Ring->Ring[Index];
         BlkifRingDisable(BlkifRing);
     }
 }
@@ -2753,7 +2748,7 @@ RingDisconnect(
     IN  PXENVBD_RING    Ring
     )
 {
-    ULONG               Index;
+    LONG                Index;
 
     XENBUS_DEBUG(Deregister,
                  &Ring->DebugInterface,
@@ -2761,12 +2756,8 @@ RingDisconnect(
     Ring->DebugCallback = NULL;
 
     Index = FrontendGetNumQueues(Ring->Frontend);
-
-    while (Index != 0) {
-        PXENVBD_BLKIF_RING  BlkifRing;
-
-        --Index;
-        BlkifRing = Ring->Ring[Index];
+    while (--Index >= 0) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
         BlkifRingDisconnect(BlkifRing);
     }
