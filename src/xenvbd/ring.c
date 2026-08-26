@@ -75,6 +75,7 @@ typedef struct _XENVBD_BLKIF_RING {
     BOOLEAN                         Connected;
     BOOLEAN                         Enabled;
     BOOLEAN                         Stopped;
+    BOOLEAN                         Poisoned;
     PVOID                           Lock;
 #if DBG
     PKTHREAD                        LockThread;
@@ -2172,6 +2173,7 @@ BlkifRingEnable(
     Trace("====> %u\n", BlkifRing->Index);
 
     __BlkifRingAcquireLock(BlkifRing);
+    BUG_ON(BlkifRing->Poisoned);
     ASSERT(!BlkifRing->Enabled);
     BlkifRing->Enabled = TRUE;
     __BlkifRingReleaseLock(BlkifRing);
@@ -2249,6 +2251,8 @@ BlkifRingDisable(
         Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
         BlkifRing->ResponsesProcessed++;
         __BlkifRingCompleteResponse(BlkifRing, Request, BLKIF_RSP_ERROR);
+
+        BlkifRing->Poisoned = TRUE;
     }
 
     while (!IsListEmpty(&BlkifRing->PreparedQueue)) {
@@ -2315,6 +2319,7 @@ BlkifRingDisconnect(
     BlkifRing->ResponsesProcessed = 0;
 
     BlkifRing->Connected = FALSE;
+    BlkifRing->Poisoned = FALSE;
 
     Trace("<==== %u\n", BlkifRing->Index);
 }
@@ -2768,6 +2773,26 @@ RingDisconnect(
     XENBUS_CACHE(Release, &Ring->CacheInterface);
     XENBUS_STORE(Release, &Ring->StoreInterface);
     XENBUS_DEBUG(Release, &Ring->DebugInterface);
+}
+
+BOOLEAN
+RingIsPoisoned(
+    IN  PXENVBD_RING    Ring
+    )
+{
+    ULONG               NumQueues;
+    ULONG               Index;
+
+    NumQueues = FrontendGetNumQueues(Ring->Frontend);
+    for (Index = 0; Index < NumQueues; Index++) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
+
+        if (BlkifRing->Poisoned) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
 
 static FORCEINLINE PXENVBD_BLKIF_RING

@@ -108,6 +108,7 @@ __XenvbdStateName(
     case XENVBD_CLOSED:             return "CLOSED";
     case XENVBD_PREPARED:           return "PREPARED";
     case XENVBD_CONNECTED:          return "CONNECTED";
+    case XENVBD_POISONED:           return "POISONED";
     case XENVBD_ENABLED:            return "ENABLED";
     default:                        return "UNKNOWN";
     }
@@ -1349,6 +1350,14 @@ FrontendDisable(
     RingDisable(Frontend->Ring);
     GranterDisable(Frontend->Granter);
 }
+__drv_requiresIRQL(DISPATCH_LEVEL)
+static FORCEINLINE BOOLEAN
+FrontendIsPoisoned(
+    __in  PXENVBD_FRONTEND          Frontend
+    )
+{
+    return RingIsPoisoned(Frontend->Ring);
+}
 
 //=============================================================================
 // Init/Term
@@ -1488,6 +1497,21 @@ __FrontendSetState(
             }
             break;
 
+        case XENVBD_POISONED:
+            switch (State) {
+            case XENVBD_CLOSING:
+            case XENVBD_CLOSED:
+            case XENVBD_PREPARED:
+            case XENVBD_CONNECTED:
+                Status = FrontendClose(Frontend);
+                Frontend->State = XENVBD_CLOSING;
+                break;
+            default:
+                Failed = TRUE;
+                break;
+            }
+            break;
+
         case XENVBD_ENABLED:
             switch (State) {
             case XENVBD_CLOSING:
@@ -1495,7 +1519,11 @@ __FrontendSetState(
             case XENVBD_PREPARED:
             case XENVBD_CONNECTED:
                 FrontendDisable(Frontend);
-                Frontend->State = XENVBD_CONNECTED;
+                if (FrontendIsPoisoned(Frontend)) {
+                    Frontend->State = XENVBD_POISONED;
+                } else {
+                    Frontend->State = XENVBD_CONNECTED;
+                }
                 break;
             default:
                 Failed = TRUE;

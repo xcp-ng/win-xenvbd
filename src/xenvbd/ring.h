@@ -76,6 +76,11 @@ RingDisconnect(
     );
 
 extern BOOLEAN
+RingIsPoisoned(
+    IN  PXENVBD_RING    Ring
+    );
+
+extern BOOLEAN
 RingQueueRequest(
     IN  PXENVBD_RING    Ring,
     IN  PXENVBD_SRBEXT  SrbExt

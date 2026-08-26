@@ -47,7 +47,8 @@ typedef enum _XENVBD_STATE {
     XENVBD_CLOSED,      // -> { PREPARED }
     XENVBD_PREPARED,    // -> { CLOSING, CONNECTED }
     XENVBD_CONNECTED,   // -> { ENABLED, CLOSING }
-    XENVBD_ENABLED      // -> { CLOSING }
+    XENVBD_POISONED,    // -> { CLOSING }
+    XENVBD_ENABLED      // -> { CONNECTED, POISONED }
 } XENVBD_STATE, *PXENVBD_STATE;
 
 typedef struct _XENVBD_CAPS {
