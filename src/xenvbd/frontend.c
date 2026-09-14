@@ -1287,6 +1287,19 @@ abort:
 fail7:
     Error("Fail7\n");
     RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
+
+    if (Frontend->Page80.Data)
+        Base64Free(Frontend->Page80.Data);
+    Frontend->Page80.Data = NULL;
+    Frontend->Page80.Size = 0;
+
+    if (Frontend->Page83.Data)
+        Base64Free(Frontend->Page83.Data);
+    Frontend->Page83.Data = NULL;
+    Frontend->Page83.Size = 0;
+
+    RtlZeroMemory(&Frontend->DiskInfo, sizeof(XENVBD_DISKINFO));
+
 fail6:
     Error("Fail6\n");
 fail5:
@@ -1923,8 +1936,10 @@ fail5:
     Frontend->Ring = NULL;
 fail4:
     Error("fail4\n");
+    RtlZeroMemory(Frontend->TargetPath, sizeof(Frontend->TargetPath));
 fail3:
     Error("fail3\n");
+    RtlZeroMemory(Frontend->FrontendPath, sizeof(Frontend->FrontendPath));
 fail2:
     Error("Fail2\n");
     Frontend->Target = NULL;
@@ -1951,16 +1966,6 @@ FrontendDestroy(
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
-    if (Frontend->Page80.Data)
-        Base64Free(Frontend->Page80.Data);
-    Frontend->Page80.Data = NULL;
-    Frontend->Page80.Size = 0;
-
-    if (Frontend->Page83.Data)
-        Base64Free(Frontend->Page83.Data);
-    Frontend->Page83.Data = NULL;
-    Frontend->Page83.Size = 0;
-
     ThreadAlert(Frontend->BackendThread);
     ThreadJoin(Frontend->BackendThread);
     Frontend->BackendThread = NULL;
@@ -1971,11 +1976,24 @@ FrontendDestroy(
     RingDestroy(Frontend->Ring);
     Frontend->Ring = NULL;
 
-    Frontend->MaxQueues = 0;
+    RtlZeroMemory(&Frontend->StateLock, sizeof(KSPIN_LOCK));
+
+    RtlZeroMemory(Frontend->TargetPath, sizeof(Frontend->TargetPath));
+    RtlZeroMemory(Frontend->FrontendPath, sizeof(Frontend->FrontendPath));
+    RtlZeroMemory(&Frontend->DiskInfo, sizeof(XENVBD_DISKINFO));
+    RtlZeroMemory(&Frontend->Caps, sizeof(XENVBD_CAPS));
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->BackendWatch, ==, NULL);
 
+    Frontend->Target = NULL;
+    Frontend->TargetId = 0;
+    Frontend->DeviceId = 0;
+    Frontend->State = XENVBD_STATE_INVALID; // 0
+    Frontend->BackendDomain = 0;
+    Frontend->MaxQueues = 0;
+
+    ASSERT(IsZeroMemory(Frontend, sizeof(XENVBD_FRONTEND)));
     __FrontendFree(Frontend);
     Trace("Target[%d] @ (%d) <=====\n", TargetId, KeGetCurrentIrql());
 }

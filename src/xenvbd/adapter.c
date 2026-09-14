@@ -1507,6 +1507,7 @@ AdapterTeardown(
         TargetSetMissing(Target, "AdapterTeardown");
         // drop ref-count acquired in __AdapterGetTarget *before* destroying Target
         TargetDestroy(Target);
+        Adapter->TargetList[TargetId] = NULL;
     }
 
     Adapter->BootEmulated = FALSE;

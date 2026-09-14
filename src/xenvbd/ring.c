@@ -1917,7 +1917,7 @@ fail4:
     RtlZeroMemory(&(*BlkifRing)->SrbQueue, sizeof(LIST_ENTRY));
 
     __RingFree((*BlkifRing)->Path);
-    (*BlkifRing)->Path;
+    (*BlkifRing)->Path = NULL;
     (*BlkifRing)->Index = 0;
     (*BlkifRing)->Ring = NULL;
 
@@ -1956,6 +1956,10 @@ BlkifRingDestroy(
 
     ASSERT(IsListEmpty(&BlkifRing->ShutdownQueue));
     RtlZeroMemory(&BlkifRing->ShutdownQueue, sizeof(LIST_ENTRY));
+
+    BlkifRing->SrbsQueued = 0;
+    BlkifRing->SrbsCompleted = 0;
+    BlkifRing->SrbsFailed = 0;
 
     __RingFree(BlkifRing->Path);
     BlkifRing->Path = NULL;
