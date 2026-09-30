@@ -1362,6 +1362,52 @@ BlkifRingSwizzle(
     }
 }
 
+static FORCEINLINE VOID
+__BlkifRingAbortQueues(
+    _In_ PXENVBD_BLKIF_RING BlkifRing
+    )
+{
+    ASSERT(!BlkifRing->Enabled);
+
+    // Complete any SRBs that were queued but never made it as far as the
+    // backend. Now that the ring is disabled the schedule thread will not
+    // run again, so without this these requests would be left stuck until
+    // StorPort times them out. First drain the atomic packet list into the
+    // SRB queue so that nothing accepted from a concurrent submitter is
+    // missed, then fail everything still pending. SRB_STATUS_ABORTED lets
+    // StorPort re-issue them once the target has recovered.
+
+    while (!IsListEmpty(&BlkifRing->SrbQueue)) {
+        PLIST_ENTRY ListEntry;
+        PXENVBD_SRBEXT SrbExt;
+        PSCSI_REQUEST_BLOCK Srb;
+
+        ListEntry = RemoveHeadList(&BlkifRing->SrbQueue);
+        ASSERT3P(ListEntry, !=, &BlkifRing->SrbQueue);
+
+        RtlZeroMemory(ListEntry, sizeof(LIST_ENTRY));
+
+        SrbExt = CONTAINING_RECORD(ListEntry, XENVBD_SRBEXT, ListEntry);
+        Srb = SrbExt->Srb;
+        Srb->SrbStatus = SRB_STATUS_ABORTED;
+        __BlkifRingCompleteSrb(BlkifRing, SrbExt);
+    }
+
+    while (!IsListEmpty(&BlkifRing->ShutdownQueue)) {
+        PLIST_ENTRY ListEntry;
+        PXENVBD_SRBEXT SrbExt;
+        PSCSI_REQUEST_BLOCK Srb;
+
+        ListEntry = RemoveHeadList(&BlkifRing->ShutdownQueue);
+        ASSERT3P(ListEntry, !=, &BlkifRing->ShutdownQueue);
+
+        SrbExt = CONTAINING_RECORD(ListEntry, XENVBD_SRBEXT, ListEntry);
+        Srb = SrbExt->Srb;
+        Srb->SrbStatus = SRB_STATUS_ABORTED;
+        __BlkifRingCompleteSrb(BlkifRing, SrbExt);
+    }
+}
+
 static DECLSPEC_NOINLINE VOID
 BlkifRingSchedule(
     IN  PXENVBD_BLKIF_RING  BlkifRing
@@ -1369,8 +1415,10 @@ BlkifRingSchedule(
 {
     BOOLEAN                 Polled;
 
-    if (!BlkifRing->Enabled)
+    if (!BlkifRing->Enabled) {
+        __BlkifRingAbortQueues(BlkifRing);
         return;
+    }
 
     Polled = FALSE;
 
@@ -2273,6 +2321,8 @@ BlkifRingDisable(
 
     BlkifRing->Stopped = FALSE;
 
+    // __BlkifRingReleaseLock will call __BlkifRingAbortQueues now that
+    // Enabled = FALSE, completing unsubmitted SRBs with SRB_STATUS_ABORTED
     __BlkifRingReleaseLock(BlkifRing);
 
     Trace("<==== %u\n", BlkifRing->Index);
