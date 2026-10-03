@@ -1,25 +1,8 @@
+/* SPDX-License-Identifier: MIT */
 /******************************************************************************
  * xen-x86_64.h
- * 
+ *
  * Guest OS interface to x86 64-bit Xen.
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to
- * deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
  *
  * Copyright (c) 2004-2006, K A Fraser
  */
@@ -29,7 +12,7 @@
 
 /*
  * Hypercall interface:
- *  Input:  %rdi, %rsi, %rdx, %r10, %r8, %r9 (arguments 1-6)
+ *  Input:  %rdi, %rsi, %rdx, %r10, %r8 (arguments 1-5)
  *  Output: %rax
  * Access is via hypercall page (set up by guest loader or via a Xen MSR):
  *  call hypercall_page + hypercall-number * 32
@@ -44,11 +27,11 @@
  */
 
 #define FLAT_RING3_CS32 0xe023  /* GDT index 260 */
-#define FLAT_RING3_CS64 0xe033  /* GDT index 261 */
-#define FLAT_RING3_DS32 0xe02b  /* GDT index 262 */
+#define FLAT_RING3_CS64 0xe033  /* GDT index 262 */
+#define FLAT_RING3_DS32 0xe02b  /* GDT index 261 */
 #define FLAT_RING3_DS64 0x0000  /* NULL selector */
-#define FLAT_RING3_SS32 0xe02b  /* GDT index 262 */
-#define FLAT_RING3_SS64 0xe02b  /* GDT index 262 */
+#define FLAT_RING3_SS32 0xe02b  /* GDT index 261 */
+#define FLAT_RING3_SS64 0xe02b  /* GDT index 261 */
 
 #define FLAT_KERNEL_DS64 FLAT_RING3_DS64
 #define FLAT_KERNEL_DS32 FLAT_RING3_DS32
@@ -120,9 +103,8 @@
 /* Guest exited in SYSCALL context? Return to guest with SYSRET? */
 #define _VGCF_in_syscall 8
 #define VGCF_in_syscall  (1<<_VGCF_in_syscall)
-#define VGCF_IN_SYSCALL  VGCF_in_syscall
 
-#ifndef __ASSEMBLY__
+#ifndef __ASSEMBLER__
 
 struct iret_context {
     /* Top of stack (%rsp at point of hypercall). */
@@ -176,6 +158,10 @@ struct iret_context {
 #define __DECL_REG_HI(num)    uint64_t r ## num
 #endif
 
+#ifdef __XEN__
+#define cpu_user_regs guest_user_regs
+#endif
+
 struct cpu_user_regs {
     __DECL_REG_HI(15);
     __DECL_REG_HI(14);
@@ -203,11 +189,16 @@ struct cpu_user_regs {
     uint16_t ss, _pad2[3];
     uint16_t es, _pad3[3];
     uint16_t ds, _pad4[3];
-    uint16_t fs, _pad5[3]; /* Non-nul => takes precedence over fs_base.      */
-    uint16_t gs, _pad6[3]; /* Non-nul => takes precedence over gs_base_user. */
+    uint16_t fs, _pad5[3];
+    uint16_t gs, _pad6[3];
 };
+
+#ifdef __XEN__
+#undef cpu_user_regs
+#else
 typedef struct cpu_user_regs cpu_user_regs_t;
 DEFINE_XEN_GUEST_HANDLE(cpu_user_regs_t);
+#endif
 
 #undef __DECL_REG
 #undef __DECL_REG_LOHI
@@ -226,7 +217,7 @@ typedef struct arch_vcpu_info arch_vcpu_info_t;
 
 typedef ULONG_PTR xen_callback_t;
 
-#endif /* !__ASSEMBLY__ */
+#endif /* !__ASSEMBLER__ */
 
 #endif /* __XEN_PUBLIC_ARCH_X86_XEN_X86_64_H__ */
 
