@@ -549,10 +549,10 @@ __StoreCheckResponse(
         for (Index = 0;
              Index < sizeof (xsd_errors) / sizeof (xsd_errors[0]);
              Index++) {
-            struct xsd_errors   *Entry = &xsd_errors[Index];
-            PCHAR               Error = Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Data;
-            ULONG               Length = Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Length;
-            
+            const struct xsd_errors *Entry = &xsd_errors[Index];
+            PCHAR                   Error = Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Data;
+            ULONG                   Length = Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Length;
+
             if (strncmp(Error, Entry->errstring, Length) == 0) {
                 LogTrace("%s\n", Error);
                 ERRNO_TO_STATUS(Entry->errnum, status);
