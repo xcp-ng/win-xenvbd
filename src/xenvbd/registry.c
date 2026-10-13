@@ -47,7 +47,7 @@ static IOOPENDRIVERREGISTRYKEY __IoOpenDriverRegistryKey;
 
 static FORCEINLINE PVOID
 __RegistryAllocate(
-    IN  ULONG   Length
+    _In_ ULONG  Length
     )
 {
     return __AllocatePoolWithTag(NonPagedPool, Length, REGISTRY_TAG);
@@ -55,7 +55,7 @@ __RegistryAllocate(
 
 static FORCEINLINE VOID
 __RegistryFree(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
     __FreePoolWithTag(Buffer, REGISTRY_TAG);
@@ -64,13 +64,13 @@ __RegistryFree(
 NTSTATUS
 #pragma prefast(suppress:28101) // unannotated DriverEntry function
 RegistryInitialize(
-    IN  PDRIVER_OBJECT  DriverObject,
-    IN  PUNICODE_STRING Path
+    _In_ PDRIVER_OBJECT     DriverObject,
+    _In_ PUNICODE_STRING    Path
     )
 {
-    UNICODE_STRING      Unicode;
-    PVOID               Func;
-    NTSTATUS            status;
+    UNICODE_STRING          Unicode;
+    PVOID                   Func;
+    NTSTATUS                status;
 
     ASSERT3P(RegistryPath.Buffer, ==, NULL);
 
@@ -110,17 +110,17 @@ RegistryTeardown(
     RegistryPath.MaximumLength = RegistryPath.Length = 0;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenKey(
-    IN  HANDLE          Parent,
-    IN  PUNICODE_STRING Path,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ HANDLE             Parent,
+    _In_ PUNICODE_STRING    Path,
+    _In_ ACCESS_MASK        DesiredAccess,
+    _Out_ PHANDLE           Key
     )
 {
-    OBJECT_ATTRIBUTES   Attributes;
-    NTSTATUS            status;
+    OBJECT_ATTRIBUTES       Attributes;
+    NTSTATUS                status;
 
     InitializeObjectAttributes(&Attributes,
                                Path,
@@ -140,12 +140,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 RegistryOpenRoot(
-    IN  PWCHAR          Path,
-    OUT PHANDLE         Parent,
-    OUT PWCHAR          *ChildPath
+    _In_ PWCHAR         Path,
+    _Out_ PHANDLE       Parent,
+    _Outptr_ PWCHAR     *ChildPath
     )
 {
     const WCHAR         Prefix[] = L"\\Registry\\Machine\\";
@@ -174,22 +174,22 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateKey(
-    IN  HANDLE          Root,
-    IN  PUNICODE_STRING Path,
-    IN  ULONG           Options,
-    OUT PHANDLE         Key
+    _In_ HANDLE             Root,
+    _In_ PUNICODE_STRING    Path,
+    _In_ ULONG              Options,
+    _Out_ PHANDLE           Key
     )
 {
-    PWCHAR              Buffer;
-    HANDLE              Parent;
-    PWCHAR              ChildPath;
-    PWCHAR              ChildName;
-    PWCHAR              Context;
-    HANDLE              Child;
-    NTSTATUS            status;
+    PWCHAR                  Buffer;
+    HANDLE                  Parent;
+    PWCHAR                  ChildPath;
+    PWCHAR                  ChildName;
+    PWCHAR                  Context;
+    HANDLE                  Child;
+    NTSTATUS                status;
 
     //
     // UNICODE_STRINGs are not guaranteed to have NUL terminated
@@ -274,30 +274,30 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenServiceKey(
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     )
 {
     return RegistryOpenKey(NULL, &RegistryPath, DesiredAccess, Key);
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateServiceKey(
-    OUT PHANDLE         Key
+    _Out_ PHANDLE   Key
     )
 {
     return RegistryCreateKey(NULL, &RegistryPath, REG_OPTION_NON_VOLATILE, Key);
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenParametersKey(
-    IN  ACCESS_MASK DesiredAccess,
-    OUT PHANDLE     Key
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     )
 {
     HANDLE              ServiceKey;
@@ -342,12 +342,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenSoftwareKey(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     )
 {
     NTSTATUS            status;
@@ -365,12 +365,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenHardwareKey(
-    IN  PDEVICE_OBJECT      DeviceObject,
-    IN  ACCESS_MASK         DesiredAccess,
-    OUT PHANDLE             Key
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ ACCESS_MASK        DesiredAccess,
+    _Out_ PHANDLE           Key
     )
 {
     HANDLE                  SubKey;
@@ -443,13 +443,13 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenSubKey(
-    IN  PHANDLE         Key,
-    IN  PCHAR           Name,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         SubKey
+    _In_ PHANDLE        Key,
+    _In_ PCHAR          Name,
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       SubKey
     )
 {
     ANSI_STRING         Ansi;
@@ -477,13 +477,13 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateSubKey(
-    IN  PHANDLE         Key,
-    IN  PCHAR           Name,
-    IN  ULONG           Options,
-    OUT PHANDLE         SubKey
+    _In_ PHANDLE        Key,
+    _In_ PCHAR          Name,
+    _In_ ULONG          Options,
+    _Out_ PHANDLE       SubKey
     )
 {
     ANSI_STRING         Ansi;
@@ -511,11 +511,11 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteSubKey(
-    IN  PHANDLE         Key,
-    IN  PCHAR           Name
+    _In_ PHANDLE        Key,
+    _In_ PCHAR          Name
     )
 {
     ANSI_STRING         Ansi;
@@ -555,12 +555,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryEnumerateSubKeys(
-    IN  HANDLE              Key,
-    IN  NTSTATUS            (*Callback)(PVOID, HANDLE, PANSI_STRING),
-    IN  PVOID               Context
+    _In_ HANDLE             Key,
+    _In_ NTSTATUS           (*Callback)(PVOID, HANDLE, PANSI_STRING),
+    _In_ PVOID              Context
     )
 {
     ULONG                   Size;
@@ -660,12 +660,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryEnumerateValues(
-    IN  HANDLE                      Key,
-    IN  NTSTATUS                    (*Callback)(PVOID, HANDLE, PANSI_STRING, ULONG),
-    IN  PVOID                       Context
+    _In_ HANDLE                     Key,
+    _In_ NTSTATUS                   (*Callback)(PVOID, HANDLE, PANSI_STRING, ULONG),
+    _In_ PVOID                      Context
     )
 {
     ULONG                           Size;
@@ -759,11 +759,11 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteValue(
-    IN  PHANDLE         Key,
-    IN  PCHAR           Name
+    _In_ PHANDLE        Key,
+    _In_ PCHAR          Name
     )
 {
     ANSI_STRING         Ansi;
@@ -793,12 +793,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryDwordValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    OUT PULONG                      Value
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _Out_ PULONG                    Value
     )
 {
     ANSI_STRING                     Ansi;
@@ -864,12 +864,12 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateDwordValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    IN  ULONG                       Value
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _In_ ULONG                      Value
     )
 {
     ANSI_STRING                     Ansi;
@@ -923,10 +923,10 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistrySzToAnsi(
-    IN  PWCHAR      Buffer
+    _In_ PWCHAR     Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -963,10 +963,10 @@ fail1:
     return NULL;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistryMultiSzToAnsi(
-    IN  PWCHAR      Buffer
+    _In_ PWCHAR     Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -1026,13 +1026,13 @@ fail1:
     return NULL;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySzValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    OUT PULONG                      Type OPTIONAL,
-    OUT PANSI_STRING                *Array
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _Out_opt_ PULONG                Type,
+    _Outptr_ PANSI_STRING           *Array
     )
 {
     ANSI_STRING                     Ansi;
@@ -1114,13 +1114,13 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryBinaryValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    OUT PVOID                       *Buffer,
-    OUT PULONG                      Length
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _Outptr_ PVOID                  *Buffer,
+    _Out_ PULONG                    Length
     )
 {
     ANSI_STRING                     Ansi;
@@ -1200,13 +1200,13 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateBinaryValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    IN  PVOID                       Buffer,
-    IN  ULONG                       Length
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _In_ PVOID                      Buffer,
+    _In_ ULONG                      Length
     )
 {
     ANSI_STRING                     Ansi;
@@ -1260,11 +1260,11 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryKeyName(
-    IN  HANDLE              Key,
-    OUT PANSI_STRING        *Array
+    _In_ HANDLE             Key,
+    _Outptr_ PANSI_STRING   *Array
     )
 {
     PKEY_NAME_INFORMATION   Value;
@@ -1316,11 +1316,11 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySystemStartOption(
-    IN  const CHAR                  *Prefix,
-    OUT PANSI_STRING                *Value
+    _In_ const CHAR                 *Prefix,
+    _Outptr_ PANSI_STRING           *Value
     )
 {
     UNICODE_STRING                  Unicode;
@@ -1395,7 +1395,7 @@ fail1:
     return status;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToSz(
     PANSI_STRING                    Ansi
@@ -1442,7 +1442,7 @@ fail1:
     return NULL;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToMultiSz(
     PANSI_STRING                    Ansi
@@ -1502,13 +1502,13 @@ fail1:
     return NULL;
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateSzValue(
-    IN  HANDLE                      Key,
-    IN  PCHAR                       Name,
-    IN  ULONG                       Type,
-    IN  PANSI_STRING                Array
+    _In_ HANDLE                     Key,
+    _In_ PCHAR                      Name,
+    _In_ ULONG                      Type,
+    _In_ PANSI_STRING               Array
     )
 {
     ANSI_STRING                     Ansi;
@@ -1571,7 +1571,7 @@ fail1:
 
 VOID
 RegistryFreeSzValue(
-    IN  PANSI_STRING    Array
+    _In_ PANSI_STRING   Array
     )
 {
     ULONG               Index;
@@ -1587,16 +1587,16 @@ RegistryFreeSzValue(
 
 VOID
 RegistryFreeBinaryValue(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
     __RegistryFree(Buffer);
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 VOID
 RegistryCloseKey(
-    IN  HANDLE  Key
+    _In_ HANDLE Key
     )
 {
     ZwClose(Key);

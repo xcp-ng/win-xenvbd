@@ -43,14 +43,14 @@ AustereInitialize();
 
 PVOID
 __AustereAllocate(
-    IN  PCHAR   Caller,
-    IN  ULONG   Size
+    _In_ PCHAR  Caller,
+    _In_ ULONG  Size
     );
 
 VOID
 __AustereFree(
-    IN  PCHAR   Caller,
-    IN  PVOID   Buffer
+    _In_ PCHAR  Caller,
+    _In_ PVOID  Buffer
     );
 
 #define AustereAllocate(x)  __AustereAllocate(__FUNCTION__, x);

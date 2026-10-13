@@ -47,27 +47,27 @@ BufferTerminate(
 
 extern BOOLEAN
 BufferGet(
-    OUT PULONG      BufferId,
-    OUT PFN_NUMBER* Pfn
+    _Out_ PULONG        BufferId,
+    _Outptr_ PFN_NUMBER *Pfn
     );
 
 extern VOID
 BufferPut(
-    IN  ULONG       BufferId
+    _In_ ULONG  BufferId
     );
 
 extern VOID
 BufferCopyIn(
-    IN  ULONG       BufferId,
-    IN  PVOID       Input,
-    IN  ULONG       Length
+    _In_ ULONG  BufferId,
+    _In_ PVOID  Input,
+    _In_ ULONG  Length
     );
 
 extern VOID
 BufferCopyOut(
-    IN  ULONG       BufferId,
-    IN  PVOID       Output,
-    IN  ULONG       Length
+    _In_ ULONG  BufferId,
+    _In_ PVOID  Output,
+    _In_ ULONG  Length
     );
     
 #endif // _XENVBD_BUFFER_H

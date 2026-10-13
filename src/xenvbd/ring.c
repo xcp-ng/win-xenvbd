@@ -130,7 +130,7 @@ struct _XENVBD_RING {
 
 static FORCEINLINE PVOID
 __RingAllocate(
-    IN  ULONG                       Length
+    _In_ ULONG  Length
     )
 {
     return __AllocatePoolWithTag(NonPagedPool,
@@ -140,7 +140,7 @@ __RingAllocate(
 
 static FORCEINLINE VOID
 __RingFree(
-    IN  PVOID                       Buffer
+    _In_ PVOID  Buffer
     )
 {
     if (Buffer)
@@ -150,7 +150,7 @@ __RingFree(
 
 static FORCEINLINE PCHAR
 __BlkifOperationName(
-    IN  UCHAR   Operation
+    _In_ UCHAR  Operation
     )
 {
     switch (Operation) {
@@ -167,7 +167,7 @@ __BlkifOperationName(
 
 static FORCEINLINE PCHAR
 __StatName(
-    IN  XENVBD_STAT Operation
+    _In_ XENVBD_STAT    Operation
     )
 {
     switch (Operation) {
@@ -186,9 +186,9 @@ __StatName(
 
 static FORCEINLINE VOID
 __Operation(
-    IN  UCHAR       CdbOp,
-    OUT PUCHAR      RingOp,
-    OUT PBOOLEAN    ReadOnly
+    _In_ UCHAR      CdbOp,
+    _Out_ PUCHAR    RingOp,
+    _Out_ PBOOLEAN  ReadOnly
     )
 {
     switch (CdbOp) {
@@ -207,8 +207,8 @@ __Operation(
 
 static FORCEINLINE ULONG
 __UseIndirect(
-    IN  ULONG           MaxIndirectSegs,
-    IN  ULONG           SectorsLeft
+    _In_ ULONG  MaxIndirectSegs,
+    _In_ ULONG  SectorsLeft
     )
 {
     if (MaxIndirectSegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST)
@@ -222,7 +222,7 @@ __UseIndirect(
 
 static FORCEINLINE MM_PAGE_PRIORITY
 __Priority(
-    IN  PXENVBD_CAPS    Caps
+    _In_ PXENVBD_CAPS   Caps
     )
 {
     return (Caps->Paging ||
@@ -233,7 +233,7 @@ __Priority(
 
 static PXENVBD_INDIRECT
 BlkifRingGetIndirect(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -272,8 +272,8 @@ fail1:
 
 static VOID
 BlkifRingPutIndirect(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_INDIRECT    Indirect
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_INDIRECT   Indirect
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -295,7 +295,7 @@ BlkifRingPutIndirect(
 
 static PXENVBD_SEGMENT
 BlkifRingGetSegment(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -308,8 +308,8 @@ BlkifRingGetSegment(
 
 static VOID
 BlkifRingPutSegment(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SEGMENT     Segment
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SEGMENT    Segment
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -349,7 +349,7 @@ BlkifRingPutSegment(
 
 static PXENVBD_REQUEST
 BlkifRingGetRequest(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -362,8 +362,8 @@ BlkifRingGetRequest(
 
 static VOID
 BlkifRingPutRequest(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_REQUEST     Request
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_REQUEST    Request
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -406,8 +406,8 @@ BlkifRingPutRequest(
 
 static DECLSPEC_NOINLINE NTSTATUS
 BlkifRingRequestCtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID      Argument,
+    _In_ PVOID      Object
     )
 {
     PXENVBD_REQUEST Request = Object;
@@ -421,8 +421,8 @@ BlkifRingRequestCtor(
 
 static DECLSPEC_NOINLINE VOID
 BlkifRingRequestDtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID  Argument,
+    _In_ PVOID  Object
     )
 {
     UNREFERENCED_PARAMETER(Argument);
@@ -431,8 +431,8 @@ BlkifRingRequestDtor(
 
 static DECLSPEC_NOINLINE NTSTATUS
 BlkifRingSegmentCtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID  Argument,
+    _In_ PVOID  Object
     )
 {
     UNREFERENCED_PARAMETER(Argument);
@@ -442,8 +442,8 @@ BlkifRingSegmentCtor(
 
 static DECLSPEC_NOINLINE VOID
 BlkifRingSegmentDtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID  Argument,
+    _In_ PVOID  Object
     )
 {
     UNREFERENCED_PARAMETER(Argument);
@@ -452,8 +452,8 @@ BlkifRingSegmentDtor(
 
 static DECLSPEC_NOINLINE NTSTATUS
 BlkifRingIndirectCtor(
-    IN  PVOID           Argument,
-    IN  PVOID           Object
+    _In_ PVOID          Argument,
+    _In_ PVOID          Object
     )
 {
     PXENVBD_INDIRECT    Indirect = Object;
@@ -479,8 +479,8 @@ fail1:
 
 static DECLSPEC_NOINLINE VOID
 BlkifRingIndirectDtor(
-    IN  PVOID           Argument,
-    IN  PVOID           Object
+    _In_ PVOID          Argument,
+    _In_ PVOID          Object
     )
 {
     PXENVBD_INDIRECT    Indirect = Object;
@@ -494,8 +494,8 @@ BlkifRingIndirectDtor(
 
 static VOID
 BlkifRingDebugCallback(
-    IN  PVOID           Argument,
-    IN  BOOLEAN         Crashing
+    _In_ PVOID          Argument,
+    _In_ BOOLEAN        Crashing
     )
 {
     PXENVBD_BLKIF_RING  BlkifRing = Argument;
@@ -550,8 +550,8 @@ BlkifRingDebugCallback(
 
 static DECLSPEC_NOINLINE VOID
 __BlkifRingCompleteSrb(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -577,8 +577,8 @@ __BlkifRingCompleteSrb(
 
 static FORCEINLINE VOID
 BlkifRingUnprepareRequest(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PLIST_ENTRY         List
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PLIST_ENTRY        List
     )
 {
     for (;;) {
@@ -599,8 +599,8 @@ BlkifRingUnprepareRequest(
 
 static FORCEINLINE VOID
 BlkifRingQueueRequests(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PLIST_ENTRY         List
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PLIST_ENTRY        List
     )
 {
     for (;;) {
@@ -621,12 +621,12 @@ BlkifRingQueueRequests(
 
 static BOOLEAN
 BlkifRingPrepareSegment(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SEGMENT     Segment,
-    IN  PXENVBD_SRBEXT      SrbExt,
-    IN  BOOLEAN             ReadOnly,
-    IN  ULONG               SectorsLeft,
-    OUT PULONG              SectorsNow
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SEGMENT    Segment,
+    _In_ PXENVBD_SRBEXT     SrbExt,
+    _In_ BOOLEAN            ReadOnly,
+    _In_ ULONG              SectorsLeft,
+    _Out_ PULONG            SectorsNow
     )
 {
     PFN_NUMBER              Pfn;
@@ -738,8 +738,8 @@ fail1:
 
 static NTSTATUS
 BlkifRingPrepareReadWrite(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -841,8 +841,8 @@ fail1:
 
 static NTSTATUS
 BlkifRingPrepareUnmap(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -899,8 +899,8 @@ fail1:
 
 static NTSTATUS
 BlkifRingPrepareSyncCache(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -943,8 +943,8 @@ fail1:
 
 static DECLSPEC_NOINLINE NTSTATUS
 __BlkifRingPrepareSrb(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     switch (Cdb_OperationEx(SrbExt->Srb)) {
@@ -969,9 +969,9 @@ __BlkifRingPrepareSrb(
 
 static FORCEINLINE VOID
 __BlkifRingInsertRequest(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_REQUEST     Request,
-    IN  blkif_request_t     *req
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_REQUEST    Request,
+    _In_ blkif_request_t    *req
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -1081,7 +1081,7 @@ __BlkifRingInsertRequest(
 
 static FORCEINLINE NTSTATUS
 __BlkifRingPostRequests(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     for (;;) {
@@ -1118,8 +1118,8 @@ __BlkifRingPostRequests(
 
 static FORCEINLINE PXENVBD_REQUEST
 __BlkifRingGetSubmittedRequest(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  ULONG64             Id
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ ULONG64            Id
     )
 {
     PLIST_ENTRY             ListEntry;
@@ -1142,9 +1142,9 @@ __BlkifRingGetSubmittedRequest(
 
 static FORCEINLINE VOID
 __BlkifRingCompleteResponse(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_REQUEST     Request,
-    IN  SHORT               Status
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_REQUEST    Request,
+    _In_ SHORT              Status
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -1211,7 +1211,7 @@ __BlkifRingCompleteResponse(
 
 static FORCEINLINE BOOLEAN
 BlkifRingPoll(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
 #define XENVBD_BATCH(_Ring) (RING_SIZE(&(_Ring)->Front) / 4)
@@ -1275,7 +1275,7 @@ done:
 
 static FORCEINLINE VOID
 __BlkifRingSend(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -1287,7 +1287,7 @@ __BlkifRingSend(
 
 static FORCEINLINE VOID
 __BlkifRingPushRequests(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     BOOLEAN                 Notify;
@@ -1313,7 +1313,7 @@ __BlkifRingPushRequests(
 
 static DECLSPEC_NOINLINE VOID
 BlkifRingSwizzle(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ULONG_PTR               Old;
@@ -1410,7 +1410,7 @@ __BlkifRingAbortQueues(
 
 static DECLSPEC_NOINLINE VOID
 BlkifRingSchedule(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     BOOLEAN                 Polled;
@@ -1493,9 +1493,9 @@ BlkifRingSchedule(
 }
 
 static FORCEINLINE BOOLEAN
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 __BlkifRingTryAcquireLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ULONG_PTR               Old;
@@ -1522,9 +1522,9 @@ __BlkifRingTryAcquireLock(
 }
 
 static FORCEINLINE VOID
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 __BlkifRingAcquireLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ASSERT3U(KeGetCurrentIrql(), == , DISPATCH_LEVEL);
@@ -1539,16 +1539,16 @@ __BlkifRingAcquireLock(
 
 static VOID
 BlkifRingAcquireLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     __BlkifRingAcquireLock(BlkifRing);
 }
 
 static FORCEINLINE BOOLEAN
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 __BlkifRingTryReleaseLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ULONG_PTR               Old;
@@ -1582,9 +1582,9 @@ __BlkifRingTryReleaseLock(
 }
 
 static FORCEINLINE VOID
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 __BlkifRingReleaseLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ASSERT3U(KeGetCurrentIrql(), == , DISPATCH_LEVEL);
@@ -1602,7 +1602,7 @@ __BlkifRingReleaseLock(
 
 static VOID
 BlkifRingReleaseLock(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     __BlkifRingReleaseLock(BlkifRing);
@@ -1612,8 +1612,8 @@ KSERVICE_ROUTINE    BlkifRingInterrupt;
 
 BOOLEAN
 BlkifRingInterrupt(
-    IN  PKINTERRUPT     InterruptObject,
-    IN  PVOID           Argument
+    _In_ PKINTERRUPT    InterruptObject,
+    _In_ PVOID          Argument
     )
 {
     PXENVBD_BLKIF_RING  BlkifRing = Argument;
@@ -1630,16 +1630,16 @@ BlkifRingInterrupt(
     return TRUE;
 }
 
-__drv_functionClass(KDEFERRED_ROUTINE)
-__drv_maxIRQL(DISPATCH_LEVEL)
-__drv_minIRQL(PASSIVE_LEVEL)
-__drv_sameIRQL
+_Function_class_(KDEFERRED_ROUTINE)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_min_(PASSIVE_LEVEL)
+_IRQL_requires_same_
 static VOID
 BlkifRingDpc(
-    IN  PKDPC           Dpc,
-    IN  PVOID           Context,
-    IN  PVOID           Argument1,
-    IN  PVOID           Argument2
+    _In_ PKDPC          Dpc,
+    _In_ PVOID          Context,
+    _In_ PVOID          Argument1,
+    _In_ PVOID          Argument2
     )
 {
     PXENVBD_BLKIF_RING  BlkifRing = Context;
@@ -1686,8 +1686,8 @@ BlkifRingDpc(
 
 static NTSTATUS
 RingWatchdog(
-    IN  PXENVBD_THREAD  Self,
-    IN  PVOID           Context
+    _In_ PXENVBD_THREAD Self,
+    _In_ PVOID          Context
     )
 {
     PXENVBD_BLKIF_RING  BlkifRing = Context;
@@ -1759,7 +1759,7 @@ RingWatchdog(
 
 static FORCEINLINE NTSTATUS
 BlkifRingCacheCreate(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring;
@@ -1874,7 +1874,7 @@ fail1:
 
 static FORCEINLINE VOID
 BlkifRingCacheDestroy(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring;
@@ -1899,15 +1899,15 @@ BlkifRingCacheDestroy(
 
 static NTSTATUS
 BlkifRingCreate(
-    IN  PXENVBD_RING        Ring,
-    IN  ULONG               Index,
-    OUT PXENVBD_BLKIF_RING* BlkifRing
+    _In_ PXENVBD_RING           Ring,
+    _In_ ULONG                  Index,
+    _Outptr_ PXENVBD_BLKIF_RING *BlkifRing
     )
 {
-    PXENVBD_FRONTEND        Frontend;
-    ULONG                   Length;
-    PCHAR                   Path;
-    NTSTATUS                status;
+    PXENVBD_FRONTEND            Frontend;
+    ULONG                       Length;
+    PCHAR                       Path;
+    NTSTATUS                    status;
 
     Frontend = Ring->Frontend;
 
@@ -1984,7 +1984,7 @@ fail1:
 
 static VOID
 BlkifRingDestroy(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     ThreadAlert(BlkifRing->WatchdogThread);
@@ -2020,7 +2020,7 @@ BlkifRingDestroy(
 
 static NTSTATUS
 BlkifRingConnect(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -2147,8 +2147,8 @@ fail1:
 
 static NTSTATUS
 BlkifRingStoreWrite(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PVOID               Transaction
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PVOID              Transaction
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -2219,7 +2219,7 @@ fail1:
 
 static VOID
 BlkifRingEnable(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     Trace("====> %u\n", BlkifRing->Index);
@@ -2235,7 +2235,7 @@ BlkifRingEnable(
 
 static VOID
 BlkifRingDisable(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring;
@@ -2330,7 +2330,7 @@ BlkifRingDisable(
 
 static VOID
 BlkifRingDisconnect(
-    IN  PXENVBD_BLKIF_RING  BlkifRing
+    _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
@@ -2380,8 +2380,8 @@ BlkifRingDisconnect(
 
 static BOOLEAN
 __BlkifRingQueueSrb(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     PLIST_ENTRY             ListEntry;
@@ -2423,8 +2423,8 @@ fail1:
 
 static BOOLEAN
 __BlkifRingQueueShutdown(
-    IN  PXENVBD_BLKIF_RING  BlkifRing,
-    IN  PXENVBD_SRBEXT      SrbExt
+    _In_ PXENVBD_BLKIF_RING BlkifRing,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
     if (!BlkifRing->Enabled)
@@ -2445,8 +2445,8 @@ fail1:
 
 static DECLSPEC_NOINLINE VOID
 RingDebugCallback(
-    IN  PVOID       Argument,
-    IN  BOOLEAN     Crashing
+    _In_ PVOID      Argument,
+    _In_ BOOLEAN    Crashing
     )
 {
     PXENVBD_RING    Ring = Argument;
@@ -2470,8 +2470,8 @@ RingDebugCallback(
 
 NTSTATUS
 RingCreate(
-    IN  PXENVBD_FRONTEND    Frontend,
-    OUT PXENVBD_RING*       Ring
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Outptr_ PXENVBD_RING   *Ring
     )
 {
     PXENVBD_TARGET          Target = FrontendGetTarget(Frontend);
@@ -2559,7 +2559,7 @@ fail1:
 
 VOID
 RingDestroy(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     LONG                Index;
@@ -2599,7 +2599,7 @@ RingDestroy(
 
 NTSTATUS
 RingConnect(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     LONG                MaxQueues;
@@ -2708,8 +2708,8 @@ fail1:
 
 NTSTATUS
 RingStoreWrite(
-    IN  PXENVBD_RING    Ring,
-    IN  PVOID           Transaction
+    _In_ PXENVBD_RING   Ring,
+    _In_ PVOID          Transaction
     )
 {
     ULONG               NumQueues;
@@ -2770,7 +2770,7 @@ fail1:
 
 VOID
 RingEnable(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     ULONG               NumQueues;
@@ -2789,7 +2789,7 @@ RingEnable(
 
 VOID
 RingDisable(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     LONG                Index;
@@ -2804,7 +2804,7 @@ RingDisable(
 
 VOID
 RingDisconnect(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     LONG                Index;
@@ -2831,7 +2831,7 @@ RingDisconnect(
 
 BOOLEAN
 RingIsPoisoned(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     )
 {
     ULONG               NumQueues;
@@ -2851,8 +2851,8 @@ RingIsPoisoned(
 
 static FORCEINLINE PXENVBD_BLKIF_RING
 __RingGetBlkifRing(
-    IN  PXENVBD_RING    Ring,
-    IN  ULONG           Tag
+    _In_ PXENVBD_RING   Ring,
+    _In_ ULONG          Tag
     )
 {
     ULONG               Value;
@@ -2870,8 +2870,8 @@ __RingGetBlkifRing(
 
 BOOLEAN
 RingQueueRequest(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_RING   Ring,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
@@ -2885,8 +2885,8 @@ RingQueueRequest(
 
 BOOLEAN
 RingQueueShutdown(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_RING   Ring,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;

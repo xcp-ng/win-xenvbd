@@ -40,9 +40,9 @@
 
 extern void
 __LogMessage(
-    IN  ULONG       Level,
-    IN  const char* Func,
-    IN  const char* Format,
+    _In_ ULONG      Level,
+    _In_ const char *Func,
+    _In_ const char *Format,
     ...
     );
 

@@ -100,7 +100,7 @@ struct _XENVBD_ADAPTER {
 
 static FORCEINLINE PVOID
 __AdapterAllocate(
-    IN  ULONG   Size
+    _In_ ULONG  Size
     )
 {
     return __AllocatePoolWithTag(NonPagedPool,
@@ -110,7 +110,7 @@ __AdapterAllocate(
 
 static FORCEINLINE VOID
 __AdapterFree(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
     __FreePoolWithTag(Buffer, ADAPTER_POOL_TAG);
@@ -118,7 +118,7 @@ __AdapterFree(
 
 static FORCEINLINE PANSI_STRING
 __AdapterMultiSzToAnsi(
-    IN  PCHAR       Buffer
+    _In_ PCHAR      Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -181,7 +181,7 @@ fail1:
 
 static FORCEINLINE PANSI_STRING
 __AdapterMultiSzToUpcaseAnsi(
-    IN  PCHAR       Buffer
+    _In_ PCHAR      Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -245,7 +245,7 @@ fail1:
 
 static FORCEINLINE VOID
 __AdapterFreeAnsi(
-    IN  PANSI_STRING    Ansi
+    _In_ PANSI_STRING   Ansi
     )
 {
     ULONG               Index;
@@ -258,8 +258,8 @@ __AdapterFreeAnsi(
 
 static FORCEINLINE BOOLEAN
 __AdapterSetDevicePowerState(
-    IN  PXENVBD_ADAPTER     Adapter,
-    IN  DEVICE_POWER_STATE  State
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ DEVICE_POWER_STATE State
     )
 {
     KIRQL                   Irql;
@@ -280,11 +280,11 @@ __AdapterSetDevicePowerState(
 
 static FORCEINLINE DEVICE_POWER_STATE
 __AdapterGetDevicePowerState(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    KIRQL               Irql;
-    DEVICE_POWER_STATE  State;
+    KIRQL                   Irql;
+    DEVICE_POWER_STATE      State;
 
     KeAcquireSpinLock(&Adapter->Lock, &Irql);
     State = Adapter->DevicePower;
@@ -295,12 +295,12 @@ __AdapterGetDevicePowerState(
 
 static FORCEINLINE PXENVBD_TARGET
 AdapterGetTarget(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  ULONG           TargetId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ ULONG              TargetId
     )
 {
-    PXENVBD_TARGET      Target;
-    KIRQL               Irql;
+    PXENVBD_TARGET          Target;
+    KIRQL                   Irql;
 
     ASSERT3U(TargetId, <, XENVBD_MAX_TARGETS);
 
@@ -313,8 +313,8 @@ AdapterGetTarget(
 
 static FORCEINLINE BOOLEAN
 __AdapterHiddenTarget(
-    IN  PXENVBD_ADAPTER     Adapter,
-    IN  PCHAR               DeviceId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PCHAR              DeviceId
     )
 {
     NTSTATUS                status;
@@ -380,12 +380,12 @@ ignore:
 
 BOOLEAN
 AdapterIsTargetEmulated(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  ULONG           TargetId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ ULONG              TargetId
     )
 {
-    BOOLEAN             Emulated;
-    NTSTATUS            status;
+    BOOLEAN                 Emulated;
+    NTSTATUS                status;
 
     // Only check targets that could be emulated
     if (TargetId > 3)
@@ -412,7 +412,7 @@ AdapterIsTargetEmulated(
 
 BOOLEAN
 AdapterBootEmulated(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
     return Adapter->BootEmulated;
@@ -420,10 +420,10 @@ AdapterBootEmulated(
 
 VOID
 AdapterRequestReboot(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     status = XENBUS_UNPLUG(Acquire, &Adapter->UnplugInterface);
     if (!NT_SUCCESS(status))
@@ -438,18 +438,18 @@ AdapterRequestReboot(
 
 static FORCEINLINE VOID
 __AdapterEnumerate(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PANSI_STRING    Devices
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PANSI_STRING       Devices
     )
 {
-    KIRQL               Irql;
-    ULONG               TargetId;
-    ULONG               DeviceId;
-    PANSI_STRING        Device;
-    ULONG               Index;
-    PXENVBD_TARGET      Target;
-    BOOLEAN             NeedInvalidate;
-    BOOLEAN             NeedReboot;
+    KIRQL                   Irql;
+    ULONG                   TargetId;
+    ULONG                   DeviceId;
+    PANSI_STRING            Device;
+    ULONG                   Index;
+    PXENVBD_TARGET          Target;
+    BOOLEAN                 NeedInvalidate;
+    BOOLEAN                 NeedReboot;
 
     NeedInvalidate = FALSE;
     NeedReboot = FALSE;
@@ -531,8 +531,8 @@ __AdapterEnumerate(
 
 static DECLSPEC_NOINLINE NTSTATUS
 AdapterScanThread(
-    IN  PXENVBD_THREAD  Thread,
-    IN  PVOID           Context
+    _In_ PXENVBD_THREAD Thread,
+    _In_ PVOID          Context
     )
 {
     PXENVBD_ADAPTER     Adapter = Context;
@@ -591,17 +591,17 @@ done:
 
 static FORCEINLINE BOOLEAN
 __AdapterMatchDistribution(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PCHAR       Buffer
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PCHAR              Buffer
     )
 {
-    PCHAR           Vendor;
-    PCHAR           Product;
-    PCHAR           Context;
-    const CHAR      *Text;
-    BOOLEAN         Match;
-    ULONG           Index;
-    NTSTATUS        status;
+    PCHAR                   Vendor;
+    PCHAR                   Product;
+    PCHAR                   Context;
+    const CHAR              *Text;
+    BOOLEAN                 Match;
+    ULONG                   Index;
+    NTSTATUS                status;
 
     UNREFERENCED_PARAMETER(Adapter);
 
@@ -651,13 +651,13 @@ fail1:
 
 static VOID
 AdapterClearDistribution(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    PCHAR           Buffer;
-    PANSI_STRING    Distributions;
-    ULONG           Index;
-    NTSTATUS        status;
+    PCHAR                   Buffer;
+    PANSI_STRING            Distributions;
+    ULONG                   Index;
+    NTSTATUS                status;
 
     Trace("====>\n");
 
@@ -714,14 +714,14 @@ done:
 
 static NTSTATUS
 AdapterSetDistribution(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    ULONG           Index;
-    CHAR            Distribution[MAXNAMELEN];
-    CHAR            Vendor[MAXNAMELEN];
-    const CHAR      *Product;
-    NTSTATUS        status;
+    ULONG                   Index;
+    CHAR                    Distribution[MAXNAMELEN];
+    CHAR                    Vendor[MAXNAMELEN];
+    const CHAR              *Product;
+    NTSTATUS                status;
 
     Trace("====>\n");
 
@@ -808,10 +808,10 @@ fail1:
 
 static FORCEINLINE NTSTATUS
 __AdapterD3ToD0(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     Trace("=====>\n");
 
@@ -854,7 +854,7 @@ fail1:
 
 static FORCEINLINE VOID
 __AdapterD0ToD3(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
     Trace("=====>\n");
@@ -879,7 +879,7 @@ __AdapterD0ToD3(
 
 static VOID
 AdapterSuspendLateCallback(
-    IN  PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_ADAPTER Adapter = Argument;
@@ -902,8 +902,8 @@ AdapterSuspendLateCallback(
 
 static DECLSPEC_NOINLINE VOID
 AdapterDebugCallback(
-    IN  PVOID       Context,
-    IN  BOOLEAN     Crashing
+    _In_ PVOID      Context,
+    _In_ BOOLEAN    Crashing
     )
 {
     PXENVBD_ADAPTER Adapter = Context;
@@ -939,11 +939,11 @@ AdapterDebugCallback(
 
 static NTSTATUS
 AdapterD3ToD0(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    NTSTATUS            status;
-    ULONG               TargetId;
+    NTSTATUS                status;
+    ULONG                   TargetId;
 
     if (!__AdapterSetDevicePowerState(Adapter, PowerDeviceD0))
         return STATUS_SUCCESS;
@@ -1034,10 +1034,10 @@ fail1:
 
 static VOID
 AdapterD0ToD3(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    ULONG               TargetId;
+    ULONG                   TargetId;
 
     if (!__AdapterSetDevicePowerState(Adapter, PowerDeviceD3))
         return;
@@ -1070,8 +1070,8 @@ AdapterD0ToD3(
 
 static DECLSPEC_NOINLINE NTSTATUS
 AdapterDevicePowerThread(
-    IN  PXENVBD_THREAD  Thread,
-    IN  PVOID           Context
+    _In_ PXENVBD_THREAD Thread,
+    _In_ PVOID          Context
     )
 {
     PXENVBD_ADAPTER     Adapter = Context;
@@ -1122,7 +1122,7 @@ AdapterDevicePowerThread(
 
 PXENVBD_BOUNCE
 AdapterGetBounce(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
     return XENBUS_CACHE(Get,
@@ -1133,8 +1133,8 @@ AdapterGetBounce(
 
 VOID
 AdapterPutBounce(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_BOUNCE  Bounce
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PXENVBD_BOUNCE     Bounce
     )
 {
     XENBUS_CACHE(Put,
@@ -1146,8 +1146,8 @@ AdapterPutBounce(
 
 static DECLSPEC_NOINLINE NTSTATUS
 AdapterBounceCtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID      Argument,
+    _In_ PVOID      Object
     )
 {
     PXENVBD_BOUNCE  Bounce = Object;
@@ -1171,8 +1171,8 @@ fail1:
 
 static DECLSPEC_NOINLINE VOID
 AdapterBounceDtor(
-    IN  PVOID       Argument,
-    IN  PVOID       Object
+    _In_ PVOID      Argument,
+    _In_ PVOID      Object
     )
 {
     PXENVBD_BOUNCE  Bounce = Object;
@@ -1187,7 +1187,7 @@ AdapterBounceDtor(
 
 static DECLSPEC_NOINLINE VOID
 AdapterAcquireLock(
-    IN  PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_ADAPTER Adapter = Argument;
@@ -1196,7 +1196,7 @@ AdapterAcquireLock(
 
 static DECLSPEC_NOINLINE VOID
 AdapterReleaseLock(
-    IN  PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_ADAPTER Adapter = Argument;
@@ -1205,10 +1205,10 @@ AdapterReleaseLock(
 
 static FORCEINLINE VOID
 __AdapterSetBootEmulated(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     Adapter->BootEmulated = FALSE;
 
@@ -1222,22 +1222,22 @@ __AdapterSetBootEmulated(
     XENBUS_UNPLUG(Release, &Adapter->UnplugInterface);
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 __AdapterQueryInterface(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  const GUID      *Guid,
-    IN  ULONG           Version,
-    OUT PINTERFACE      Interface,
-    IN  ULONG           Size,
-    IN  BOOLEAN         Optional
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ const GUID         *Guid,
+    _In_ ULONG              Version,
+    _Out_ PINTERFACE        Interface,
+    _In_ ULONG              Size,
+    _In_ BOOLEAN            Optional
     )
 {
-    KEVENT              Event;
-    IO_STATUS_BLOCK     StatusBlock;
-    PIRP                Irp;
-    PIO_STACK_LOCATION  StackLocation;
-    NTSTATUS            status;
+    KEVENT                  Event;
+    IO_STATUS_BLOCK         StatusBlock;
+    PIRP                    Irp;
+    PIO_STACK_LOCATION      StackLocation;
+    NTSTATUS                status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
@@ -1303,16 +1303,16 @@ fail1:
                             sizeof( ## _name ## _INTERFACE),    \
                             (_opt))
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 AdapterInitialize(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PDEVICE_OBJECT  PhysicalDeviceObject,
-    IN  PDEVICE_OBJECT  LowerDeviceObject
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PDEVICE_OBJECT     PhysicalDeviceObject,
+    _In_ PDEVICE_OBJECT     LowerDeviceObject
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
@@ -1480,10 +1480,10 @@ fail1:
 
 static VOID
 AdapterTeardown(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
-    ULONG               TargetId;
+    ULONG                   TargetId;
 
     ASSERT3U(Adapter->DevicePower, ==, PowerDeviceD3);
 
@@ -1563,11 +1563,11 @@ AdapterTeardown(
 
 VOID
 AdapterCompleteSrb(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
-    PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
+    PSCSI_REQUEST_BLOCK     Srb = SrbExt->Srb;
 
     ASSERT3U(Srb->SrbStatus, !=, SRB_STATUS_PENDING);
 
@@ -1581,7 +1581,7 @@ AdapterCompleteSrb(
 
 VOID
 AdapterTargetListChanged(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     )
 {
     StorPortNotification(BusChangeDetected,
@@ -1591,8 +1591,8 @@ AdapterTargetListChanged(
 
 VOID
 AdapterSetDeviceQueueDepth(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  ULONG           TargetId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ ULONG              TargetId
     )
 {
     if (!StorPortSetDeviceQueueDepth(Adapter,
@@ -1606,11 +1606,11 @@ AdapterSetDeviceQueueDepth(
 
 PFN_NUMBER
 AdapterGetNextSGEntry(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_SRBEXT  SrbExt,
-    IN  ULONG           Existing,
-    OUT PULONG          Offset,
-    OUT PULONG          Length
+    _In_ PXENVBD_ADAPTER            Adapter,
+    _In_ PXENVBD_SRBEXT             SrbExt,
+    _In_ ULONG                      Existing,
+    _Out_ PULONG                    Offset,
+    _Out_ PULONG                    Length
     )
 {
     PSTOR_SCATTER_GATHER_LIST       SGList = SrbExt->SGList;
@@ -1642,12 +1642,12 @@ AdapterGetNextSGEntry(
 
 static FORCEINLINE VOID
 AdapterPullupSrb(
-    IN  PXENVBD_ADAPTER     Adapter,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_ADAPTER        Adapter,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    UCHAR                   Operation;
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    UCHAR                       Operation;
 
     Operation = Cdb_OperationEx(Srb);
     switch (Operation) {
@@ -1666,11 +1666,11 @@ AdapterPullupSrb(
 
 static VOID
 AdapterUnplugRequest(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  BOOLEAN         Make
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ BOOLEAN            Make
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     status = XENBUS_UNPLUG(Acquire, &Adapter->UnplugInterface);
     if (!NT_SUCCESS(status))
@@ -1686,11 +1686,11 @@ AdapterUnplugRequest(
 
 static PXENVBD_TARGET
 AdapterGetTargetFromDeviceObject(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject
     )
 {
-    ULONG               TargetId;
+    ULONG                   TargetId;
 
     ASSERT3P(DeviceObject, !=, NULL);
 
@@ -1707,18 +1707,18 @@ AdapterGetTargetFromDeviceObject(
 
 static PXENVBD_TARGET
 AdapterMapDeviceObjectToTarget(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject
     )
 {
-    PXENVBD_TARGET      Target;
-    KEVENT              Complete;
-    PIRP                Irp;
-    IO_STATUS_BLOCK     StatusBlock;
-    PIO_STACK_LOCATION  Stack;
-    NTSTATUS            Status;
-    PWCHAR              String;
-    ULONG               TargetId;
+    PXENVBD_TARGET          Target;
+    KEVENT                  Complete;
+    PIRP                    Irp;
+    IO_STATUS_BLOCK         StatusBlock;
+    PIO_STACK_LOCATION      Stack;
+    NTSTATUS                Status;
+    PWCHAR                  String;
+    ULONG                   TargetId;
     DECLARE_UNICODE_STRING_SIZE(UniStr, 4);
 
     KeInitializeEvent(&Complete, NotificationEvent, FALSE);
@@ -1782,13 +1782,13 @@ fail1:
 
 static NTSTATUS
 AdapterForwardPnp(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     )
 {
-    PIO_STACK_LOCATION  Stack;
-    PXENVBD_TARGET      Target;
+    PIO_STACK_LOCATION      Stack;
+    PXENVBD_TARGET          Target;
 
     ASSERT3P(DeviceObject, !=, Adapter->DeviceObject);
 
@@ -1811,12 +1811,12 @@ AdapterForwardPnp(
 
 NTSTATUS
 AdapterDispatchPnp(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     )
 {
-    PIO_STACK_LOCATION  Stack;
+    PIO_STACK_LOCATION      Stack;
 
     if (Adapter->DeviceObject != DeviceObject)
         return AdapterForwardPnp(Adapter, DeviceObject, Irp);
@@ -1854,14 +1854,14 @@ AdapterDispatchPnp(
 
 NTSTATUS
 AdapterDispatchPower(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     )
 {
-    PIO_STACK_LOCATION  Stack;
-    POWER_STATE_TYPE    PowerType;
-    NTSTATUS            status;
+    PIO_STACK_LOCATION      Stack;
+    POWER_STATE_TYPE        PowerType;
+    NTSTATUS                status;
 
     if (Adapter->DeviceObject != DeviceObject)
         return DriverDispatchPower(DeviceObject, Irp);
@@ -1901,8 +1901,8 @@ HW_RESET_BUS        AdapterHwResetBus;
 
 BOOLEAN
 AdapterHwResetBus(
-    IN  PVOID       DevExt,
-    IN  ULONG       PathId
+    _In_ PVOID      DevExt,
+    _In_ ULONG      PathId
     )
 {
     PXENVBD_ADAPTER Adapter = DevExt;
@@ -1925,11 +1925,11 @@ AdapterHwResetBus(
 
 static FORCEINLINE VOID
 __AdapterSrbPnp(
-    IN  PXENVBD_ADAPTER         Adapter,
-    IN  PSCSI_PNP_REQUEST_BLOCK Srb
+    _In_ PXENVBD_ADAPTER            Adapter,
+    _In_ PSCSI_PNP_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_TARGET              Target;
+    PXENVBD_TARGET                  Target;
 
     if (Srb->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)
         return;
@@ -1958,13 +1958,13 @@ HW_BUILDIO          AdapterHwBuildIo;
 
 BOOLEAN
 AdapterHwBuildIo(
-    IN  PVOID               DevExt,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PVOID                  DevExt,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_ADAPTER         Adapter = DevExt;
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    PXENVBD_TARGET          Target;
+    PXENVBD_ADAPTER             Adapter = DevExt;
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    PXENVBD_TARGET              Target;
 
     RtlZeroMemory(SrbExt, sizeof(XENVBD_SRBEXT));
     SrbExt->Srb = Srb;
@@ -2021,14 +2021,14 @@ HW_STARTIO          AdapterHwStartIo;
 
 BOOLEAN
 AdapterHwStartIo(
-    IN  PVOID               DevExt,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PVOID                  DevExt,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_ADAPTER         Adapter = DevExt;
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    BOOLEAN                 WasQueued = FALSE;
-    PXENVBD_TARGET          Target;
+    PXENVBD_ADAPTER             Adapter = DevExt;
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    BOOLEAN                     WasQueued = FALSE;
+    PXENVBD_TARGET              Target;
 
     InterlockedIncrement((PLONG)&Adapter->StartIo);
     Target = AdapterGetTarget(Adapter, Srb->TargetId);
@@ -2073,9 +2073,9 @@ HW_ADAPTER_CONTROL  AdapterHwAdapterControl;
 
 SCSI_ADAPTER_CONTROL_STATUS
 AdapterHwAdapterControl(
-    IN  PVOID                       DevExt,
-    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    IN  PVOID                       Parameters
+    _In_ PVOID                          DevExt,
+    _In_ SCSI_ADAPTER_CONTROL_TYPE      ControlType,
+    _In_ PVOID                          Parameters
     )
 {
     PSCSI_SUPPORTED_CONTROL_TYPE_LIST   List;
@@ -2098,12 +2098,12 @@ HW_FIND_ADAPTER     AdapterHwFindAdapter;
 
 ULONG
 AdapterHwFindAdapter(
-    IN  PVOID                               DevExt,
-    IN  PVOID                               Context,
-    IN  PVOID                               BusInformation,
-    IN  PCHAR                               ArgumentString,
-    IN OUT PPORT_CONFIGURATION_INFORMATION  ConfigInfo,
-    OUT PBOOLEAN                            Again
+    _In_ PVOID                              DevExt,
+    _In_ PVOID                              Context,
+    _In_ PVOID                              BusInformation,
+    _In_ PCHAR                              ArgumentString,
+    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+    _Out_ PBOOLEAN                          Again
     )
 {
     UNREFERENCED_PARAMETER(DevExt);
@@ -2138,7 +2138,7 @@ AdapterHwFindAdapter(
 
 static FORCEINLINE VOID
 AdapterSetPerformanceOptions(
-    IN  PVOID               DevExt
+    _In_ PVOID              DevExt
     )
 {
     PERF_CONFIGURATION_DATA PerfData;
@@ -2193,7 +2193,7 @@ HW_PASSIVE_INITIALIZE_ROUTINE AdapterHwPassiveInitialize;
 
 BOOLEAN
 AdapterHwPassiveInitialize(
-    IN  PVOID   DevExt
+    _In_ PVOID      DevExt
     )
 {
     PXENVBD_ADAPTER Adapter = DevExt;
@@ -2244,7 +2244,7 @@ HW_INITIALIZE   AdapterHwInitialize;
 
 BOOLEAN
 AdapterHwInitialize(
-    IN  PVOID   DevExt
+    _In_ PVOID  DevExt
     )
 {
     return StorPortEnablePassiveInitialization(DevExt,
@@ -2255,7 +2255,7 @@ HW_INTERRUPT    AdapterHwInterrupt;
 
 BOOLEAN
 AdapterHwInterrupt(
-    IN  PVOID   DevExt
+    _In_ PVOID  DevExt
     )
 {
     UNREFERENCED_PARAMETER(DevExt);
@@ -2264,8 +2264,8 @@ AdapterHwInterrupt(
 
 NTSTATUS
 AdapterDriverEntry(
-    IN  PUNICODE_STRING     RegistryPath,
-    IN  PDRIVER_OBJECT      DriverObject
+    _In_ PUNICODE_STRING    RegistryPath,
+    _In_ PDRIVER_OBJECT     DriverObject
     )
 {
     HW_INITIALIZATION_DATA  InitData;

@@ -71,18 +71,18 @@
 // Fdo Device Extension management
 VOID
 DriverLinkFdo(
-    IN  PXENVBD_FDO             Fdo
+    _In_ PXENVBD_FDO    Fdo
     );
 
 VOID
 DriverUnlinkFdo(
-    IN  PXENVBD_FDO             Fdo
+    _In_ PXENVBD_FDO    Fdo
     );
 
 // Global Functions
 PCHAR
 DriverFormat(
-    IN  PCHAR                   Format,
+    _In_ PCHAR  Format,
     ...
     );
 

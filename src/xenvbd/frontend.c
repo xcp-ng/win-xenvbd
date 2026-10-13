@@ -98,7 +98,7 @@ struct _XENVBD_FRONTEND {
 
 static const PCHAR
 __XenvbdStateName(
-    IN  XENVBD_STATE                        State
+    _In_ XENVBD_STATE   State
     )
 {
     switch (State) {
@@ -167,13 +167,13 @@ FRONTEND_GET_PROPERTY_PTR(DiskInfo, PXENVBD_DISKINFO)
 
 //=============================================================================
 #define FRONTEND_POOL_TAG            'tnFX'
-__checkReturn
+_Check_return_
 __drv_allocatesMem(mem)
-__bcount(Size)
+_Writable_bytes_(Size)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
 __FrontendAlloc(
-    __in  ULONG Size
+    _In_ ULONG  Size
     )
 {
     return __AllocatePoolWithTag(NonPagedPool, Size, FRONTEND_POOL_TAG);
@@ -182,7 +182,7 @@ __FrontendAlloc(
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)
 __FrontendFree(
-    __in __drv_freesMem(mem) PVOID Buffer
+    _In_ __drv_freesMem(mem) PVOID  Buffer
     )
 {
     if (Buffer)
@@ -191,8 +191,8 @@ __FrontendFree(
 
 VOID
 FrontendRemoveFeature(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  UCHAR                   BlkifOperation
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ UCHAR              BlkifOperation
     )
 {
     switch (BlkifOperation) {
@@ -219,9 +219,9 @@ FrontendRemoveFeature(
 
 PVOID
 FrontendGetInquiryOverride(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  UCHAR               PageCode,
-    OUT PULONG              Length
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ UCHAR              PageCode,
+    _Out_ PULONG            Length
     )
 {
     switch (PageCode) {
@@ -239,7 +239,7 @@ FrontendGetInquiryOverride(
 
 VOID
 FrontendSetEjected(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     (VOID) XENBUS_STORE(Printf,
@@ -252,7 +252,7 @@ FrontendSetEjected(
 
 VOID
 FrontendSetEjectFailed(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     (VOID) XENBUS_STORE(Printf,
@@ -265,9 +265,9 @@ FrontendSetEjectFailed(
 
 VOID
 FrontendSetDeviceUsage(
-    IN  PXENVBD_FRONTEND                Frontend,
-    IN  DEVICE_USAGE_NOTIFICATION_TYPE  Type,
-    IN  BOOLEAN                         Value
+    _In_ PXENVBD_FRONTEND               Frontend,
+    _In_ DEVICE_USAGE_NOTIFICATION_TYPE Type,
+    _In_ BOOLEAN                        Value
     )
 {
     PCHAR                               UsageName;
@@ -304,15 +304,15 @@ FrontendSetDeviceUsage(
 }
 
 //=============================================================================
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 __UpdateBackendPath(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
-    PCHAR       Value;
-    ULONG       Length;
+    NTSTATUS                Status;
+    PCHAR                   Value;
+    ULONG                   Length;
 
     Status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -360,17 +360,17 @@ __UpdateBackendPath(
 
     return Status;
 }
-__drv_maxIRQL(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 static NTSTATUS
 __ReadState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in_opt PXENBUS_STORE_TRANSACTION Transaction,
-    __in  PCHAR                   Path,
-    __out XenbusState*            State
+    _In_ PXENVBD_FRONTEND               Frontend,
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_ PCHAR                          Path,
+    _Out_ XenbusState                   *State
     )
 {
-    NTSTATUS        Status;
-    PCHAR           Buffer;
+    NTSTATUS                            Status;
+    PCHAR                               Buffer;
 
     Status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -392,18 +392,18 @@ fail:
     *State = XenbusStateUnknown;
     return Status;
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 __WaitState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __inout  XenbusState*         State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Inout_ XenbusState     *State
     )
 {
-    NTSTATUS        Status;
-    XenbusState     OldState = *State;
-    PXENBUS_STORE_WATCH Watch;
-    KEVENT          Event;
-    LARGE_INTEGER   Timeout;
+    NTSTATUS                Status;
+    XenbusState             OldState = *State;
+    PXENBUS_STORE_WATCH     Watch;
+    KEVENT                  Event;
+    LARGE_INTEGER           Timeout;
 
     LARGE_INTEGER   StartTime;
     LARGE_INTEGER   CurrentTime;
@@ -469,14 +469,14 @@ fail1:
 
     return Status;
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 ___SetState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  XenbusState             State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XenbusState        State
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS                Status;
 
     Status = XENBUS_STORE(Printf,
                           &Frontend->StoreInterface,
@@ -495,17 +495,17 @@ ___SetState(
 
     return Status;
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static FORCEINLINE VOID
 __CheckBackendForEject(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    XenbusState     FrontendState;
-    XenbusState     BackendState;
-    BOOLEAN         Online;
-    ULONG           Attempt;
-    NTSTATUS        Status;
+    XenbusState             FrontendState;
+    XenbusState             BackendState;
+    BOOLEAN                 Online;
+    ULONG                   Attempt;
+    NTSTATUS                Status;
 
 #pragma prefast(suppress:28649)
     if (Frontend->FrontendPath == NULL)
@@ -588,9 +588,9 @@ abort:
 
 static FORCEINLINE BOOLEAN
 FrontendReadFeature(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  XENVBD_FEATURE      Feature,
-    IN  PBOOLEAN            Value
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_FEATURE     Feature,
+    _In_ PBOOLEAN           Value
 )
 {
     NTSTATUS                status;
@@ -629,9 +629,9 @@ FrontendReadFeature(
 
 static FORCEINLINE BOOLEAN
 FrontendReadDiskFeature(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  PCHAR               Name,
-    IN  PBOOLEAN            Value
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              Name,
+    _In_ PBOOLEAN           Value
     )
 {
     NTSTATUS                status;
@@ -658,10 +658,10 @@ FrontendReadDiskFeature(
 
 static FORCEINLINE BOOLEAN
 FrontendReadValue32(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  XENVBD_FEATURE      Feature,
-    IN  BOOLEAN             AllowOverride,
-    IN  PULONG              Value
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_FEATURE     Feature,
+    _In_ BOOLEAN            AllowOverride,
+    _In_ PULONG             Value
 )
 {
     NTSTATUS                status;
@@ -701,9 +701,9 @@ FrontendReadValue32(
 
 static FORCEINLINE BOOLEAN
 FrontendReadDiskValue32(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  PCHAR               Name,
-    IN  PULONG              Value
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              Name,
+    _In_ PULONG             Value
 )
 {
     NTSTATUS                status;
@@ -730,9 +730,9 @@ FrontendReadDiskValue32(
 
 static FORCEINLINE BOOLEAN
 FrontendReadValue64(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  PCHAR               Name,
-    IN OUT PULONG64         Value
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              Name,
+    _Inout_ PULONG64        Value
     )
 {
     NTSTATUS                status;
@@ -759,7 +759,7 @@ FrontendReadValue64(
 
 static FORCEINLINE ULONG
 __Size(
-    __in  PXENVBD_DISKINFO  Info
+    _In_ PXENVBD_DISKINFO   Info
     )
 {
     ULONG64                 MBytes = Info->BlkifSectorCount >> (20 - BLKIF_SECTOR_SHIFT);
@@ -771,7 +771,7 @@ __Size(
 }
 static FORCEINLINE PCHAR
 __Units(
-    __in  PXENVBD_DISKINFO  Info
+    _In_ PXENVBD_DISKINFO   Info
     )
 {
     ULONG64                 MBytes = Info->BlkifSectorCount >> (20 - BLKIF_SECTOR_SHIFT);
@@ -784,7 +784,7 @@ __Units(
 
 static FORCEINLINE VOID
 FrontendReadFeatures(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     BOOLEAN                 DiscardFeature = FALSE;
@@ -853,7 +853,7 @@ FrontendReadFeatures(
 
 static FORCEINLINE VOID
 FrontendReadDiskInfo(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     BOOLEAN                 Changed;
@@ -928,7 +928,7 @@ FrontendReadDiskInfo(
 
 static FORCEINLINE VOID
 FrontendReadInquiryOverrides(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     PCHAR                   Buffer;
@@ -968,14 +968,14 @@ FrontendReadInquiryOverrides(
 }
 
 //=============================================================================
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendClose(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XenbusState     BackendState;
+    NTSTATUS                Status;
+    XenbusState             BackendState;
 
     // unwatch backend (null check for initial close operation)
     if (Frontend->BackendWatch)
@@ -1032,14 +1032,14 @@ fail2:
 fail1:
     return Status;
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendPrepare(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XenbusState     BackendState;
+    NTSTATUS                Status;
+    XenbusState             BackendState;
 
     // get/update backend path
     Status = __UpdateBackendPath(Frontend);
@@ -1133,7 +1133,7 @@ fail1:
 }
 static VOID
 FrontendSetNumQueues(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     PCHAR                   Buffer;
@@ -1163,14 +1163,14 @@ FrontendSetNumQueues(
             __FrontendGetTargetId(Frontend),
             Frontend->NumQueues);
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendConnect(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XenbusState     BackendState;
+    NTSTATUS                Status;
+    XenbusState             BackendState;
 
     FrontendSetNumQueues(Frontend);
 
@@ -1317,10 +1317,10 @@ fail1:
     Frontend->NumQueues = 0;
     return Status;
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static FORCEINLINE VOID
 FrontendDisconnect(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     RingDisconnect(Frontend->Ring);
@@ -1340,10 +1340,10 @@ FrontendDisconnect(
 
     RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static FORCEINLINE VOID
 FrontendEnable(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     Frontend->Caps.Connected = TRUE;
@@ -1352,10 +1352,10 @@ FrontendEnable(
     GranterEnable(Frontend->Granter);
     RingEnable(Frontend->Ring);
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static FORCEINLINE VOID
 FrontendDisable(
-    __in  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     Frontend->Caps.Connected = FALSE;
@@ -1363,10 +1363,10 @@ FrontendDisable(
     RingDisable(Frontend->Ring);
     GranterDisable(Frontend->Granter);
 }
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static FORCEINLINE BOOLEAN
 FrontendIsPoisoned(
-    __in  PXENVBD_FRONTEND          Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     return RingIsPoisoned(Frontend->Ring);
@@ -1378,13 +1378,13 @@ _IRQL_requires_(DISPATCH_LEVEL)
 _Requires_lock_held_(Frontend->StateLock)
 static DECLSPEC_NOINLINE NTSTATUS
 __FrontendSetState(
-    __in  PXENVBD_FRONTEND        Frontend,
-    __in  XENVBD_STATE            State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_STATE       State
     )
 {
-    NTSTATUS    Status;
-    const ULONG TargetId = Frontend->TargetId;
-    BOOLEAN     Failed = FALSE;
+    NTSTATUS                Status;
+    const ULONG             TargetId = Frontend->TargetId;
+    BOOLEAN                 Failed = FALSE;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : %s ----> %s\n", 
@@ -1554,10 +1554,10 @@ __FrontendSetState(
     return Failed ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
 }
 
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 static DECLSPEC_NOINLINE VOID
 FrontendSuspendCallback(
-    IN  PVOID           Argument
+    _In_ PVOID          Argument
     )
 {
     PXENVBD_FRONTEND    Frontend = Argument;
@@ -1587,8 +1587,8 @@ FrontendSuspendCallback(
 
 static DECLSPEC_NOINLINE VOID
 FrontendDebugCallback(
-    IN  PVOID           Argument,
-    IN  BOOLEAN         Crashing
+    _In_ PVOID          Argument,
+    _In_ BOOLEAN        Crashing
     )
 {
     PXENVBD_FRONTEND    Frontend = Argument;
@@ -1668,11 +1668,11 @@ FrontendDebugCallback(
                  Frontend->DiskInfo.DiskInfo);
 }
 
-__checkReturn
-__drv_maxIRQL(DISPATCH_LEVEL)
+_Check_return_
+_IRQL_requires_max_(DISPATCH_LEVEL)
 NTSTATUS
 FrontendD3ToD0(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Frontend->Target);
@@ -1749,10 +1749,10 @@ fail1:
     return status;
 }
 
-__drv_maxIRQL(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 FrontendD0ToD3(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     KIRQL                   Irql;
@@ -1789,11 +1789,11 @@ FrontendD0ToD3(
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
 }
 
-__checkReturn
+_Check_return_
 NTSTATUS
 FrontendSetState(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  XENVBD_STATE        State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_STATE       State
     )
 {
     KIRQL                   Irql;
@@ -1807,11 +1807,11 @@ FrontendSetState(
     return status;
 }
 
-__checkReturn
+_Check_return_
 static DECLSPEC_NOINLINE NTSTATUS
 FrontendBackend(
-    __in PXENVBD_THREAD              Thread,
-    __in PVOID                       Context
+    _In_ PXENVBD_THREAD             Thread,
+    _In_ PVOID                      Context
     )
 {
     PXENVBD_FRONTEND                Frontend = Context;
@@ -1837,7 +1837,7 @@ FrontendBackend(
 
 NTSTATUS
 FrontendReset(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     NTSTATUS                status;
@@ -1863,14 +1863,14 @@ fail1:
 
 NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_TARGET      Target,
-    IN  PCHAR               DeviceId,
-    IN  ULONG               TargetId,
-    OUT PXENVBD_FRONTEND*   _Frontend
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PCHAR                  DeviceId,
+    _In_ ULONG                  TargetId,
+    _Outptr_ PXENVBD_FRONTEND   *_Frontend
     )
 {
-    PXENVBD_FRONTEND        Frontend;
-    NTSTATUS                status;
+    PXENVBD_FRONTEND            Frontend;
+    NTSTATUS                    status;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -1959,7 +1959,7 @@ fail1:
 
 VOID
 FrontendDestroy(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     const ULONG             TargetId = Frontend->TargetId;

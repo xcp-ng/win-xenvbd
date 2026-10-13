@@ -91,16 +91,16 @@ static UCHAR __GnttabSection[(GNTTAB_MAXIMUM_FRAME_COUNT + 1) * PAGE_SIZE];
 extern PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Buffer);
 static FORCEINLINE PFN_NUMBER
 __VirtToPfn(
-    IN  PVOID                   VirtAddr
+    _In_ PVOID          VirtAddr
     )
 {
-    PHYSICAL_ADDRESS PhysAddr = MmGetPhysicalAddress(VirtAddr);
+    PHYSICAL_ADDRESS    PhysAddr = MmGetPhysicalAddress(VirtAddr);
     return (PFN_NUMBER)(ULONG_PTR)(PhysAddr.QuadPart >> PAGE_SHIFT);
 }
 
 NTSTATUS
 GnttabGet(
-    OUT PULONG                      Reference
+    _Out_ PULONG                    Reference
     )
 {
     PGNTTAB_REFERENCE_DESCRIPTOR    Descriptor;
@@ -127,7 +127,7 @@ gnttab_full:
 
 VOID
 GnttabPut(
-    IN  ULONG                       Reference
+    _In_ ULONG                      Reference
     )
 {
     PGNTTAB_REFERENCE_DESCRIPTOR    Descriptor;
@@ -147,10 +147,10 @@ GnttabPut(
 
 VOID
 GnttabPermitForeignAccess(
-    IN  ULONG                       Reference,
-    IN  USHORT                      Domain,
-    IN  PFN_NUMBER                  Frame,
-    IN  BOOLEAN                     ReadOnly
+    _In_ ULONG                      Reference,
+    _In_ USHORT                     Domain,
+    _In_ PFN_NUMBER                 Frame,
+    _In_ BOOLEAN                    ReadOnly
     )
 {
     PGNTTAB_REFERENCE_DESCRIPTOR    Descriptor;
@@ -176,7 +176,7 @@ GnttabPermitForeignAccess(
 
 VOID
 GnttabRevokeForeignAccess(
-    IN  ULONG                       Reference
+    _In_ ULONG                      Reference
     )
 {
     grant_entry_v1_t                *Entry;
@@ -213,8 +213,8 @@ GnttabRevokeForeignAccess(
 
 static FORCEINLINE PVOID
 __Round(
-    IN  PVOID               Buffer,
-    IN  ULONG               RoundTo
+    _In_ PVOID  Buffer,
+    _In_ ULONG  RoundTo
     )
 {
     // round buffer to (normally PAGE_SIZE) boundary

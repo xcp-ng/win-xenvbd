@@ -155,10 +155,10 @@ __Bug(
 
 static __inline BOOLEAN
 _IsZeroMemory(
-    _In_ PCSTR          Caller,
-    _In_ PCSTR          Name,
-    _In_ PVOID          Buffer,
-    _In_ ULONG          Length
+    _In_ PCSTR      Caller,
+    _In_ PCSTR      Name,
+    _In_ PVOID      Buffer,
+    _In_ ULONG      Length
     )
 {
     ULONG           Offset;
@@ -179,10 +179,10 @@ _IsZeroMemory(
 
 static __inline BOOLEAN
 _IsZeroMemory(
-    _In_ PCSTR          Caller,
-    _In_ PCSTR          Name,
-    _In_ PVOID          Buffer,
-    _In_ ULONG          Length
+    _In_ PCSTR  Caller,
+    _In_ PCSTR  Name,
+    _In_ PVOID  Buffer,
+    _In_ ULONG  Length
     )
 {
     UNREFERENCED_PARAMETER(Caller);

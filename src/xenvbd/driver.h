@@ -42,7 +42,7 @@
 
 extern VOID
 DriverSetAdapter(
-    IN  PVOID   Adapter
+    _In_ PVOID  Adapter
     );
 
 extern HANDLE
@@ -52,14 +52,14 @@ DriverGetParametersKey(
 
 extern NTSTATUS
 DriverDispatchPnp(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     );
 
 extern NTSTATUS
 DriverDispatchPower(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     );
 
 // Registry overrides for driver features
@@ -81,18 +81,18 @@ typedef enum _XENVBD_FEATURE {
     NumberOfFeatures
 } XENVBD_FEATURE, *PXENVBD_FEATURE;
 
-__checkReturn
+_Check_return_
 _Success_(return)
 extern BOOLEAN
 DriverGetFeatureOverride(
-    IN  XENVBD_FEATURE   Feature,
-    OUT PULONG           Value
+    _In_ XENVBD_FEATURE Feature,
+    _Out_ PULONG        Value
     );
 
-__checkReturn
+_Check_return_
 extern const CHAR *
 DriverGetFeatureName(
-    IN  XENVBD_FEATURE  Feature
+    _In_ XENVBD_FEATURE Feature
     );
 
 extern ULONG

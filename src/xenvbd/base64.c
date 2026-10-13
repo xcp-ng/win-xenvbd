@@ -42,7 +42,7 @@
 
 static FORCEINLINE PVOID
 Base64Allocate(
-    IN  ULONG   Size
+    _In_ ULONG  Size
     )
 {
     return __AllocatePoolWithTag(NonPagedPool,
@@ -52,7 +52,7 @@ Base64Allocate(
 
 VOID
 Base64Free(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
     __FreePoolWithTag(Buffer, BASE64_POOL_TAG);
@@ -60,7 +60,7 @@ Base64Free(
 
 static FORCEINLINE UCHAR
 __DecodeChar(
-    IN  CHAR    Char
+    _In_ CHAR   Char
     )
 {
     if (Char >= 'A' && Char <= 'Z') return Char - 'A';
@@ -74,12 +74,12 @@ __DecodeChar(
 
 static DECLSPEC_NOINLINE CHAR
 __Decode(
-    IN  PUCHAR  Dst,
-    IN  PCHAR   Src,
-    IN  ULONG   Left
+    _In_ PUCHAR Dst,
+    _In_ PCHAR  Src,
+    _In_ ULONG  Left
     )
 {
-    UCHAR   Values[4];
+    UCHAR       Values[4];
 
     if (Left < 4)
         return -1;
@@ -113,17 +113,17 @@ __Decode(
 
 NTSTATUS
 Base64Decode(
-    IN  PCHAR   String,
-    OUT PVOID   *Binary,
-    OUT PULONG  Length
+    _In_ PCHAR      String,
+    _Outptr_ PVOID  *Binary,
+    _Out_ PULONG    Length
     )
 {
-    ULONG       StringLength;
-    ULONG       BlockCount;
-    ULONG       Index;
-    PUCHAR      Buffer;
-    CHAR        Padding;
-    NTSTATUS    status;
+    ULONG           StringLength;
+    ULONG           BlockCount;
+    ULONG           Index;
+    PUCHAR          Buffer;
+    CHAR            Padding;
+    NTSTATUS        status;
 
     StringLength = (ULONG)strlen(String);
 

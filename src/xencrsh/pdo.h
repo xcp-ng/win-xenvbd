@@ -45,87 +45,87 @@ typedef struct _XENVBD_PDO XENVBD_PDO, *PXENVBD_PDO;
 // Creation/Deletion
 extern NTSTATUS
 PdoCreate(
-    IN  PXENVBD_FDO             Fdo,
-    IN  PCHAR                   DeviceId,
-    IN  ULONG                   TargetId,
-    OUT PXENVBD_PDO*            _Pdo
+    _In_ PXENVBD_FDO        Fdo,
+    _In_ PCHAR              DeviceId,
+    _In_ ULONG              TargetId,
+    _Outptr_ PXENVBD_PDO    *_Pdo
     );
 
 extern VOID
 PdoDestroy(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoD3ToD0(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoD0ToD3(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 // Reference Counting
 extern VOID
 PdoReference(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoDereference(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 // Query Methods
 extern ULONG
 PdoSectorSize(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 // Queue-Related
 extern VOID
 PdoPrepareFresh(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoSubmitPrepared(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoCompleteShutdown(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoCompleteSubmittedRequest(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PXENVBD_REQUEST         Request,
-    IN  SHORT                   Status
+    _In_ PXENVBD_PDO        Pdo,
+    _In_ PXENVBD_REQUEST    Request,
+    _In_ SHORT              Status
     );
 
 // StorPort Methods
 extern VOID
 PdoReset(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern BOOLEAN
 PdoStartIo(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 extern VOID
 PdoAbortAllSrbs(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 extern VOID
 PdoEvtchnInterruptHandler(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     );
 
 #endif // _XENVBD_PDO_H

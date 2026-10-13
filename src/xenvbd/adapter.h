@@ -64,75 +64,75 @@ ADAPTER_GET_INTERFACE(Suspend, PXENBUS_SUSPEND_INTERFACE)
 
 extern BOOLEAN
 AdapterIsTargetEmulated(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  ULONG           TargetId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ ULONG              TargetId
     );
 
 extern BOOLEAN
 AdapterBootEmulated(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     );
 
 extern VOID
 AdapterRequestReboot(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     );
 
 extern VOID
 AdapterCompleteSrb(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PXENVBD_SRBEXT     SrbExt
     );
 
 extern VOID
 AdapterTargetListChanged(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     );
 
 extern VOID
 AdapterSetDeviceQueueDepth(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  ULONG           TargetId
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ ULONG              TargetId
     );
 
 extern PFN_NUMBER
 AdapterGetNextSGEntry(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_SRBEXT  SrbExt,
-    IN  ULONG           Existing,
-    OUT PULONG          Offset,
-    OUT PULONG          Length
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PXENVBD_SRBEXT     SrbExt,
+    _In_ ULONG              Existing,
+    _Out_ PULONG            Offset,
+    _Out_ PULONG            Length
     );
 
 extern PXENVBD_BOUNCE
 AdapterGetBounce(
-    IN  PXENVBD_ADAPTER Adapter
+    _In_ PXENVBD_ADAPTER    Adapter
     );
 
 extern VOID
 AdapterPutBounce(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PXENVBD_BOUNCE  Bounce
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PXENVBD_BOUNCE     Bounce
     );
 
 extern NTSTATUS
 AdapterDispatchPnp(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     );
 
 extern NTSTATUS
 AdapterDispatchPower(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     );
 
 extern NTSTATUS
 AdapterDriverEntry(
-    IN  PUNICODE_STRING RegistryPath,
-    IN  PDRIVER_OBJECT  DriverObject
+    _In_ PUNICODE_STRING    RegistryPath,
+    _In_ PDRIVER_OBJECT     DriverObject
     );
 
 #endif // _XENVBD_ADAPTER_H

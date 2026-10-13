@@ -63,7 +63,7 @@ struct _XENVBD_GRANTER {
 
 static FORCEINLINE PVOID
 __GranterAllocate(
-    IN  ULONG   Length
+    _In_ ULONG  Length
     )
 {
     return __AllocatePoolWithTag(NonPagedPool, Length, GRANTER_POOL_TAG);
@@ -71,7 +71,7 @@ __GranterAllocate(
 
 static FORCEINLINE VOID
 __GranterFree(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
     if (Buffer)
@@ -80,11 +80,11 @@ __GranterFree(
 
 NTSTATUS
 GranterCreate(
-    IN  PXENVBD_FRONTEND    Frontend,
-    OUT PXENVBD_GRANTER     *Granter
+    _In_ PXENVBD_FRONTEND       Frontend,
+    _Outptr_ PXENVBD_GRANTER    *Granter
     )
 {
-    NTSTATUS                status;
+    NTSTATUS                    status;
 
     status = STATUS_NO_MEMORY;
     *Granter = __GranterAllocate(sizeof(XENVBD_GRANTER));
@@ -102,7 +102,7 @@ fail1:
 
 VOID
 GranterDestroy(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     )
 {
     Granter->Frontend = NULL;
@@ -114,9 +114,9 @@ GranterDestroy(
 }
 
 static VOID
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 GranterAcquireLock(
-    IN  PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_GRANTER Granter = Argument;
@@ -127,9 +127,9 @@ GranterAcquireLock(
 }
 
 static VOID
-__drv_requiresIRQL(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
 GranterReleaseLock(
-    IN  PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_GRANTER Granter = Argument;
@@ -142,8 +142,8 @@ GranterReleaseLock(
 
 static DECLSPEC_NOINLINE VOID
 GranterDebugCallback(
-    IN  PVOID       Argument,
-    IN  BOOLEAN     Crashing
+    _In_ PVOID      Argument,
+    _In_ BOOLEAN    Crashing
     )
 {
     PXENVBD_GRANTER Granter = Argument;
@@ -168,12 +168,12 @@ GranterDebugCallback(
 
 NTSTATUS
 GranterConnect(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     )
 {
-    PXENVBD_ADAPTER     Adapter = TargetGetAdapter(FrontendGetTarget(Granter->Frontend));
-    CHAR                Name[MAXNAMELEN];
-    NTSTATUS            status;
+    PXENVBD_ADAPTER         Adapter = TargetGetAdapter(FrontendGetTarget(Granter->Frontend));
+    CHAR                    Name[MAXNAMELEN];
+    NTSTATUS                status;
 
     ASSERT(Granter->Connected == FALSE);
 
@@ -244,8 +244,8 @@ fail1:
 
 NTSTATUS
 GranterStoreWrite(
-    IN  PXENVBD_GRANTER Granter,
-    IN  PVOID           Transaction
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Transaction
     )
 {
     UNREFERENCED_PARAMETER(Granter);
@@ -256,7 +256,7 @@ GranterStoreWrite(
 
 VOID
 GranterEnable(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     )
 {
     ASSERT(Granter->Enabled == FALSE);
@@ -266,7 +266,7 @@ GranterEnable(
 
 VOID
 GranterDisable(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     )
 {
     ASSERT(Granter->Enabled == TRUE);
@@ -276,7 +276,7 @@ GranterDisable(
 
 VOID
 GranterDisconnect(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     )
 {
     ASSERT(Granter->Connected == TRUE);
@@ -305,10 +305,10 @@ GranterDisconnect(
 
 NTSTATUS
 GranterGet(
-    IN  PXENVBD_GRANTER     Granter,
-    IN  PFN_NUMBER          Pfn,
-    IN  BOOLEAN             ReadOnly,
-    OUT PVOID               *Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PFN_NUMBER         Pfn,
+    _In_ BOOLEAN            ReadOnly,
+    _Outptr_ PVOID          *Handle
     )
 {
     PXENBUS_GNTTAB_ENTRY    Entry;
@@ -346,8 +346,8 @@ fail1:
 
 VOID
 GranterPut(
-    IN  PXENVBD_GRANTER     Granter,
-    IN  PVOID               Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Handle
     )
 {
     PXENBUS_GNTTAB_ENTRY    Entry = Handle;
@@ -368,8 +368,8 @@ GranterPut(
 
 ULONG
 GranterReference(
-    IN  PXENVBD_GRANTER     Granter,
-    IN  PVOID               Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Handle
     )
 {
     PXENBUS_GNTTAB_ENTRY    Entry = Handle;

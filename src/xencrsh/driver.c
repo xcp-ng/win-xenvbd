@@ -72,7 +72,7 @@ static PXENVBD_FDO              __XenvbdFdo;
 
 VOID
 DriverLinkFdo(
-    IN  PXENVBD_FDO             Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
     __XenvbdFdo = Fdo;
@@ -80,7 +80,7 @@ DriverLinkFdo(
 
 VOID
 DriverUnlinkFdo(
-    IN  PXENVBD_FDO             Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
     UNREFERENCED_PARAMETER(Fdo);
@@ -91,13 +91,13 @@ DriverUnlinkFdo(
 // Global Functions
 static FORCEINLINE PCHAR
 __DriverFormatV(
-    IN  PCHAR       Fmt,
-    IN  va_list     Args
+    _In_ PCHAR      Fmt,
+    _In_ va_list    Args
     )
 {
-    NTSTATUS    Status;
-    PCHAR       Str;
-    ULONG       Size = 32;
+    NTSTATUS        Status;
+    PCHAR           Str;
+    ULONG           Size = 32;
 
     for (;;) {
         Str = (PCHAR)AustereAllocate(Size);
@@ -124,12 +124,12 @@ __DriverFormatV(
 
 PCHAR
 DriverFormat(
-    IN  PCHAR       Format,
+    _In_ PCHAR  Format,
     ...
     )
 {
-    va_list Args;
-    PCHAR   Str;
+    va_list     Args;
+    PCHAR       Str;
 
     va_start(Args, Format);
     Str = __DriverFormatV(Format, Args);
@@ -143,7 +143,7 @@ HW_INITIALIZE       HwInitialize;
 
 BOOLEAN 
 HwInitialize(
-    IN  PVOID   HwDeviceExtension
+    _In_ PVOID  HwDeviceExtension
     )
 {
     UNREFERENCED_PARAMETER(HwDeviceExtension);
@@ -154,7 +154,7 @@ HW_INTERRUPT        HwInterrupt;
 
 BOOLEAN 
 HwInterrupt(
-    IN  PVOID   HwDeviceExtension
+    _In_ PVOID  HwDeviceExtension
     )
 {
     PXENVBD_PDO Pdo = FdoGetPdo((PXENVBD_FDO)HwDeviceExtension);
@@ -169,8 +169,8 @@ HW_RESET_BUS        HwResetBus;
 
 BOOLEAN 
 HwResetBus(
-    IN  PVOID   HwDeviceExtension,
-    IN  ULONG   PathId
+    _In_ PVOID  HwDeviceExtension,
+    _In_ ULONG  PathId
     )
 {
     UNREFERENCED_PARAMETER(PathId);
@@ -181,9 +181,9 @@ HW_ADAPTER_CONTROL  HwAdapterControl;
 
 SCSI_ADAPTER_CONTROL_STATUS
 HwAdapterControl(
-    IN  PVOID                       HwDeviceExtension,
-    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    IN  PVOID                       Parameters
+    _In_ PVOID                      HwDeviceExtension,
+    _In_ SCSI_ADAPTER_CONTROL_TYPE  ControlType,
+    _In_ PVOID                      Parameters
     )
 {
     return FdoAdapterControl((PXENVBD_FDO)HwDeviceExtension, ControlType, Parameters);
@@ -193,12 +193,12 @@ HW_FIND_ADAPTER     HwFindAdapter;
 
 ULONG
 HwFindAdapter(
-    IN  PVOID                               HwDeviceExtension,
-    IN  PVOID                               Context,
-    IN  PVOID                               BusInformation,
-    IN  PCHAR                               ArgumentString,
-    IN OUT PPORT_CONFIGURATION_INFORMATION  ConfigInfo,
-    OUT PBOOLEAN                            Again
+    _In_ PVOID                              HwDeviceExtension,
+    _In_ PVOID                              Context,
+    _In_ PVOID                              BusInformation,
+    _In_ PCHAR                              ArgumentString,
+    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+    _Out_ PBOOLEAN                          Again
     )
 {
     UNREFERENCED_PARAMETER(Context);
@@ -213,8 +213,8 @@ HW_BUILDIO          HwBuildIo;
 
 BOOLEAN 
 HwBuildIo(
-    IN  PVOID               HwDeviceExtension,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PVOID                  HwDeviceExtension,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     return FdoBuildIo((PXENVBD_FDO)HwDeviceExtension, Srb);
@@ -224,8 +224,8 @@ HW_STARTIO          HwStartIo;
 
 BOOLEAN 
 HwStartIo(
-    IN  PVOID               HwDeviceExtension,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PVOID                  HwDeviceExtension,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     return FdoStartIo((PXENVBD_FDO)HwDeviceExtension, Srb);
@@ -237,7 +237,7 @@ HwStartIo(
 
 XEN_API NTSTATUS
 XencrshEntryPoint(
-    IN  PDRIVER_OBJECT  _DriverObject
+    _In_ PDRIVER_OBJECT     _DriverObject
     )
 {
     NTSTATUS                Status;
@@ -292,7 +292,7 @@ XencrshEntryPoint(
 //=============================================================================
 static FORCEINLINE WCHAR
 __ToUpper(
-    IN  WCHAR   Ch
+    _In_ WCHAR  Ch
     )
 {
     if (Ch >= L'a' && Ch <= L'z')
@@ -302,8 +302,8 @@ __ToUpper(
 
 static FORCEINLINE BOOLEAN
 __StrStarts(
-    IN  PWCHAR  Str,
-    IN  PWCHAR  Starts
+    _In_ PWCHAR Str,
+    _In_ PWCHAR Starts
     )
 {
     while (*Str != L'\0' && *Starts != L'\0') {
@@ -317,10 +317,10 @@ __StrStarts(
 
 NTSTATUS
 DllInitialize(
-    IN  PUNICODE_STRING RegistryPath
+    _In_ PUNICODE_STRING    RegistryPath
     )
 {
-    PWSTR       Name;
+    PWSTR                   Name;
 
     Name = wcsrchr(RegistryPath->Buffer, L'\\');
     if (Name) {
@@ -349,8 +349,8 @@ DRIVER_INITIALIZE   DriverEntry;
 
 NTSTATUS
 DriverEntry(
-    IN  PDRIVER_OBJECT  _DriverObject,
-    IN  PUNICODE_STRING RegistryPath
+    _In_ PDRIVER_OBJECT     _DriverObject,
+    _In_ PUNICODE_STRING    RegistryPath
     )
 {
     UNREFERENCED_PARAMETER(_DriverObject);
@@ -363,7 +363,7 @@ DRIVER_UNLOAD               DriverUnload;
 
 VOID
 DriverUnload(
-    IN PDRIVER_OBJECT  _DriverObject
+    _In_ PDRIVER_OBJECT _DriverObject
     )
 {
     UNREFERENCED_PARAMETER(_DriverObject);

@@ -37,14 +37,14 @@
 
 extern VOID
 Base64Free(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     );
 
 extern NTSTATUS
 Base64Decode(
-    IN  PCHAR   String,
-    OUT PVOID   *Binary,
-    OUT PULONG  Length
+    _In_ PCHAR      String,
+    _Outptr_ PVOID  *Binary,
+    _Out_ PULONG    Length
     );
 
 #endif // _XENVBD_BASE64_H

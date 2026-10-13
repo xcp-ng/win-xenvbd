@@ -61,7 +61,7 @@ struct _XENVBD_FDO {
 // Initialize, Start, Stop
 static FORCEINLINE PCHAR
 __Next(
-    IN  PCHAR                   Ptr
+    _In_ PCHAR  Ptr
     )
 {
     if (Ptr == NULL)
@@ -117,8 +117,8 @@ fail1:
 }
 static BOOLEAN
 FdoGetFeatureFlag(
-    IN  PCHAR                   Path,
-    IN  PCHAR                   Feature
+    _In_ PCHAR  Path,
+    _In_ PCHAR  Feature
     )
 {
     BOOLEAN     Ret = FALSE;
@@ -138,13 +138,13 @@ FdoGetFeatureFlag(
 }
 static FORCEINLINE NTSTATUS
 FdoCreateTarget(
-    IN  PXENVBD_FDO             Fdo,
-    IN  PCHAR                   DeviceId,
-    IN  ULONG                   TargetId
+    _In_ PXENVBD_FDO    Fdo,
+    _In_ PCHAR          DeviceId,
+    _In_ ULONG          TargetId
     )
 {
-    NTSTATUS        Status;
-    PXENVBD_PDO     Pdo;
+    NTSTATUS            Status;
+    PXENVBD_PDO         Pdo;
 
     LogTrace("===> %p, %s, %d\n", Fdo, DeviceId, TargetId);
 
@@ -158,14 +158,14 @@ FdoCreateTarget(
 }
 static NTSTATUS
 FdoFindTarget(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
-    NTSTATUS        Status;
-    ULONG           TargetId;
-    PCHAR           TargetPath;
-    PCHAR           Disk = NULL;
-    const ULONG     OperatingMode = DriverGetOperatingMode();
+    NTSTATUS            Status;
+    ULONG               TargetId;
+    PCHAR               TargetPath;
+    PCHAR               Disk = NULL;
+    const ULONG         OperatingMode = DriverGetOperatingMode();
 
     LogTrace("====>\n");
 
@@ -213,10 +213,10 @@ done:
 
 static FORCEINLINE BOOLEAN
 FdoInitialize(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS            Status;
 
     LogTrace("====>\n");
 
@@ -264,7 +264,7 @@ fail:
 
 VOID
 FdoTerminate(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
     LogTrace("====>\n");
@@ -292,7 +292,7 @@ FdoSizeofXenvbdFdo(
 
 PXENVBD_PDO
 FdoGetPdo(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
     return Fdo->Target;
@@ -303,8 +303,8 @@ FdoGetPdo(
 
 FORCEINLINE VOID
 FdoCompleteSrb(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     StorPortNotification(RequestComplete, Fdo, Srb);
@@ -314,10 +314,10 @@ FdoCompleteSrb(
 // StorPort Methods
 BOOLEAN
 FdoResetBus(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     )
 {
-    PXENVBD_PDO     Pdo;
+    PXENVBD_PDO         Pdo;
 
     LogTrace("===> (Irql=%d)\n", KeGetCurrentIrql());
 
@@ -336,9 +336,9 @@ FdoResetBus(
 
 SCSI_ADAPTER_CONTROL_STATUS
 FdoAdapterControl(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    IN  PVOID                       Parameters
+    _In_ PXENVBD_FDO                Fdo,
+    _In_ SCSI_ADAPTER_CONTROL_TYPE  ControlType,
+    _In_ PVOID                      Parameters
     )
 {
     LogTrace("%s ===> (Irql=%d)\n", ScsiAdapterControlTypeName(ControlType), KeGetCurrentIrql());
@@ -372,8 +372,8 @@ FdoAdapterControl(
 
 ULONG
 FdoFindAdapter(
-    IN  PXENVBD_FDO                 Fdo,
-    IN OUT PPORT_CONFIGURATION_INFORMATION  ConfigInfo
+    _In_ PXENVBD_FDO                        Fdo,
+    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo
     )
 {
     LogTrace("===> (Irql=%d)\n", KeGetCurrentIrql());
@@ -409,11 +409,11 @@ FdoFindAdapter(
 
 BOOLEAN 
 FdoBuildIo(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
 
     RtlZeroMemory(SrbExt, sizeof(XENVBD_SRBEXT));
     Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
@@ -448,7 +448,7 @@ FdoBuildIo(
 
 static FORCEINLINE PCHAR
 SrbFunctionName(
-    IN  UCHAR                       Func
+    _In_ UCHAR  Func
     )
 {
     switch (Func) {
@@ -463,12 +463,12 @@ SrbFunctionName(
 }
 BOOLEAN 
 FdoStartIo(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_PDO Pdo = NULL;
-    BOOLEAN     CompleteSrb = TRUE;
+    PXENVBD_PDO                 Pdo = NULL;
+    BOOLEAN                     CompleteSrb = TRUE;
  
     if (Fdo->Target) {
         Pdo = Fdo->Target;

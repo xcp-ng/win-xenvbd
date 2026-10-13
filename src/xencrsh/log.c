@@ -40,7 +40,7 @@ static PVOID Port12 = ((PVOID)(ULONG_PTR)0x12);
 
 static DECLSPEC_NOINLINE VOID
 LogQemuPut(
-    IN  CHAR        Char
+    _In_ CHAR   Char
     )
 {
     WRITE_PORT_UCHAR(Port12, (UCHAR)Char);
@@ -48,10 +48,10 @@ LogQemuPut(
 
 static DECLSPEC_NOINLINE PCHAR
 LogFormatNumber(
-    IN  PCHAR       Buffer,
-    IN  ULONGLONG   Value,
-    IN  UCHAR       Base,
-    IN  BOOLEAN     UpperCase
+    _In_ PCHAR      Buffer,
+    _In_ ULONGLONG  Value,
+    _In_ UCHAR      Base,
+    _In_ BOOLEAN    UpperCase
     )
 {
     ULONGLONG       Next = Value / Base;
@@ -108,9 +108,9 @@ LogFormatNumber(
 
 static DECLSPEC_NOINLINE VOID
 LogVPrintf(
-    IN  VOID        (*Put)(CHAR),
-    IN  const CHAR  *Format,
-    IN  va_list     Arguments
+    _In_ VOID       (*Put)(CHAR),
+    _In_ const CHAR *Format,
+    _In_ va_list    Arguments
     )
 {
     CHAR            Character;
@@ -221,12 +221,12 @@ LogVPrintf(
 
 static DECLSPEC_NOINLINE VOID
 LogPrintf(
-    IN  VOID        (*Put)(CHAR),
-    IN  const CHAR  *Format,
+    _In_ VOID       (*Put)(CHAR),
+    _In_ const CHAR *Format,
     ...
     )
 {
-    va_list Args;
+    va_list         Args;
 
     va_start(Args, Format);
     LogVPrintf(Put, Format, Args);
@@ -246,11 +246,11 @@ __Mode()
 
 static FORCEINLINE VOID
 LogVDebug(
-    IN  ULONG       Level,
-    IN  const CHAR  *Module,
-    IN  const CHAR  *Function,
-    IN  const CHAR  *Format,
-    IN  va_list     Args
+    _In_ ULONG      Level,
+    _In_ const CHAR *Module,
+    _In_ const CHAR *Function,
+    _In_ const CHAR *Format,
+    _In_ va_list    Args
     )
 {
     static CHAR     Buffer[256];
@@ -276,9 +276,9 @@ LogVDebug(
 
 void
 __LogMessage(
-    IN  ULONG       Level,
-    IN  const char* Function,
-    IN  const char* Format,
+    _In_ ULONG      Level,
+    _In_ const char *Function,
+    _In_ const char *Format,
     ...
     )
 {

@@ -43,7 +43,7 @@ typedef struct _XENVBD_FDO XENVBD_FDO, *PXENVBD_FDO;
 
 extern VOID
 FdoTerminate(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     );
 
 // Query Methods
@@ -53,45 +53,45 @@ FdoSizeofXenvbdFdo(
 
 extern PXENVBD_PDO
 FdoGetPdo(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     );
 
 // SRB Methods
 extern VOID
 FdoCompleteSrb(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 // StorPort Methods
 extern BOOLEAN
 FdoResetBus(
-    IN  PXENVBD_FDO                 Fdo
+    _In_ PXENVBD_FDO    Fdo
     );
 
 extern SCSI_ADAPTER_CONTROL_STATUS
 FdoAdapterControl(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType,
-    IN  PVOID                       Parameters
+    _In_ PXENVBD_FDO                Fdo,
+    _In_ SCSI_ADAPTER_CONTROL_TYPE  ControlType,
+    _In_ PVOID                      Parameters
     );
 
 extern ULONG
 FdoFindAdapter(
-    IN  PXENVBD_FDO                 Fdo,
-    IN OUT PPORT_CONFIGURATION_INFORMATION  ConfigInfo
+    _In_ PXENVBD_FDO                        Fdo,
+    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo
     );
 
 extern BOOLEAN 
 FdoBuildIo(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 extern BOOLEAN 
 FdoStartIo(
-    IN  PXENVBD_FDO                 Fdo,
-    IN  PSCSI_REQUEST_BLOCK         Srb
+    _In_ PXENVBD_FDO            Fdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 #endif // _XENVBD_FDO_H

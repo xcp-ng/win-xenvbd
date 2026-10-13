@@ -39,7 +39,7 @@
 
 NTSTATUS
 EventChannelSend(
-    IN  ULONG           LocalPort
+    _In_ ULONG  LocalPort
     );
 
 NTSTATUS
@@ -49,27 +49,27 @@ EventChannelReset(
 
 NTSTATUS
 EventChannelBindInterDomain(
-    IN  USHORT          RemoteDomain,
-    IN  ULONG           RemotePort,
-    OUT PULONG          LocalPort
+    _In_ USHORT     RemoteDomain,
+    _In_ ULONG      RemotePort,
+    _Out_ PULONG    LocalPort
     );
 
 NTSTATUS
 EventChannelQueryInterDomain(
-    IN  ULONG           LocalPort,
-    OUT PUSHORT         RemoteDomain,
-    OUT PULONG          RemotePort
+    _In_ ULONG      LocalPort,
+    _Out_ PUSHORT   RemoteDomain,
+    _Out_ PULONG    RemotePort
     );
 
 NTSTATUS
 EventChannelAllocate(
-    IN  ULONG           Domain,
-    OUT PULONG          LocalPort
+    _In_ ULONG      Domain,
+    _Out_ PULONG    LocalPort
     );
 
 NTSTATUS
 EventChannelClose(
-    IN  ULONG           LocalPort
+    _In_ ULONG  LocalPort
     );
 
 

@@ -76,13 +76,13 @@ struct _XENVBD_TARGET {
 
 #define TARGET_POOL_TAG            'odPX'
 
-__checkReturn
+_Check_return_
 __drv_allocatesMem(mem)
-__bcount(Size)
+_Writable_bytes_(Size)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
 __TargetAlloc(
-    __in ULONG  Size
+    _In_ ULONG  Size
     )
 {
     return __AllocatePoolWithTag(NonPagedPool, Size, TARGET_POOL_TAG);
@@ -91,7 +91,7 @@ __TargetAlloc(
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)
 __TargetFree(
-    __in __drv_freesMem(mem) PVOID Buffer
+    _In_ __drv_freesMem(mem) PVOID  Buffer
     )
 {
     if (Buffer)
@@ -100,7 +100,7 @@ __TargetFree(
 
 static FORCEINLINE PCHAR
 __PnpStateName(
-    __in DEVICE_PNP_STATE        State
+    _In_ DEVICE_PNP_STATE   State
     )
 {
     switch (State) {
@@ -118,15 +118,15 @@ __PnpStateName(
     }
 }
 
-__checkReturn
+_Check_return_
 static FORCEINLINE BOOLEAN
 TargetSetDevicePowerState(
-    __in PXENVBD_TARGET             Target,
-    __in DEVICE_POWER_STATE      State
+    _In_ PXENVBD_TARGET     Target,
+    _In_ DEVICE_POWER_STATE State
     )
 {
-    KIRQL       Irql;
-    BOOLEAN     Changed = FALSE;
+    KIRQL                   Irql;
+    BOOLEAN                 Changed = FALSE;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     if (Target->DevicePowerState != State) {
@@ -141,8 +141,8 @@ TargetSetDevicePowerState(
 
 VOID
 TargetSetMissing(
-    IN  PXENVBD_TARGET  Target,
-    IN  const CHAR      *Reason
+    _In_ PXENVBD_TARGET Target,
+    _In_ const CHAR     *Reason
     )
 {
     KIRQL               Irql;
@@ -167,8 +167,8 @@ TargetSetMissing(
 
 VOID
 TargetSetDevicePnpState(
-    IN  PXENVBD_TARGET      Target,
-    IN  DEVICE_PNP_STATE    State
+    _In_ PXENVBD_TARGET     Target,
+    _In_ DEVICE_PNP_STATE   State
     )
 {
     Verbose("Target[%d] : PNP %s to %s\n",
@@ -185,8 +185,8 @@ TargetSetDevicePnpState(
 
 static FORCEINLINE VOID
 __TargetRestoreDevicePnpState(
-    __in PXENVBD_TARGET             Target,
-    __in DEVICE_PNP_STATE        State
+    _In_ PXENVBD_TARGET     Target,
+    _In_ DEVICE_PNP_STATE   State
     )
 {
     if (Target->DevicePnpState == State) {
@@ -197,8 +197,8 @@ __TargetRestoreDevicePnpState(
 
 VOID
 TargetSetDeviceObject(
-    IN  PXENVBD_TARGET  Target,
-    IN  PDEVICE_OBJECT  DeviceObject
+    _In_ PXENVBD_TARGET Target,
+    _In_ PDEVICE_OBJECT DeviceObject
     )
 {
     Verbose("Target[%d] : Setting DeviceObject = 0x%p\n",
@@ -211,14 +211,14 @@ TargetSetDeviceObject(
 
 static DECLSPEC_NOINLINE BOOLEAN
 TargetReadWrite(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    PXENVBD_FRONTEND        Frontend = Target->Frontend;
-    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND            Frontend = Target->Frontend;
+    PXENVBD_RING                Ring = FrontendGetRing(Frontend);
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
     if (!FrontendGetCaps(Frontend)->Connected)
@@ -249,14 +249,14 @@ fail1:
 
 static DECLSPEC_NOINLINE BOOLEAN
 TargetSyncCache(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    PXENVBD_FRONTEND        Frontend = Target->Frontend;
-    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND            Frontend = Target->Frontend;
+    PXENVBD_RING                Ring = FrontendGetRing(Frontend);
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
     if (!FrontendGetCaps(Frontend)->Connected)
@@ -294,13 +294,13 @@ fail1:
 
 static DECLSPEC_NOINLINE BOOLEAN
 TargetUnmap(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT          SrbExt = Srb->SrbExtension;
-    PXENVBD_FRONTEND        Frontend = Target->Frontend;
-    PXENVBD_RING            Ring = FrontendGetRing(Frontend);
+    PXENVBD_SRBEXT              SrbExt = Srb->SrbExtension;
+    PXENVBD_FRONTEND            Frontend = Target->Frontend;
+    PXENVBD_RING                Ring = FrontendGetRing(Frontend);
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
     if (!FrontendGetCaps(Frontend)->Connected)
@@ -330,16 +330,16 @@ fail1:
 
 static FORCEINLINE VOID
 __TargetModeSense(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb,
-    IN  PVOID               Data,
-    IN  ULONG               Length,
-    OUT PULONG              Size,
-    OUT PULONG              ModeDataLength,
-    OUT PULONG              BlockDescrLength
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb,
+    _In_ PVOID                  Data,
+    _In_ ULONG                  Length,
+    _Out_ PULONG                Size,
+    _Out_ PULONG                ModeDataLength,
+    _Out_ PULONG                BlockDescrLength
     )
 {
-    const UCHAR             PageCode = Cdb_PageCode(Srb);
+    const UCHAR                 PageCode = Cdb_PageCode(Srb);
 
     // Fill in Block Parameters (if Specified and space)
     // when the DBD (Disable Block Descriptor) is set, ignore the block page
@@ -385,17 +385,17 @@ __TargetModeSense(
 
 static DECLSPEC_NOINLINE VOID
 TargetModeSense(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_FRONTEND        Frontend = Target->Frontend;
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Frontend);
-    PMODE_PARAMETER_HEADER  Data  = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
-    ULONG                   BlockDescrLength = 0;
-    ULONG                   ModeDataLength = 0;
-    ULONG                   Size;
+    PXENVBD_FRONTEND            Frontend = Target->Frontend;
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Frontend);
+    PMODE_PARAMETER_HEADER      Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    ULONG                       BlockDescrLength = 0;
+    ULONG                       ModeDataLength = 0;
+    ULONG                       Size;
 
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
@@ -433,13 +433,13 @@ TargetModeSense(
 
 static DECLSPEC_NOINLINE VOID
 TargetModeSense10(
-    IN  PXENVBD_TARGET          Target,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     PXENVBD_FRONTEND            Frontend = Target->Frontend;
     PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Frontend);
-    PMODE_PARAMETER_HEADER10    Data  = Srb->DataBuffer;
+    PMODE_PARAMETER_HEADER10    Data = Srb->DataBuffer;
     ULONG                       Length = Srb->DataTransferLength;
     ULONG                       BlockDescrLength = 0;
     ULONG                       ModeDataLength = 0;
@@ -481,12 +481,12 @@ TargetModeSense10(
 
 static DECLSPEC_NOINLINE VOID
 TargetRequestSense(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PSENSE_DATA             Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
+    PSENSE_DATA                 Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
 
     UNREFERENCED_PARAMETER(Target);
 
@@ -511,12 +511,12 @@ TargetRequestSense(
 
 static DECLSPEC_NOINLINE VOID
 TargetReportLuns(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PLUN_LIST               Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
+    PLUN_LIST                   Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
 
     UNREFERENCED_PARAMETER(Target);
 
@@ -540,16 +540,16 @@ TargetReportLuns(
 
 static DECLSPEC_NOINLINE VOID
 TargetReadCapacity(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PREAD_CAPACITY_DATA     Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    ULONG64                 SectorCount;
-    ULONG                   SectorSize;
-    ULONG                   LastBlock;
+    PREAD_CAPACITY_DATA         Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    ULONG64                     SectorCount;
+    ULONG                       SectorSize;
+    ULONG                       LastBlock;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -589,18 +589,18 @@ fail1:
 
 static DECLSPEC_NOINLINE VOID
 TargetReadCapacity16(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PREAD_CAPACITY16_DATA   Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    ULONG64                 SectorCount;
-    ULONG                   SectorSize;
-    ULONG                   PhysSectorSize;
-    ULONG                   LogicalPerPhysical;
-    ULONG                   LogicalPerPhysicalExponent;
+    PREAD_CAPACITY16_DATA       Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    ULONG64                     SectorCount;
+    ULONG                       SectorSize;
+    ULONG                       PhysSectorSize;
+    ULONG                       LogicalPerPhysical;
+    ULONG                       LogicalPerPhysicalExponent;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -646,11 +646,11 @@ fail1:
 
 static DECLSPEC_NOINLINE VOID
 TargetServiceActionIn16(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    UCHAR                   ServiceAction = Cdb_ServiceAction(Srb);
+    UCHAR                       ServiceAction = Cdb_ServiceAction(Srb);
 
     switch (ServiceAction){
     case SERVICE_ACTION_READ_CAPACITY16:
@@ -668,13 +668,13 @@ TargetServiceActionIn16(
 
 static FORCEINLINE VOID
 TargetInquiryStd(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    PINQUIRYDATA            Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    PINQUIRYDATA                Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -715,8 +715,8 @@ static const UCHAR SupportedPages[] = {
 
 static FORCEINLINE VOID
 TargetInquiry00(
-    IN  PXENVBD_TARGET          Target,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     PVPD_SUPPORTED_PAGES_PAGE   Data = Srb->DataBuffer;
@@ -745,14 +745,14 @@ TargetInquiry00(
 
 static FORCEINLINE VOID
 TargetInquiry80(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PVPD_SERIAL_NUMBER_PAGE Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
-    PVOID                   Page;
-    ULONG                   Size;
+    PVPD_SERIAL_NUMBER_PAGE     Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
+    PVOID                       Page;
+    ULONG                       Size;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -789,8 +789,8 @@ TargetInquiry80(
 
 static FORCEINLINE VOID
 TargetInquiry83(
-    IN  PXENVBD_TARGET          Target,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     PVPD_IDENTIFICATION_PAGE    Data = Srb->DataBuffer;
@@ -840,14 +840,14 @@ TargetInquiry83(
 
 static FORCEINLINE VOID
 TargetInquiryB0(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_FEATURES        Features = FrontendGetFeatures(Target->Frontend);
-    PXENVBD_DISKINFO        DiskInfo = FrontendGetDiskInfo(Target->Frontend);
-    PVPD_BLOCK_LIMITS_PAGE  Data = Srb->DataBuffer;
-    ULONG                   Length = Srb->DataTransferLength;
+    PXENVBD_FEATURES            Features = FrontendGetFeatures(Target->Frontend);
+    PXENVBD_DISKINFO            DiskInfo = FrontendGetDiskInfo(Target->Frontend);
+    PVPD_BLOCK_LIMITS_PAGE      Data = Srb->DataBuffer;
+    ULONG                       Length = Srb->DataTransferLength;
 
     Srb->SrbStatus = SRB_STATUS_ERROR;
 
@@ -884,12 +884,12 @@ TargetInquiryB0(
 
 static FORCEINLINE VOID
 TargetInquiryB1(
-    IN  PXENVBD_TARGET                     Target,
-    IN  PSCSI_REQUEST_BLOCK                Srb
+    _In_ PXENVBD_TARGET                     Target,
+    _In_ PSCSI_REQUEST_BLOCK                Srb
     )
 {
-    PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE Data = Srb->DataBuffer;
-    ULONG                                  Length = Srb->DataTransferLength;
+    PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE  Data = Srb->DataBuffer;
+    ULONG                                   Length = Srb->DataTransferLength;
 
     UNREFERENCED_PARAMETER(Target);
 
@@ -915,8 +915,8 @@ TargetInquiryB1(
 
 static VOID
 TargetInquiryB2(
-    IN  PXENVBD_TARGET                      Target,
-    IN  PSCSI_REQUEST_BLOCK                 Srb
+    _In_ PXENVBD_TARGET                     Target,
+    _In_ PSCSI_REQUEST_BLOCK                Srb
     )
 {
     PVPD_LOGICAL_BLOCK_PROVISIONING_PAGE    Data = Srb->DataBuffer;
@@ -948,8 +948,8 @@ TargetInquiryB2(
 
 static DECLSPEC_NOINLINE VOID
 TargetInquiry(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     if (Cdb_EVPD(Srb)) {
@@ -990,11 +990,11 @@ TargetInquiry(
 
 static FORCEINLINE BOOLEAN
 __ValidateSrbForTarget(
-    IN  PXENVBD_TARGET      Target,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    const UCHAR             Operation = Cdb_OperationEx(Srb);
+    const UCHAR                 Operation = Cdb_OperationEx(Srb);
 
     if (Srb->PathId != 0) {
         Error("Target[%d] : Invalid PathId(%d) (%02x:%s)\n",
@@ -1032,8 +1032,8 @@ __ValidateSrbForTarget(
 
 VOID
 TargetPrepareIo(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
@@ -1046,8 +1046,8 @@ TargetPrepareIo(
 
 BOOLEAN
 TargetStartIo(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
@@ -1125,7 +1125,7 @@ TargetStartIo(
 
 VOID
 TargetReset(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     Verbose("[%u] =====>\n", TargetGetTargetId(Target));
@@ -1137,8 +1137,8 @@ TargetReset(
 
 BOOLEAN
 TargetFlush(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     return RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
@@ -1146,8 +1146,8 @@ TargetFlush(
 
 BOOLEAN
 TargetShutdown(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     )
 {
     return RingQueueShutdown(FrontendGetRing(Target->Frontend), SrbExt);
@@ -1155,8 +1155,8 @@ TargetShutdown(
 
 VOID
 TargetIssueDeviceEject(
-    IN  PXENVBD_TARGET  Target,
-    IN  const CHAR      *Reason
+    _In_ PXENVBD_TARGET Target,
+    _In_ const CHAR     *Reason
     )
 {
     KIRQL               Irql;
@@ -1193,8 +1193,8 @@ TargetIssueDeviceEject(
 
 static FORCEINLINE VOID
 __TargetDeviceUsageNotification(
-    IN  PXENVBD_TARGET              Target,
-    IN  PIRP                        Irp
+    _In_ PXENVBD_TARGET             Target,
+    _In_ PIRP                       Irp
     )
 {
     PIO_STACK_LOCATION              StackLocation;
@@ -1212,7 +1212,7 @@ __TargetDeviceUsageNotification(
 
 static FORCEINLINE VOID
 __TargetCheckEjectPending(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     KIRQL               Irql;
@@ -1236,7 +1236,7 @@ __TargetCheckEjectPending(
 
 static FORCEINLINE VOID
 __TargetCheckEjectFailed(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     KIRQL               Irql;
@@ -1258,7 +1258,7 @@ __TargetCheckEjectFailed(
 
 static FORCEINLINE VOID
 __TargetRemoveDevice(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     TargetD0ToD3(Target);
@@ -1279,7 +1279,7 @@ __TargetRemoveDevice(
 
 static FORCEINLINE VOID
 __TargetEject(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     TargetSetMissing(Target, "Ejected");
@@ -1289,9 +1289,9 @@ __TargetEject(
 
 NTSTATUS
 TargetDispatchPnp(
-    IN  PXENVBD_TARGET  Target,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_TARGET Target,
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     )
 {
     PIO_STACK_LOCATION  StackLocation;
@@ -1352,8 +1352,8 @@ TargetDispatchPnp(
 
 static DECLSPEC_NOINLINE VOID
 TargetDebugCallback(
-    IN  PVOID       Argument,
-    IN  BOOLEAN     Crashing
+    _In_ PVOID      Argument,
+    _In_ BOOLEAN    Crashing
     )
 {
     PXENVBD_TARGET  Target = Argument;
@@ -1382,7 +1382,7 @@ TargetDebugCallback(
 
 NTSTATUS
 TargetD3ToD0(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     NTSTATUS            status;
@@ -1447,7 +1447,7 @@ fail1:
 
 VOID
 TargetD0ToD3(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     const ULONG         TargetId = TargetGetTargetId(Target);
@@ -1475,7 +1475,7 @@ TargetD0ToD3(
 
 static FORCEINLINE ULONG
 __ParseVbd(
-    IN  PCHAR   DeviceIdStr
+    _In_ PCHAR  DeviceIdStr
     )
 {
     ULONG       DeviceId = strtoul(DeviceIdStr, NULL, 10);
@@ -1502,14 +1502,14 @@ __ParseVbd(
 
 NTSTATUS
 TargetCreate(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PCHAR           DeviceId,
-    OUT PXENVBD_TARGET* _Target
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PCHAR              DeviceId,
+    _Outptr_ PXENVBD_TARGET *_Target
     )
 {
-    NTSTATUS            status;
-    PXENVBD_TARGET      Target;
-    ULONG               TargetId;
+    NTSTATUS                status;
+    PXENVBD_TARGET          Target;
+    ULONG                   TargetId;
 
     TargetId = __ParseVbd(DeviceId);
     if (TargetId >= XENVBD_MAX_TARGETS)
@@ -1564,7 +1564,7 @@ fail1:
 
 VOID
 TargetDestroy(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     const ULONG         TargetId = TargetGetTargetId(Target);
@@ -1599,7 +1599,7 @@ TARGET_GET_PROPERTY(DeviceObject, PDEVICE_OBJECT)
 //TARGET_GET_PROPERTY(TargetId, ULONG)
 ULONG
 TargetGetTargetId(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     return FrontendGetTargetId(Target->Frontend);
@@ -1607,7 +1607,7 @@ TargetGetTargetId(
 //TARGET_GET_PROPERTY(DeviceId, ULONG)
 ULONG
 TargetGetDeviceId(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     return FrontendGetDeviceId(Target->Frontend);
@@ -1616,7 +1616,7 @@ TargetGetDeviceId(
 //TARGET_GET_PROPERTY(Removable, BOOLEAN)
 BOOLEAN
 TargetGetRemovable(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     return FrontendGetFeatures(Target->Frontend)->Removable;
@@ -1627,7 +1627,7 @@ TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
 
 BOOLEAN
 TargetGetMissing(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     )
 {
     KIRQL               Irql;

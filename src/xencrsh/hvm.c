@@ -60,12 +60,12 @@ extern PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID  BaseAddress);
 
 static FORCEINLINE NTSTATUS
 MemoryOp(
-    IN  ULONG       Command,
-    IN  PVOID       Argument
+    _In_ ULONG  Command,
+    _In_ PVOID  Argument
     )
 {
-    LONG_PTR ret;
-    NTSTATUS Status;
+    LONG_PTR    ret;
+    NTSTATUS    Status;
 
     ret = Hypercall2(LONG_PTR, memory_op, Command, Argument);
     if (ret < 0) {
@@ -151,12 +151,12 @@ HvmTerminate()
 
 NTSTATUS
 HvmAddToPhysMap(
-    IN  PFN_NUMBER      Pfn,
-    IN  ULONG           Space,
-    IN  ULONG           Offset
+    _In_ PFN_NUMBER             Pfn,
+    _In_ ULONG                  Space,
+    _In_ ULONG                  Offset
     )
 {
-    struct xen_add_to_physmap xatp;
+    struct xen_add_to_physmap   xatp;
 
 #ifdef AMD64
     ASSERT3U(Pfn >> 32, ==, 0);
@@ -172,8 +172,8 @@ HvmAddToPhysMap(
 
 static FORCEINLINE ULONG_PTR
 HvmOp(
-    IN  ULONG   Command,
-    IN  PVOID   Argument
+    _In_ ULONG  Command,
+    _In_ PVOID  Argument
     )
 {
     return Hypercall2(ULONG_PTR, hvm_op, Command, Argument);
@@ -181,8 +181,8 @@ HvmOp(
 
 NTSTATUS
 HvmGetParameter(
-    IN  ULONG               Param,
-    OUT PULONGLONG          Value
+    _In_ ULONG              Param,
+    _Out_ PULONGLONG        Value
     )
 {
     struct xen_hvm_param    op;
@@ -217,8 +217,8 @@ fail1:
 
 NTSTATUS
 HvmSetParameter(
-    IN  ULONG               Param,
-    IN  ULONGLONG           Value
+    _In_ ULONG              Param,
+    _In_ ULONGLONG          Value
     )
 {
     struct xen_hvm_param    op;
@@ -245,13 +245,13 @@ fail1:
 
 NTSTATUS
 HvmGetMemoryType(
-    IN  PFN_NUMBER              Pfn,
-    OUT ULONG                   *Type
+    _In_ PFN_NUMBER             Pfn,
+    _Out_ ULONG                 *Type
     )
 {
     struct xen_hvm_get_mem_type op;
-    LONG_PTR                rc;
-    NTSTATUS                status;
+    LONG_PTR                    rc;
+    NTSTATUS                    status;
 
     RtlZeroMemory(&op, sizeof(struct xen_hvm_get_mem_type));
 

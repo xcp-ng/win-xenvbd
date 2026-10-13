@@ -43,27 +43,27 @@ HvmTerminate();
 
 NTSTATUS
 HvmAddToPhysMap(
-    IN  PFN_NUMBER      Pfn,
-    IN  ULONG           Space,
-    IN  ULONG           Offset
+    _In_ PFN_NUMBER Pfn,
+    _In_ ULONG      Space,
+    _In_ ULONG      Offset
     );
 
 NTSTATUS
 HvmGetParameter(
-    IN  ULONG           Param,
-    OUT PULONGLONG      Value
+    _In_ ULONG          Param,
+    _Out_ PULONGLONG    Value
     );
 
 NTSTATUS
 HvmSetParameter(
-    IN  ULONG           Param,
-    IN  ULONGLONG       Value
+    _In_ ULONG      Param,
+    _In_ ULONGLONG  Value
     );
 
 NTSTATUS
 HvmGetMemoryType(
-    IN  PFN_NUMBER      Pfn,
-    OUT ULONG           *Type
+    _In_ PFN_NUMBER Pfn,
+    _Out_ ULONG     *Type
     );
 
 #endif // _XENVBD_HVM_H

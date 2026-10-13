@@ -100,12 +100,12 @@ BufferTerminate(
 
 BOOLEAN
 BufferGet(
-    OUT PULONG      BufferId,
-    OUT PFN_NUMBER* Pfn
+    _Out_ PULONG        BufferId,
+    _Outptr_ PFN_NUMBER *Pfn
     )
 {
-    ULONG           BufId;
-    PXENVBD_BUFFER  Buf;
+    ULONG               BufId;
+    PXENVBD_BUFFER      Buf;
 
     if (__Buffer.Next == 0) {
         LogWarning("failed to get buffer\n");
@@ -130,7 +130,7 @@ BufferGet(
 
 VOID
 BufferPut(
-    IN  ULONG       BufferId
+    _In_ ULONG  BufferId
     )
 {
     // copy the Pfn@Length to the Buffer, and release the BufferId to the free list
@@ -150,9 +150,9 @@ BufferPut(
 
 VOID
 BufferCopyIn(
-    IN  ULONG       BufferId,
-    IN  PVOID       Input,
-    IN  ULONG       Length
+    _In_ ULONG      BufferId,
+    _In_ PVOID      Input,
+    _In_ ULONG      Length
     )
 {
     PXENVBD_BUFFER  Buf;
@@ -170,9 +170,9 @@ BufferCopyIn(
 
 VOID
 BufferCopyOut(
-    IN  ULONG       BufferId,
-    IN  PVOID       Output,
-    IN  ULONG       Length
+    _In_ ULONG      BufferId,
+    _In_ PVOID      Output,
+    _In_ ULONG      Length
     )
 {
     PXENVBD_BUFFER  Buf;
