@@ -118,14 +118,14 @@ __XenvbdStateName(
 #define FRONTEND_GET_PROPERTY(_name, _type)     \
 static FORCEINLINE _type                        \
 __FrontendGet ## _name ## (                     \
-    IN  PXENVBD_FRONTEND    Frontend            \
+    _In_ PXENVBD_FRONTEND   Frontend            \
     )                                           \
 {                                               \
     return Frontend-> ## _name ## ;             \
 }                                               \
 _type                                           \
 FrontendGet ## _name ## (                       \
-    IN  PXENVBD_FRONTEND    Frontend            \
+    _In_ PXENVBD_FRONTEND   Frontend            \
     )                                           \
 {                                               \
     return __FrontendGet ## _name ## (Frontend);\
@@ -135,14 +135,14 @@ FrontendGet ## _name ## (                       \
 #define FRONTEND_GET_PROPERTY_PTR(_name, _type) \
 static FORCEINLINE _type                        \
 __FrontendGet ## _name ## (                     \
-    IN  PXENVBD_FRONTEND    Frontend            \
+    _In_ PXENVBD_FRONTEND   Frontend            \
     )                                           \
 {                                               \
     return &Frontend-> ## _name ## ;            \
 }                                               \
 _type                                           \
 FrontendGet ## _name ## (                       \
-    IN  PXENVBD_FRONTEND    Frontend            \
+    _In_ PXENVBD_FRONTEND   Frontend            \
     )                                           \
 {                                               \
     return __FrontendGet ## _name ## (Frontend);\

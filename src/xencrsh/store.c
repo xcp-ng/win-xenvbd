@@ -355,10 +355,10 @@ StoreReceiveSegment(
 
 static FORCEINLINE BOOLEAN
 __StoreVerifyHeader(
-    struct xsd_sockmsg  *Header
+    _In_ struct xsd_sockmsg *Header
     )
 {
-    BOOLEAN             Valid;
+    BOOLEAN                 Valid;
 
     Valid = TRUE;
 
