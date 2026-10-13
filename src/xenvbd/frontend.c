@@ -365,7 +365,7 @@ static NTSTATUS
 __ReadState(
     _In_ PXENVBD_FRONTEND               Frontend,
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_ PCHAR                          Path,
+    _In_ PSTR                           Path,
     _Out_ XenbusState                   *State
     )
 {
@@ -630,7 +630,7 @@ FrontendReadFeature(
 static FORCEINLINE BOOLEAN
 FrontendReadDiskFeature(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              Name,
+    _In_ PSTR               Name,
     _In_ PBOOLEAN           Value
     )
 {
@@ -702,7 +702,7 @@ FrontendReadValue32(
 static FORCEINLINE BOOLEAN
 FrontendReadDiskValue32(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              Name,
+    _In_ PSTR               Name,
     _In_ PULONG             Value
 )
 {
@@ -731,7 +731,7 @@ FrontendReadDiskValue32(
 static FORCEINLINE BOOLEAN
 FrontendReadValue64(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              Name,
+    _In_ PSTR               Name,
     _Inout_ PULONG64        Value
     )
 {
@@ -1864,7 +1864,7 @@ fail1:
 NTSTATUS
 FrontendCreate(
     _In_ PXENVBD_TARGET         Target,
-    _In_ PCHAR                  DeviceId,
+    _In_ PSTR                   DeviceId,
     _In_ ULONG                  TargetId,
     _Outptr_ PXENVBD_FRONTEND   *_Frontend
     )

@@ -48,7 +48,7 @@ LogQemuPut(
 
 static DECLSPEC_NOINLINE PCHAR
 LogFormatNumber(
-    _In_ PCHAR      Buffer,
+    _In_ PSTR       Buffer,
     _In_ ULONGLONG  Value,
     _In_ UCHAR      Base,
     _In_ BOOLEAN    UpperCase
@@ -109,7 +109,7 @@ LogFormatNumber(
 static DECLSPEC_NOINLINE VOID
 LogVPrintf(
     _In_ VOID       (*Put)(CHAR),
-    _In_ const CHAR *Format,
+    _In_ PCSTR      Format,
     _In_ va_list    Arguments
     )
 {
@@ -222,7 +222,7 @@ LogVPrintf(
 static DECLSPEC_NOINLINE VOID
 LogPrintf(
     _In_ VOID       (*Put)(CHAR),
-    _In_ const CHAR *Format,
+    _In_ PCSTR      Format,
     ...
     )
 {
@@ -247,9 +247,9 @@ __Mode()
 static FORCEINLINE VOID
 LogVDebug(
     _In_ ULONG      Level,
-    _In_ const CHAR *Module,
-    _In_ const CHAR *Function,
-    _In_ const CHAR *Format,
+    _In_ PCSTR      Module,
+    _In_ PCSTR      Function,
+    _In_ PCSTR      Format,
     _In_ va_list    Args
     )
 {

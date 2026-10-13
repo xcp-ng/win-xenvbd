@@ -143,7 +143,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 RegistryOpenRoot(
-    _In_ PWCHAR         Path,
+    _In_ PWSTR          Path,
     _Out_ PHANDLE       Parent,
     _Outptr_ PWCHAR     *ChildPath
     )
@@ -447,7 +447,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenSubKey(
     _In_ PHANDLE        Key,
-    _In_ PCHAR          Name,
+    _In_ PSTR           Name,
     _In_ ACCESS_MASK    DesiredAccess,
     _Out_ PHANDLE       SubKey
     )
@@ -481,7 +481,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateSubKey(
     _In_ PHANDLE        Key,
-    _In_ PCHAR          Name,
+    _In_ PSTR           Name,
     _In_ ULONG          Options,
     _Out_ PHANDLE       SubKey
     )
@@ -515,7 +515,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteSubKey(
     _In_ PHANDLE        Key,
-    _In_ PCHAR          Name
+    _In_ PSTR           Name
     )
 {
     ANSI_STRING         Ansi;
@@ -763,7 +763,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryDeleteValue(
     _In_ PHANDLE        Key,
-    _In_ PCHAR          Name
+    _In_ PSTR           Name
     )
 {
     ANSI_STRING         Ansi;
@@ -797,7 +797,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryDwordValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _Out_ PULONG                    Value
     )
 {
@@ -868,7 +868,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateDwordValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _In_ ULONG                      Value
     )
 {
@@ -926,7 +926,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistrySzToAnsi(
-    _In_ PWCHAR     Buffer
+    _In_ PWSTR      Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -966,7 +966,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static PANSI_STRING
 RegistryMultiSzToAnsi(
-    _In_ PWCHAR     Buffer
+    _In_ PWSTR      Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -1030,7 +1030,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySzValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _Out_opt_ PULONG                Type,
     _Outptr_ PANSI_STRING           *Array
     )
@@ -1118,7 +1118,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryBinaryValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _Outptr_ PVOID                  *Buffer,
     _Out_ PULONG                    Length
     )
@@ -1204,7 +1204,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateBinaryValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _In_ PVOID                      Buffer,
     _In_ ULONG                      Length
     )
@@ -1319,7 +1319,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQuerySystemStartOption(
-    _In_ const CHAR                 *Prefix,
+    _In_ PCSTR                      Prefix,
     _Outptr_ PANSI_STRING           *Value
     )
 {
@@ -1506,7 +1506,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryUpdateSzValue(
     _In_ HANDLE                     Key,
-    _In_ PCHAR                      Name,
+    _In_ PSTR                       Name,
     _In_ ULONG                      Type,
     _In_ PANSI_STRING               Array
     )

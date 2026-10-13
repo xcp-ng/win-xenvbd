@@ -359,7 +359,7 @@ __UpdateBackendPath(
 static FORCEINLINE NTSTATUS
 __ReadState(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              Path,
+    _In_ PSTR               Path,
     _Out_ PXENBUS_STATE     State
     )
 {
@@ -914,7 +914,7 @@ FrontendDisable(
 NTSTATUS
 FrontendCreate(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _In_ ULONG              TargetId,
     _In_ PXENVBD_PDO        Pdo
     )
@@ -1115,7 +1115,7 @@ FrontendSetState(
 
 static FORCEINLINE NTSTATUS
 __WaitState2(
-    _In_ PCHAR              BackendPath,
+    _In_ PSTR               BackendPath,
     _Inout_ PXENBUS_STATE   State
     )
 {
@@ -1142,7 +1142,7 @@ fail:
 }
 static FORCEINLINE NTSTATUS
 ___SetState2(
-    _In_ PCHAR          FrontendPath,
+    _In_ PSTR           FrontendPath,
     _In_ XENBUS_STATE   State
     )
 {
@@ -1158,8 +1158,8 @@ ___SetState2(
 }
 NTSTATUS
 FrontendCloseTarget(
-    _In_ PCHAR      FrontendPath,
-    _In_ PCHAR      BackendPath
+    _In_ PSTR       FrontendPath,
+    _In_ PSTR       BackendPath
     )
 {
     NTSTATUS        Status;

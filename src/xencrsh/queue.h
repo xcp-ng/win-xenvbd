@@ -79,7 +79,7 @@ QueueRemove(
 VOID
 QueueDebugCallback(
     _In_ PSRB_QUEUE Queue,
-    _In_ PCHAR      Name
+    _In_ PSTR       Name
     );
 
 #endif // _XENVBD_QUEUE_H

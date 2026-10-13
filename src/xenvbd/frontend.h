@@ -143,7 +143,7 @@ FrontendReset(
 extern NTSTATUS
 FrontendCreate(
     _In_ PXENVBD_TARGET         Target,
-    _In_ PCHAR                  DeviceId,
+    _In_ PSTR                   DeviceId,
     _In_ ULONG                  TargetId,
     _Outptr_ PXENVBD_FRONTEND   *_Frontend
     );

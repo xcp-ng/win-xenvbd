@@ -200,7 +200,7 @@ __FreeInquiryData(
 
 static FORCEINLINE UCHAR
 __PageCode(
-    _In_ PCHAR  PageCode
+    _In_ PSTR   PageCode
     )
 {
     ULONG       Ret;
@@ -234,7 +234,7 @@ __DecodeChar(
 static FORCEINLINE UCHAR
 __Decode(
     _In_ PUCHAR Dest,
-    _In_ PCHAR  Src,
+    _In_ PSTR   Src,
     _In_ ULONG  RemainingChars
     )
 {
@@ -267,7 +267,7 @@ __Decode(
 }
 static NTSTATUS
 __DecodeBase64(
-    _In_ PCHAR      Base64,
+    _In_ PSTR       Base64,
     _In_ ULONG      Base64Length,
     _Outptr_ PVOID  *_Buffer,
     _Out_ PULONG    BufferLength
@@ -309,8 +309,8 @@ fail1:
 static NTSTATUS
 __ReadPage(
     _In_ PXENVBD_INQUIRY    Inquiry,
-    _In_ PCHAR              BasePath,
-    _In_ PCHAR              PageCode
+    _In_ PSTR               BasePath,
+    _In_ PSTR               PageCode
     )
 {
     NTSTATUS                Status;
@@ -529,7 +529,7 @@ fail1:
 }
 static NTSTATUS
 __ReadInquiry(
-    _In_ PCHAR      Path,
+    _In_ PSTR       Path,
     _Outptr_ PVOID  *_Inquiry
     )
 {

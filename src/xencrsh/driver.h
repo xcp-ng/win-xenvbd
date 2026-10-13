@@ -82,7 +82,7 @@ DriverUnlinkFdo(
 // Global Functions
 PCHAR
 DriverFormat(
-    _In_ PCHAR  Format,
+    _In_ PSTR   Format,
     ...
     );
 

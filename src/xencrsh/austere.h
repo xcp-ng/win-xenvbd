@@ -43,13 +43,13 @@ AustereInitialize();
 
 PVOID
 __AustereAllocate(
-    _In_ PCHAR  Caller,
+    _In_ PSTR   Caller,
     _In_ ULONG  Size
     );
 
 VOID
 __AustereFree(
-    _In_ PCHAR  Caller,
+    _In_ PSTR   Caller,
     _In_ PVOID  Buffer
     );
 

@@ -46,7 +46,7 @@ typedef struct _XENVBD_PDO XENVBD_PDO, *PXENVBD_PDO;
 extern NTSTATUS
 PdoCreate(
     _In_ PXENVBD_FDO        Fdo,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _In_ ULONG              TargetId,
     _Outptr_ PXENVBD_PDO    *_Pdo
     );

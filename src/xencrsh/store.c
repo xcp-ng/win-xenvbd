@@ -176,7 +176,7 @@ StorePrepareRequest(
 
 static FORCEINLINE ULONG
 __StoreCopyToRing(
-    _In_ PCHAR                          Data,
+    _In_ PSTR                           Data,
     _In_ ULONG                          Length
     )
 {
@@ -285,7 +285,7 @@ StoreSendRequests(
 
 static FORCEINLINE ULONG
 __StoreCopyFromRing(
-    _In_ PCHAR                          Data,
+    _In_ PSTR                           Data,
     _In_ ULONG                          Length
     )
 {
@@ -603,8 +603,8 @@ StoreFreeResponse(
 NTSTATUS
 StoreRead(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node,
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node,
     _Outptr_ PCHAR                      *Value
     )
 {
@@ -676,9 +676,9 @@ fail1:
 NTSTATUS
 StoreWrite(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node,
-    _In_ PCHAR                          Value
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node,
+    _In_ PSTR                           Value
     )
 {
     STORE_REQUEST                       Request;
@@ -730,9 +730,9 @@ fail1:
 static FORCEINLINE NTSTATUS
 StoreVPrintf(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node,
-    _In_ const CHAR                     *Format,
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node,
+    _In_ PCSTR                          Format,
     _In_ va_list                        Arguments
     )
 {
@@ -795,9 +795,9 @@ fail1:
 NTSTATUS
 StorePrintf(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node,
-    _In_ const CHAR                     *Format,
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node,
+    _In_ PCSTR                          Format,
     ...
     )
 {
@@ -818,8 +818,8 @@ StorePrintf(
 NTSTATUS
 StoreRemove(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node
     )
 {
     STORE_REQUEST                       Request;
@@ -872,8 +872,8 @@ fail1:
 NTSTATUS
 StoreDirectory(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_opt_ PCHAR                      Prefix,
-    _In_ PCHAR                          Node,
+    _In_opt_ PSTR                       Prefix,
+    _In_ PSTR                           Node,
     _Outptr_ PCHAR                      *Value
     )
 {

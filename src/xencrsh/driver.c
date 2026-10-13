@@ -91,7 +91,7 @@ DriverUnlinkFdo(
 // Global Functions
 static FORCEINLINE PCHAR
 __DriverFormatV(
-    _In_ PCHAR      Fmt,
+    _In_ PSTR       Fmt,
     _In_ va_list    Args
     )
 {
@@ -124,7 +124,7 @@ __DriverFormatV(
 
 PCHAR
 DriverFormat(
-    _In_ PCHAR  Format,
+    _In_ PSTR   Format,
     ...
     )
 {
@@ -196,7 +196,7 @@ HwFindAdapter(
     _In_ PVOID                              HwDeviceExtension,
     _In_ PVOID                              Context,
     _In_ PVOID                              BusInformation,
-    _In_ PCHAR                              ArgumentString,
+    _In_ PSTR                               ArgumentString,
     _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
     _Out_ PBOOLEAN                          Again
     )
@@ -302,8 +302,8 @@ __ToUpper(
 
 static FORCEINLINE BOOLEAN
 __StrStarts(
-    _In_ PWCHAR Str,
-    _In_ PWCHAR Starts
+    _In_ PWSTR  Str,
+    _In_ PWSTR  Starts
     )
 {
     while (*Str != L'\0' && *Starts != L'\0') {
