@@ -511,7 +511,7 @@ StorePoll()
 
 static PSTORE_RESPONSE
 StoreSubmitRequest(
-    _In_ PSTORE_REQUEST         Request
+    _Inout_ PSTORE_REQUEST      Request
     )
 {
     PSTORE_RESPONSE             Response;
@@ -587,7 +587,7 @@ __StorePayloadData(
 
 static FORCEINLINE VOID
 StoreFreeResponse(
-    _In_ PSTORE_RESPONSE    Response
+    _Inout_ PSTORE_RESPONSE Response
     )
 {
     PSTORE_SEGMENT          Segment;
@@ -999,13 +999,13 @@ fail1:
 
 NTSTATUS
 StoreTransactionEnd(
-    _In_ PXENBUS_STORE_TRANSACTION  Transaction,
-    _In_ BOOLEAN                    Commit
+    _Inout_ PXENBUS_STORE_TRANSACTION   Transaction,
+    _In_ BOOLEAN                        Commit
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    NTSTATUS                            status;
 
     RtlZeroMemory(&Request, sizeof (STORE_REQUEST));
 

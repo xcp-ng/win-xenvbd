@@ -102,7 +102,7 @@ fail1:
 
 VOID
 GranterDestroy(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     )
 {
     Granter->Frontend = NULL;
@@ -168,7 +168,7 @@ GranterDebugCallback(
 
 NTSTATUS
 GranterConnect(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     )
 {
     PXENVBD_ADAPTER         Adapter = TargetGetAdapter(FrontendGetTarget(Granter->Frontend));
@@ -256,7 +256,7 @@ GranterStoreWrite(
 
 VOID
 GranterEnable(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     )
 {
     ASSERT(Granter->Enabled == FALSE);
@@ -266,7 +266,7 @@ GranterEnable(
 
 VOID
 GranterDisable(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     )
 {
     ASSERT(Granter->Enabled == TRUE);
@@ -276,7 +276,7 @@ GranterDisable(
 
 VOID
 GranterDisconnect(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     )
 {
     ASSERT(Granter->Connected == TRUE);
@@ -305,7 +305,7 @@ GranterDisconnect(
 
 NTSTATUS
 GranterGet(
-    _In_ PXENVBD_GRANTER    Granter,
+    _Inout_ PXENVBD_GRANTER Granter,
     _In_ PFN_NUMBER         Pfn,
     _In_ BOOLEAN            ReadOnly,
     _Outptr_ PVOID          *Handle
@@ -346,7 +346,7 @@ fail1:
 
 VOID
 GranterPut(
-    _In_ PXENVBD_GRANTER    Granter,
+    _Inout_ PXENVBD_GRANTER Granter,
     _In_ PVOID              Handle
     )
 {

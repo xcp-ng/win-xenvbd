@@ -46,12 +46,12 @@ RingCreate(
 
 extern VOID
 RingDestroy(
-    _In_ PXENVBD_RING   Ring
+    _Inout_ PXENVBD_RING    Ring
     );
 
 extern NTSTATUS
 RingConnect(
-    _In_ PXENVBD_RING   Ring
+    _Inout_ PXENVBD_RING    Ring
     );
 
 extern NTSTATUS
@@ -72,7 +72,7 @@ RingDisable(
 
 extern VOID
 RingDisconnect(
-    _In_ PXENVBD_RING   Ring
+    _Inout_ PXENVBD_RING    Ring
     );
 
 extern BOOLEAN

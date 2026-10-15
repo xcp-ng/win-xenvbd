@@ -50,48 +50,48 @@ TargetCreate(
 
 extern VOID
 TargetDestroy(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     );
 
 extern NTSTATUS
 TargetD3ToD0(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     );
 
 extern VOID
 TargetD0ToD3(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     );
 
 extern NTSTATUS
 TargetDispatchPnp(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     );
 
 extern VOID
 TargetIssueDeviceEject(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PCSTR          Reason
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PCSTR              Reason
     );
 
 extern VOID
 TargetSetMissing(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PCSTR          Reason
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PCSTR              Reason
     );
 
 extern VOID
 TargetSetDevicePnpState(
-    _In_ PXENVBD_TARGET     Target,
+    _Inout_ PXENVBD_TARGET  Target,
     _In_ DEVICE_PNP_STATE   State
     );
 
 extern VOID
 TargetSetDeviceObject(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PDEVICE_OBJECT DeviceObject
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PDEVICE_OBJECT     DeviceObject
     );
 
 extern VOID

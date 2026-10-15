@@ -169,7 +169,7 @@ __FindPage(
 
 static VOID
 __FreeInquiryData(
-    _In_ PXENVBD_INQUIRY    Inquiry
+    _Inout_ PXENVBD_INQUIRY Inquiry
     )
 {
     PLIST_ENTRY             Entry;
@@ -233,12 +233,12 @@ __DecodeChar(
 }
 static FORCEINLINE UCHAR
 __Decode(
-    _In_ PUCHAR Dest,
-    _In_ PSTR   Src,
-    _In_ ULONG  RemainingChars
+    _Out_ PUCHAR    Dest,
+    _In_ PSTR       Src,
+    _In_ ULONG      RemainingChars
     )
 {
-    UCHAR       Values[4];
+    UCHAR           Values[4];
 
     if (RemainingChars < 4)
         return 0xFF;
@@ -308,7 +308,7 @@ fail1:
 }
 static NTSTATUS
 __ReadPage(
-    _In_ PXENVBD_INQUIRY    Inquiry,
+    _Inout_ PXENVBD_INQUIRY Inquiry,
     _In_ PSTR               BasePath,
     _In_ PSTR               PageCode
     )
@@ -373,7 +373,7 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage83(
-    _In_ PXENVBD_INQUIRY    Inquiry
+    _Inout_ PXENVBD_INQUIRY Inquiry
     )
 {
     PXENVBD_PAGE            Page;
@@ -408,7 +408,7 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage80(
-    _In_ PXENVBD_INQUIRY    Inquiry
+    _Inout_ PXENVBD_INQUIRY Inquiry
     )
 {
     PXENVBD_PAGE            Page;
@@ -445,7 +445,7 @@ fail1:
 }
 static FORCEINLINE NTSTATUS
 __GeneratePageStd(
-    _In_ PXENVBD_INQUIRY    Inquiry
+    _Inout_ PXENVBD_INQUIRY Inquiry
     )
 {
     INQUIRYDATA             *Data;
@@ -478,7 +478,7 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage00(
-    _In_ PXENVBD_INQUIRY    Inquiry
+    _Inout_ PXENVBD_INQUIRY Inquiry
     )
 {
     PUCHAR                  Buffer;
@@ -732,7 +732,7 @@ fail:
 
 VOID
 PdoFreeInquiryData(
-    _In_ PVOID  Inquiry
+    _Inout_ PVOID   Inquiry
     )
 {
     __FreeInquiryData((PXENVBD_INQUIRY)Inquiry);

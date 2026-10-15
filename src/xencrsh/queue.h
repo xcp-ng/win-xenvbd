@@ -55,31 +55,31 @@ QueuePeek(
 
 PSCSI_REQUEST_BLOCK
 QueuePop(
-    _In_ PSRB_QUEUE Queue
+    _Inout_ PSRB_QUEUE  Queue
     );
 
 VOID
 QueueInsertHead(
-    _In_ PSRB_QUEUE             Queue,
+    _Inout_ PSRB_QUEUE          Queue,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueInsertTail(
-    _In_ PSRB_QUEUE             Queue,
+    _Inout_ PSRB_QUEUE          Queue,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueRemove(
-    _In_ PSRB_QUEUE             Queue,
+    _Inout_ PSRB_QUEUE          Queue,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueDebugCallback(
-    _In_ PSRB_QUEUE Queue,
-    _In_ PSTR       Name
+    _Inout_ PSRB_QUEUE  Queue,
+    _In_ PSTR           Name
     );
 
 #endif // _XENVBD_QUEUE_H

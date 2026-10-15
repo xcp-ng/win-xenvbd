@@ -88,7 +88,7 @@ StoreTransactionStart(
 
 NTSTATUS
 StoreTransactionEnd(                                                     
-    _In_ PVOID      Transaction,
+    _Inout_ PVOID   Transaction,
     _In_ BOOLEAN    Commit
     );
 

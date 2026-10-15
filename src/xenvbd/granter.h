@@ -47,12 +47,12 @@ GranterCreate(
 
 extern VOID
 GranterDestroy(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     );
 
 extern NTSTATUS
 GranterConnect(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     );
 
 extern NTSTATUS
@@ -63,22 +63,22 @@ GranterStoreWrite(
 
 extern VOID
 GranterEnable(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     );
 
 extern VOID
 GranterDisable(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     );
 
 extern VOID
 GranterDisconnect(
-    _In_ PXENVBD_GRANTER    Granter
+    _Inout_ PXENVBD_GRANTER Granter
     );
 
 extern NTSTATUS
 GranterGet(
-    _In_ PXENVBD_GRANTER    Granter,
+    _Inout_ PXENVBD_GRANTER Granter,
     _In_ PFN_NUMBER         Pfn,
     _In_ BOOLEAN            ReadOnly,
     _Outptr_ PVOID          *Handle
@@ -86,7 +86,7 @@ GranterGet(
 
 extern VOID
 GranterPut(
-    _In_ PXENVBD_GRANTER    Granter,
+    _Inout_ PXENVBD_GRANTER Granter,
     _In_ PVOID              Handle
     );
 

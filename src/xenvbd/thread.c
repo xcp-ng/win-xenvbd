@@ -73,7 +73,7 @@ __ThreadFree(
 
 static FORCEINLINE VOID
 __ThreadWake(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
     ASSERT((Thread->Thread == NULL) || (Thread->Thread != KeGetCurrentThread()));
@@ -82,7 +82,7 @@ __ThreadWake(
 
 VOID
 ThreadWake(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
     __ThreadWake(Thread);
@@ -90,7 +90,7 @@ ThreadWake(
 
 static FORCEINLINE VOID
 __ThreadAlert(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
     Thread->Alerted = TRUE;
@@ -99,7 +99,7 @@ __ThreadAlert(
 
 VOID
 ThreadAlert(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
     __ThreadAlert(Thread);
@@ -109,7 +109,7 @@ _Check_return_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 ThreadWait(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
@@ -241,10 +241,10 @@ ThreadIsAlerted(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 VOID
 ThreadJoin(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     )
 {
-    LONG                References;
+    LONG                    References;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
     ASSERT3P(KeGetCurrentThread(), !=, Thread->Thread);

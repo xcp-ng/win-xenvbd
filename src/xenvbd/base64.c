@@ -74,12 +74,12 @@ __DecodeChar(
 
 static DECLSPEC_NOINLINE CHAR
 __Decode(
-    _In_ PUCHAR Dst,
-    _In_ PSTR   Src,
-    _In_ ULONG  Left
+    _Out_ PUCHAR    Dst,
+    _In_ PSTR       Src,
+    _In_ ULONG      Left
     )
 {
-    UCHAR       Values[4];
+    UCHAR           Values[4];
 
     if (Left < 4)
         return -1;

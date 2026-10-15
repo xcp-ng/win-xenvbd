@@ -64,25 +64,25 @@ ThreadIsAlerted(
 
 extern VOID
 ThreadWake(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     );
 
 extern VOID
 ThreadAlert(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     );
 
 _Check_return_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 extern BOOLEAN
 ThreadWait(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 extern VOID
 ThreadJoin(
-    _In_ PXENVBD_THREAD Thread
+    _Inout_ PXENVBD_THREAD  Thread
     );
 
 #endif  // _XENVBD_THREAD_H

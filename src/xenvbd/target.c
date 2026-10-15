@@ -121,7 +121,7 @@ __PnpStateName(
 _Check_return_
 static FORCEINLINE BOOLEAN
 TargetSetDevicePowerState(
-    _In_ PXENVBD_TARGET     Target,
+    _Inout_ PXENVBD_TARGET  Target,
     _In_ DEVICE_POWER_STATE State
     )
 {
@@ -141,11 +141,11 @@ TargetSetDevicePowerState(
 
 VOID
 TargetSetMissing(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PCSTR          Reason
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PCSTR              Reason
     )
 {
-    KIRQL               Irql;
+    KIRQL                   Irql;
 
     ASSERT3P(Reason, !=, NULL);
 
@@ -167,7 +167,7 @@ TargetSetMissing(
 
 VOID
 TargetSetDevicePnpState(
-    _In_ PXENVBD_TARGET     Target,
+    _Inout_ PXENVBD_TARGET  Target,
     _In_ DEVICE_PNP_STATE   State
     )
 {
@@ -185,7 +185,7 @@ TargetSetDevicePnpState(
 
 static FORCEINLINE VOID
 __TargetRestoreDevicePnpState(
-    _In_ PXENVBD_TARGET     Target,
+    _Inout_ PXENVBD_TARGET  Target,
     _In_ DEVICE_PNP_STATE   State
     )
 {
@@ -197,8 +197,8 @@ __TargetRestoreDevicePnpState(
 
 VOID
 TargetSetDeviceObject(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PDEVICE_OBJECT DeviceObject
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PDEVICE_OBJECT     DeviceObject
     )
 {
     Verbose("Target[%d] : Setting DeviceObject = 0x%p\n",
@@ -1155,12 +1155,12 @@ TargetShutdown(
 
 VOID
 TargetIssueDeviceEject(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PCSTR          Reason
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PCSTR              Reason
     )
 {
-    KIRQL               Irql;
-    BOOLEAN             DoEject = FALSE;
+    KIRQL                   Irql;
+    BOOLEAN                 DoEject = FALSE;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     if (Target->DeviceObject) {
@@ -1193,7 +1193,7 @@ TargetIssueDeviceEject(
 
 static FORCEINLINE VOID
 __TargetDeviceUsageNotification(
-    _In_ PXENVBD_TARGET             Target,
+    _Inout_ PXENVBD_TARGET          Target,
     _In_ PIRP                       Irp
     )
 {
@@ -1212,11 +1212,11 @@ __TargetDeviceUsageNotification(
 
 static FORCEINLINE VOID
 __TargetCheckEjectPending(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    KIRQL               Irql;
-    BOOLEAN             EjectPending = FALSE;
+    KIRQL                   Irql;
+    BOOLEAN                 EjectPending = FALSE;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     if (Target->EjectPending) {
@@ -1236,11 +1236,11 @@ __TargetCheckEjectPending(
 
 static FORCEINLINE VOID
 __TargetCheckEjectFailed(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    KIRQL               Irql;
-    BOOLEAN             EjectFailed = FALSE;
+    KIRQL                   Irql;
+    BOOLEAN                 EjectFailed = FALSE;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     if (Target->EjectRequested) {
@@ -1258,7 +1258,7 @@ __TargetCheckEjectFailed(
 
 static FORCEINLINE VOID
 __TargetRemoveDevice(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
     TargetD0ToD3(Target);
@@ -1279,7 +1279,7 @@ __TargetRemoveDevice(
 
 static FORCEINLINE VOID
 __TargetEject(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
     TargetSetMissing(Target, "Ejected");
@@ -1289,12 +1289,12 @@ __TargetEject(
 
 NTSTATUS
 TargetDispatchPnp(
-    _In_ PXENVBD_TARGET Target,
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp
+    _Inout_ PXENVBD_TARGET  Target,
+    _In_ PDEVICE_OBJECT     DeviceObject,
+    _In_ PIRP               Irp
     )
 {
-    PIO_STACK_LOCATION  StackLocation;
+    PIO_STACK_LOCATION      StackLocation;
 
     StackLocation = IoGetCurrentIrpStackLocation(Irp);
 
@@ -1382,11 +1382,11 @@ TargetDebugCallback(
 
 NTSTATUS
 TargetD3ToD0(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    NTSTATUS            status;
-    const ULONG         TargetId = TargetGetTargetId(Target);
+    NTSTATUS                status;
+    const ULONG             TargetId = TargetGetTargetId(Target);
 
     if (!TargetSetDevicePowerState(Target, PowerDeviceD0))
         return STATUS_SUCCESS;
@@ -1447,10 +1447,10 @@ fail1:
 
 VOID
 TargetD0ToD3(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    const ULONG         TargetId = TargetGetTargetId(Target);
+    const ULONG             TargetId = TargetGetTargetId(Target);
 
     if (!TargetSetDevicePowerState(Target, PowerDeviceD3))
         return;
@@ -1564,10 +1564,10 @@ fail1:
 
 VOID
 TargetDestroy(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    const ULONG         TargetId = TargetGetTargetId(Target);
+    const ULONG             TargetId = TargetGetTargetId(Target);
 
     Verbose("Target[%d] : Destroying\n", TargetId);
 
@@ -1627,11 +1627,11 @@ TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
 
 BOOLEAN
 TargetGetMissing(
-    _In_ PXENVBD_TARGET Target
+    _Inout_ PXENVBD_TARGET  Target
     )
 {
-    KIRQL               Irql;
-    BOOLEAN             Missing;
+    KIRQL                   Irql;
+    BOOLEAN                 Missing;
 
     KeAcquireSpinLock(&Target->Lock, &Irql);
     Missing = Target->Missing;

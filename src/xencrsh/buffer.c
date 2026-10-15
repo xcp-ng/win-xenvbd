@@ -171,7 +171,7 @@ BufferCopyIn(
 VOID
 BufferCopyOut(
     _In_ ULONG      BufferId,
-    _In_ PVOID      Output,
+    _Out_ PVOID     Output,
     _In_ ULONG      Length
     )
 {

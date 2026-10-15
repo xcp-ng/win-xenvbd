@@ -136,7 +136,7 @@ fail1:
 
 VOID
 PdoDestroy(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     LARGE_INTEGER       Timeout;
@@ -156,7 +156,7 @@ PdoDestroy(
 
 DECLSPEC_NOINLINE VOID
 PdoD3ToD0(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     LogTrace("Target[%d] =====> (Irql=%d)\n", Pdo->Frontend.TargetId, KeGetCurrentIrql());
@@ -169,7 +169,7 @@ PdoD3ToD0(
 
 DECLSPEC_NOINLINE VOID
 PdoD0ToD3(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     LogTrace("Target[%d] =====> (Irql=%d)\n", Pdo->Frontend.TargetId, KeGetCurrentIrql());
@@ -185,7 +185,7 @@ PdoD0ToD3(
 // Reference Counting
 VOID
 PdoReference(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     if (Pdo)
@@ -194,7 +194,7 @@ PdoReference(
 
 VOID
 PdoDereference(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     if (Pdo)
@@ -217,7 +217,7 @@ PdoSectorSize(
 // REQUEST related
 static VOID
 __CleanupRequest(
-    _In_ PXENVBD_REQUEST    Request,
+    _Inout_ PXENVBD_REQUEST Request,
     _In_ BOOLEAN            CopyOut
     )
 {
@@ -266,7 +266,7 @@ __CleanupSrb(
 // Preparing Requests
 static FORCEINLINE VOID
 __UpdateStats(
-    _In_ PXENVBD_PDO    Pdo,
+    _Inout_ PXENVBD_PDO Pdo,
     _In_ UCHAR          Operation
     )
 {
@@ -386,7 +386,7 @@ __Pfn(
 }
 static NTSTATUS
 PrepareReadWrite(
-    _In_ PXENVBD_PDO            Pdo,
+    _Inout_ PXENVBD_PDO         Pdo,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
@@ -558,7 +558,7 @@ done:
 }
 static VOID
 PrepareSyncCache(
-    _In_ PXENVBD_PDO            Pdo,
+    _Inout_ PXENVBD_PDO         Pdo,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
@@ -597,7 +597,7 @@ PrepareSyncCache(
 
 VOID
 PdoPrepareFresh(
-    _In_ PXENVBD_PDO        Pdo
+    _Inout_ PXENVBD_PDO     Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;
@@ -623,7 +623,7 @@ PdoPrepareFresh(
 
 VOID
 PdoSubmitPrepared(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     for (;;) {
@@ -655,7 +655,7 @@ PdoSubmitPrepared(
 
 VOID
 PdoCompleteShutdown(
-    _In_ PXENVBD_PDO        Pdo
+    _Inout_ PXENVBD_PDO     Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;
@@ -676,8 +676,8 @@ PdoCompleteShutdown(
 
 VOID
 PdoCompleteSubmittedRequest(
-    _In_ PXENVBD_PDO        Pdo,
-    _In_ PXENVBD_REQUEST    Request,
+    _Inout_ PXENVBD_PDO     Pdo,
+    _Inout_ PXENVBD_REQUEST Request,
     _In_ SHORT              Status
     )
 {
@@ -767,8 +767,8 @@ __ValidateSectors(
 }
 static BOOLEAN
 PdoReadWrite(
-    _In_ PXENVBD_PDO            Pdo,
-    _In_ PSCSI_REQUEST_BLOCK    Srb
+    _Inout_ PXENVBD_PDO         Pdo,
+    _Out_ PSCSI_REQUEST_BLOCK   Srb
     )
 {
     NTSTATUS                    Status;
@@ -1041,7 +1041,7 @@ PdoReadCapacity16(
 // StorPort Methods
 static FORCEINLINE VOID
 __DisplayStats(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     )
 {
     LogVerbose("Target[%d] : BLKIF_OP_'s Reads %d / Writes %d / Others %d\n",
@@ -1051,7 +1051,7 @@ __DisplayStats(
 }
 static VOID
 __AbortSrbQueue(
-    _In_ PSRB_QUEUE     Queue,
+    _Inout_ PSRB_QUEUE  Queue,
     _In_ PXENVBD_PDO    Pdo,
     _In_ BOOLEAN        Free,
     _In_ PSTR           Name
@@ -1133,7 +1133,7 @@ PdoExecuteScsi(
 }
 static FORCEINLINE VOID
 PdoQueueShutdown(
-    _In_ PXENVBD_PDO            Pdo,
+    _Inout_ PXENVBD_PDO         Pdo,
     _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
@@ -1144,7 +1144,7 @@ PdoQueueShutdown(
 
 VOID
 PdoReset(
-    _In_ PXENVBD_PDO        Pdo
+    _Inout_ PXENVBD_PDO     Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;

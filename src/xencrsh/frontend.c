@@ -160,7 +160,7 @@ __Idx(
 }
 static FORCEINLINE VOID
 FrontendCompleteResponses(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     for (;;) {
@@ -202,7 +202,7 @@ FrontendCompleteResponses(
 
 VOID
 FrontendEvtchnCallback(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     // complete responses
@@ -234,12 +234,12 @@ FrontendCanSubmitRequest(
 
 VOID
 FrontendInsertRequestOnRing(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PXENVBD_REQUEST    Request
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ PXENVBD_REQUEST        Request
     )
 {
-    ULONG                   Index;
-    blkif_request_t*        RingReq;
+    ULONG                       Index;
+    blkif_request_t*            RingReq;
     //blkif_request_discard_t*    Discard;
 
     RingReq = RING_GET_REQUEST(&Frontend->FrontRing, Frontend->FrontRing.req_prod_pvt);
@@ -326,11 +326,11 @@ __Min(
 }
 static FORCEINLINE NTSTATUS
 __UpdateBackendPath(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    PCHAR                   Path;
+    NTSTATUS                    Status;
+    PCHAR                       Path;
 
     if (Frontend->BackendPath) {
         LogTrace("<< %s\n", Frontend->BackendPath);
@@ -456,11 +456,11 @@ out:
 }
 static VOID
 __ReadFeatures(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    PCHAR                   Buffer;
+    NTSTATUS                    Status;
+    PCHAR                       Buffer;
 
     Status = StoreRead(NULL, Frontend->BackendPath,
                         "feature-barrier", &Buffer);
@@ -497,12 +497,12 @@ __ReadFeatures(
 }
 static VOID
 __ReadDiskInfo(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    PCHAR                   Buffer;
-    BOOLEAN                 Updated = FALSE;
+    NTSTATUS                    Status;
+    PCHAR                       Buffer;
+    BOOLEAN                     Updated = FALSE;
 
     Status = StoreRead(NULL, Frontend->BackendPath, 
                         "info", &Buffer);
@@ -556,12 +556,12 @@ __ReadDiskInfo(
 }
 static FORCEINLINE NTSTATUS
 __AllocRing(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    ULONG                   RingRef;
-    PFN_NUMBER              Pfn;
+    NTSTATUS                    Status;
+    ULONG                       RingRef;
+    PFN_NUMBER                  Pfn;
 
     // SharedRing
     ASSERT3P(Frontend->SharedRing, ==, NULL);
@@ -615,7 +615,7 @@ fail1:
 }
 static FORCEINLINE VOID
 __FreeRing(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     // EVTCHN
@@ -698,11 +698,11 @@ abort:
 //=============================================================================
 static NTSTATUS
 FrontendClose(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    XENBUS_STATE            BackendState;
+    NTSTATUS                    Status;
+    XENBUS_STATE                BackendState;
 
     // get/update backend path
     Status = __UpdateBackendPath(Frontend);
@@ -774,11 +774,11 @@ fail1:
 }
 static NTSTATUS
 FrontendPrepare(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    XENBUS_STATE            BackendState;
+    NTSTATUS                    Status;
+    XENBUS_STATE                BackendState;
 
     // ASSERT(Backend : CLOSED)
     //__AssertBackendState(Frontend, XENBUS_STATE_CLOSED);
@@ -825,11 +825,11 @@ fail1:
 }
 static NTSTATUS
 FrontendConnect(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    XENBUS_STATE            BackendState;
+    NTSTATUS                    Status;
+    XENBUS_STATE                BackendState;
 
     // ASSERT(Backend: INITWAIT)
     //__AssertBackendState(Frontend, XENBUS_STATE_INITWAIT);
@@ -889,7 +889,7 @@ fail1:
 }
 static FORCEINLINE VOID
 FrontendDisconnect(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     // Free Ring, Close Evtchn, Gnttab unmap
@@ -897,14 +897,14 @@ FrontendDisconnect(
 }
 static FORCEINLINE VOID
 FrontendEnable(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     Frontend->Connected = TRUE;
 }
 static FORCEINLINE VOID
 FrontendDisable(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
     Frontend->Connected = FALSE;
@@ -913,10 +913,10 @@ FrontendDisable(
 // Init/Term
 NTSTATUS
 FrontendCreate(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PSTR               DeviceId,
-    _In_ ULONG              TargetId,
-    _In_ PXENVBD_PDO        Pdo
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ PSTR                   DeviceId,
+    _In_ ULONG                  TargetId,
+    _In_ PXENVBD_PDO            Pdo
     )
 {
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
@@ -950,10 +950,10 @@ fail1:
 
 VOID
 FrontendDestroy(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    const ULONG             TargetId = Frontend->TargetId;
+    const ULONG                 TargetId = Frontend->TargetId;
 
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -979,13 +979,13 @@ FrontendDestroy(
 
 NTSTATUS
 FrontendSetState(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ XENVBD_STATE       State
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ XENVBD_STATE           State
     )
 {
-    NTSTATUS                Status;
-    const ULONG             TargetId = Frontend->TargetId;
-    BOOLEAN                 Failed = FALSE;
+    NTSTATUS                    Status;
+    const ULONG                 TargetId = Frontend->TargetId;
+    BOOLEAN                     Failed = FALSE;
 
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     LogVerbose("Target[%d] : %s ----> %s\n", TargetId, __XenvbdStateName(Frontend->State), 

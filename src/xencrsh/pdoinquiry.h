@@ -47,7 +47,7 @@ PdoReadInquiryData(
 
 extern VOID
 PdoFreeInquiryData(
-    _In_ PVOID  Inquiry
+    _Inout_ PVOID   Inquiry
     );
 
 extern VOID

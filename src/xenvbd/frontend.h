@@ -87,8 +87,8 @@ typedef struct _XENVBD_FRONTEND XENVBD_FRONTEND, *PXENVBD_FRONTEND;
 
 extern VOID
 FrontendRemoveFeature(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ UCHAR              BlkifOperation
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ UCHAR                  BlkifOperation
     );
 
 extern PVOID
@@ -110,7 +110,7 @@ FrontendSetEjectFailed(
 
 extern VOID
 FrontendSetDeviceUsage(
-    _In_ PXENVBD_FRONTEND               Frontend,
+    _Inout_ PXENVBD_FRONTEND            Frontend,
     _In_ DEVICE_USAGE_NOTIFICATION_TYPE Type,
     _In_ BOOLEAN                        Value
     );
@@ -119,25 +119,25 @@ _Check_return_
 _IRQL_requires_max_(DISPATCH_LEVEL)
 extern NTSTATUS
 FrontendD3ToD0(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     );
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 extern VOID
 FrontendD0ToD3(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     );
 
 _Check_return_
 extern NTSTATUS
 FrontendSetState(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ XENVBD_STATE       State
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ XENVBD_STATE           State
     );
 
 extern NTSTATUS
 FrontendReset(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     );
 
 extern NTSTATUS

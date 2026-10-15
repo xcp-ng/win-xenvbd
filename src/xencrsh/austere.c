@@ -156,12 +156,12 @@ __FreeBig(
 }
 static PVOID
 __TrySmall(
-    _In_ PXENCRSH_SUBHEAP   SubHeap,
-    _In_ ULONG              Size
+    _Inout_ PXENCRSH_SUBHEAP    SubHeap,
+    _In_ ULONG                  Size
     )
 {
-    PUCHAR                  Ptr;
-    ULONG                   ThisSize;
+    PUCHAR                      Ptr;
+    ULONG                       ThisSize;
     
     if (SubHeap->Free < Size)
         return NULL;
