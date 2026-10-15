@@ -143,15 +143,15 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 RegistryOpenRoot(
-    _In_ PWSTR          Path,
-    _Out_ PHANDLE       Parent,
-    _Outptr_ PWCHAR     *ChildPath
+    _In_ PWSTR              Path,
+    _Out_ PHANDLE           Parent,
+    _Outptr_result_z_ PWSTR *ChildPath
     )
 {
-    const WCHAR         Prefix[] = L"\\Registry\\Machine\\";
-    ULONG               Length;
-    UNICODE_STRING      Unicode;
-    NTSTATUS            status;
+    const WCHAR             Prefix[] = L"\\Registry\\Machine\\";
+    ULONG                   Length;
+    UNICODE_STRING          Unicode;
+    NTSTATUS                status;
 
     Length = (ULONG)wcslen(Prefix);
 
@@ -1117,10 +1117,10 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryQueryBinaryValue(
-    _In_ HANDLE                     Key,
-    _In_ PSTR                       Name,
-    _Outptr_ PVOID                  *Buffer,
-    _Out_ PULONG                    Length
+    _In_ HANDLE                                 Key,
+    _In_ PSTR                                   Name,
+    _Outptr_result_bytebuffer_(*Length) PVOID   *Buffer,
+    _Out_ PULONG                                Length
     )
 {
     ANSI_STRING                     Ansi;
@@ -1205,7 +1205,7 @@ NTSTATUS
 RegistryUpdateBinaryValue(
     _In_ HANDLE                     Key,
     _In_ PSTR                       Name,
-    _In_ PVOID                      Buffer,
+    _In_reads_bytes_(Length) PVOID  Buffer,
     _In_ ULONG                      Length
     )
 {

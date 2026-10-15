@@ -113,9 +113,9 @@ __Decode(
 
 NTSTATUS
 Base64Decode(
-    _In_ PSTR       String,
-    _Outptr_ PVOID  *Binary,
-    _Out_ PULONG    Length
+    _In_ PSTR                                   String,
+    _Outptr_result_bytebuffer_(*Length) PVOID   *Binary,
+    _Out_ PULONG                                Length
     )
 {
     ULONG           StringLength;

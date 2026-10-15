@@ -43,10 +43,10 @@ StoreTerminate();
 
 NTSTATUS
 StoreRead(
-    _In_opt_ PVOID  Transaction,
-    _In_opt_ PSTR   Prefix,
-    _In_ PSTR       Node,
-    _Outptr_ PCHAR  *Value
+    _In_opt_ PVOID              Transaction,
+    _In_opt_ PSTR               Prefix,
+    _In_ PSTR                   Node,
+    _Outptr_result_z_ PCHAR     *Value
     );
 
 NTSTATUS

@@ -233,9 +233,9 @@ __DecodeChar(
 }
 static FORCEINLINE UCHAR
 __Decode(
-    _Out_ PUCHAR    Dest,
-    _In_ PSTR       Src,
-    _In_ ULONG      RemainingChars
+    _Out_writes_(3) PUCHAR              Dest,
+    _In_reads_(RemainingChars) PSTR     Src,
+    _In_ ULONG                          RemainingChars
     )
 {
     UCHAR           Values[4];
@@ -267,10 +267,10 @@ __Decode(
 }
 static NTSTATUS
 __DecodeBase64(
-    _In_ PSTR       Base64,
-    _In_ ULONG      Base64Length,
-    _Outptr_ PVOID  *_Buffer,
-    _Out_ PULONG    BufferLength
+    _In_ PSTR                                       Base64,
+    _In_ ULONG                                      Base64Length,
+    _Outptr_result_bytebuffer_(*BufferLength) PVOID *_Buffer,
+    _Out_ PULONG                                    BufferLength
     )
 {
     // convert Base64(4chars) into Buffer(3bytes)
@@ -628,8 +628,8 @@ __Min(
 }
 static FORCEINLINE VOID
 __DumpBytes(
-    _In_ PUCHAR Bytes,
-    _In_ ULONG  Length
+    _In_reads_(Length) PUCHAR   Bytes,
+    _In_ ULONG                  Length
     )
 {
     ULONG       ThisTime, Index;
