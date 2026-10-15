@@ -78,7 +78,7 @@ StoreDirectory(
     _In_opt_ PVOID  Transaction,
     _In_opt_ PSTR   Prefix,
     _In_ PSTR       Node,
-    _Outptr_ PCHAR  *Value
+    _Outptr_ PZZSTR *Value
     );
 
 NTSTATUS
