@@ -276,15 +276,15 @@ LogVDebug(
 
 void
 __LogMessage(
-    _In_ ULONG      Level,
-    _In_ const char *Function,
-    _In_ const char *Format,
+    _In_ ULONG          Level,
+    _In_ PCSTR          Function,
+    _In_ PCSTR          Format,
     ...
     )
 {
     // Note: __MODULE__ is not defined in SDV builds :(
-    static const char* Module = "XENCRSH";
-    va_list     Args;
+    static const char*  Module = "XENCRSH";
+    va_list             Args;
 
     va_start(Args, Format);
     LogPrintf(LogQemuPut, "%s|%s|%s:", Module, __Mode(), Function);
