@@ -45,10 +45,11 @@ extern VOID
 BufferTerminate(
     );
 
+_Success_(return)
 extern BOOLEAN
 BufferGet(
     _Out_ PULONG        BufferId,
-    _Outptr_ PFN_NUMBER *Pfn
+    _Out_ PFN_NUMBER    *Pfn
     );
 
 extern VOID

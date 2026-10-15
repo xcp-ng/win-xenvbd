@@ -619,6 +619,7 @@ BlkifRingQueueRequests(
     }
 }
 
+_Success_(return)
 static BOOLEAN
 BlkifRingPrepareSegment(
     _In_ PXENVBD_BLKIF_RING BlkifRing,

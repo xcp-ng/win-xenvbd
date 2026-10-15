@@ -72,11 +72,12 @@ __DecodeChar(
     return 0xFF;
 }
 
+_Success_(return >= 0)
 static DECLSPEC_NOINLINE CHAR
 __Decode(
-    _Out_ PUCHAR    Dst,
-    _In_ PSTR       Src,
-    _In_ ULONG      Left
+    _Out_writes_(3) PUCHAR      Dst,
+    _In_reads_(Left) PSTR       Src,
+    _In_ ULONG                  Left
     )
 {
     UCHAR           Values[4];

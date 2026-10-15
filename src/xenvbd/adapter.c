@@ -2103,7 +2103,7 @@ AdapterHwFindAdapter(
     _In_ PVOID                              BusInformation,
     _In_ PSTR                               ArgumentString,
     _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-    _Out_ PBOOLEAN                          Again
+    _In_ PBOOLEAN                           Again
     )
 {
     UNREFERENCED_PARAMETER(DevExt);
