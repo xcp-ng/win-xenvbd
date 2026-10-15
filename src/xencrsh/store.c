@@ -913,7 +913,7 @@ StoreDirectory(
         goto fail1;
 
     Length = __StorePayloadLength(Response);
-    Buffer = AustereAllocate(Length + sizeof (CHAR));
+    Buffer = AustereAllocate(Length + 2 *sizeof (CHAR));
 
     status = STATUS_NO_MEMORY;
     if (Buffer == NULL)
