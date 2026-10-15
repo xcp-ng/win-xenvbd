@@ -571,7 +571,7 @@
  */
 #define BLKIF_OP_RESERVED_1        4
 /*
- * Indicate to the backend device that a region of storage is no longer in
+ * Indicate to the backend device that a region of storage is no LONG_PTRer in
  * use, and may be discarded at any time without impact to the client.  If
  * the BLKIF_DISCARD_SECURE flag is set on the request, all copies of the
  * discarded region on the device must be rendered unrecoverable before the
@@ -599,7 +599,7 @@
  * present, the frontend might use blkif_request_indirect structs in order to
  * issue requests with more than BLKIF_MAX_SEGMENTS_PER_REQUEST (11). The
  * maximum number of indirect segments is fixed by the backend, but the
- * frontend can issue requests with any number of indirect segments as long as
+ * frontend can issue requests with any number of indirect segments as LONG_PTR as
  * it's less than the number provided by the backend. The indirect_grefs field
  * in blkif_request_indirect should be filled by the frontend with the
  * grant references of the pages that are holding the indirect segments.
