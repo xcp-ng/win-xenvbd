@@ -1398,7 +1398,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToSz(
-    PANSI_STRING                    Ansi
+    _In_ PANSI_STRING               Ansi
     )
 {
     ULONG                           Length;
@@ -1445,7 +1445,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static PKEY_VALUE_PARTIAL_INFORMATION
 RegistryAnsiToMultiSz(
-    PANSI_STRING                    Ansi
+    _In_ PANSI_STRING               Ansi
     )
 {
     ULONG                           Length;

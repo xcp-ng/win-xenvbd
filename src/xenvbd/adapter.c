@@ -2312,8 +2312,8 @@ fail1:
 #define ADAPTER_GET_INTERFACE(_name, _type)                     \
 VOID                                                            \
 AdapterGet ## _name ## Interface(                               \
-    IN  PXENVBD_ADAPTER Adapter,                                \
-    OUT _type           _name ## Interface                      \
+    _In_ PXENVBD_ADAPTER    Adapter,                            \
+    _Out_ _type             _name ## Interface                  \
     )                                                           \
 {                                                               \
     * ## _name ## Interface = Adapter-> ## _name ## Interface;  \

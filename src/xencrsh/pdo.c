@@ -302,8 +302,9 @@ VirtToPfn(
     PHYSICAL_ADDRESS    PhysAddr = MmGetPhysicalAddress(VirtAddr);
     return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
 }
-static FORCEINLINE ULONG __SectorSize(
-    IN  PXENVBD_PDO             Pdo
+static FORCEINLINE ULONG
+__SectorSize(
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     ASSERT3U(Pdo->Frontend.SectorSize, !=, 0);

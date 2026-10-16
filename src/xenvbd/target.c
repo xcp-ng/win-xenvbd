@@ -1587,7 +1587,7 @@ TargetDestroy(
 #define TARGET_GET_PROPERTY(_name, _type)       \
 _type                                           \
 TargetGet ## _name ## (                         \
-    IN  PXENVBD_TARGET  Target                  \
+    _In_ PXENVBD_TARGET Target                  \
     )                                           \
 {                                               \
     return Target-> ## _name ## ;               \
