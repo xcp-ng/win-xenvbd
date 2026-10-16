@@ -49,8 +49,8 @@ typedef struct _XENVBD_ADAPTER XENVBD_ADAPTER, *PXENVBD_ADAPTER;
 #define ADAPTER_GET_INTERFACE(_name, _type)     \
 extern VOID                                     \
 AdapterGet ## _name ## Interface(               \
-    IN  PXENVBD_ADAPTER Adapter,                \
-    OUT _type           _name ## Interface      \
+    _In_ PXENVBD_ADAPTER Adapter,               \
+    _Out_ _type           _name ## Interface    \
     );
 
 ADAPTER_GET_INTERFACE(Cache, PXENBUS_CACHE_INTERFACE)

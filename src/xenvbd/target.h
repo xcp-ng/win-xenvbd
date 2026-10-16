@@ -123,10 +123,15 @@ TargetShutdown(
     _In_ PXENVBD_SRBEXT SrbExt
     );
 
+extern BOOLEAN
+TargetGetMissing(
+    _Inout_ PXENVBD_TARGET  Target
+    );
+
 #define TARGET_GET_PROPERTY(_name, _type)       \
 extern _type                                    \
 TargetGet ## _name ## (                         \
-    IN  PXENVBD_TARGET  Target                  \
+    _In_ PXENVBD_TARGET  Target                 \
     );
 
 TARGET_GET_PROPERTY(Adapter, PXENVBD_ADAPTER)
@@ -135,7 +140,6 @@ TARGET_GET_PROPERTY(TargetId, ULONG)
 TARGET_GET_PROPERTY(DeviceId, ULONG)
 TARGET_GET_PROPERTY(Removable, BOOLEAN)
 TARGET_GET_PROPERTY(DevicePnpState, DEVICE_PNP_STATE)
-TARGET_GET_PROPERTY(Missing, BOOLEAN)
 
 #undef TARGET_GET_PROPERTY
 
