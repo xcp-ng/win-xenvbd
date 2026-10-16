@@ -156,7 +156,7 @@ FrontendDestroy(
 #define FRONTEND_GET_PROPERTY(_name, _type)     \
 extern _type                                    \
 FrontendGet ## _name ## (                       \
-    IN  PXENVBD_FRONTEND    Frontend            \
+    _In_ PXENVBD_FRONTEND    Frontend           \
     );
 
 FRONTEND_GET_PROPERTY(Target, PXENVBD_TARGET)
