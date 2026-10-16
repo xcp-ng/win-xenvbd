@@ -113,7 +113,7 @@ RegistryTeardown(
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryOpenKey(
-    _In_ HANDLE             Parent,
+    _In_opt_ HANDLE         Parent,
     _In_ PUNICODE_STRING    Path,
     _In_ ACCESS_MASK        DesiredAccess,
     _Out_ PHANDLE           Key
@@ -177,7 +177,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 RegistryCreateKey(
-    _In_ HANDLE             Root,
+    _In_opt_ HANDLE         Root,
     _In_ PUNICODE_STRING    Path,
     _In_ ULONG              Options,
     _Out_ PHANDLE           Key
