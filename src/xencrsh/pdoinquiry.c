@@ -231,6 +231,7 @@ __DecodeChar(
     
     return 0xFF;
 }
+_Success_(return <= 2)
 static FORCEINLINE UCHAR
 __Decode(
     _Out_writes_(3) PUCHAR              Dest,
