@@ -52,7 +52,7 @@ typedef struct _XENVBD_SRBEXT {
 
 FORCEINLINE PXENVBD_SRBEXT
 GetSrbExt(
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     return Srb->SrbExtension;

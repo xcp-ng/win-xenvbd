@@ -41,19 +41,19 @@
 
 extern VOID
 PdoReadInquiryData(
-    IN  PXENVBD_FRONTEND        Frontend,
-    OUT PVOID*                  _Inquiry
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Outptr_ PVOID          *_Inquiry
     );
 
 extern VOID
 PdoFreeInquiryData(
-    IN  PVOID                   Inquiry
+    _In_ PVOID  Inquiry
     );
 
 extern VOID
 PdoInquiry(
-    IN  PVOID                   Inquiry,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PVOID                  Inquiry,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 #endif // _XENVBD_PDO_INQUIRY_H

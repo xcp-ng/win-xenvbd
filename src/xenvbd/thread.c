@@ -49,13 +49,13 @@ struct _XENVBD_THREAD {
     PKTHREAD                Thread;
 };
 
-__checkReturn
+_Check_return_
 __drv_allocatesMem(mem)
-__bcount(Length)
+_Writable_bytes_(Length)
 static FORCEINLINE PVOID
 #pragma warning(suppress: 28195)
 __ThreadAllocate(
-    __in ULONG  Length
+    _In_ ULONG  Length
     )
 {
     return __AllocatePoolWithTag(NonPagedPool, Length, THREAD_POOL_TAG);
@@ -64,7 +64,7 @@ __ThreadAllocate(
 static FORCEINLINE VOID
 #pragma warning(suppress: 28197)
 __ThreadFree(
-    __in __drv_freesMem(mem) PVOID Buffer
+    _In_ __drv_freesMem(mem) PVOID  Buffer
     )
 {
     if (Buffer)
@@ -73,7 +73,7 @@ __ThreadFree(
 
 static FORCEINLINE VOID
 __ThreadWake(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     ASSERT((Thread->Thread == NULL) || (Thread->Thread != KeGetCurrentThread()));
@@ -82,7 +82,7 @@ __ThreadWake(
 
 VOID
 ThreadWake(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     __ThreadWake(Thread);
@@ -90,7 +90,7 @@ ThreadWake(
 
 static FORCEINLINE VOID
 __ThreadAlert(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     Thread->Alerted = TRUE;
@@ -99,17 +99,17 @@ __ThreadAlert(
 
 VOID
 ThreadAlert(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     __ThreadAlert(Thread);
 }
 
-__checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
+_Check_return_
+_IRQL_requires_max_(PASSIVE_LEVEL)
 BOOLEAN
 ThreadWait(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
@@ -128,7 +128,7 @@ KSTART_ROUTINE  ThreadFunction;
 
 VOID
 ThreadFunction(
-    __in PVOID       Argument
+    _In_ PVOID      Argument
     )
 {
     PXENVBD_THREAD  Self = Argument;
@@ -146,13 +146,13 @@ ThreadFunction(
     // NOT REACHED
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 _ThreadCreate(
-    __in  PCHAR                   Name,
-    __in  XENVBD_THREAD_FUNCTION  Function,
-    __in_opt PVOID                Context,
-    __out PXENVBD_THREAD          *_Thread
+    _In_ PCHAR                  Name,
+    _In_ XENVBD_THREAD_FUNCTION Function,
+    _In_opt_ PVOID              Context,
+    _Outptr_ PXENVBD_THREAD     *_Thread
     )
 {
     HANDLE                      Handle;
@@ -223,25 +223,25 @@ fail1:
 
 PKEVENT
 ThreadGetEvent(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     return &Thread->WorkEvent;
 }
 
-__checkReturn
+_Check_return_
 BOOLEAN
 ThreadIsAlerted(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     return Thread->Alerted;
 }
 
-__drv_maxIRQL(PASSIVE_LEVEL)
+_IRQL_requires_max_(PASSIVE_LEVEL)
 VOID
 ThreadJoin(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     )
 {
     LONG                References;

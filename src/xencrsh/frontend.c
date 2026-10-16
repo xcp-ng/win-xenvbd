@@ -60,7 +60,7 @@ typedef enum _XENBUS_STATE {
 
 static FORCEINLINE const PCHAR
 __XenbusStateName(
-    IN  XENBUS_STATE                        State
+    _In_ XENBUS_STATE   State
     )
 {
     switch (State) {
@@ -76,7 +76,7 @@ __XenbusStateName(
 }
 static FORCEINLINE const PCHAR
 __XenvbdStateName(
-    IN  XENVBD_STATE                        State
+    _In_ XENVBD_STATE   State
     )
 {
     switch (State) {
@@ -92,14 +92,14 @@ __XenvbdStateName(
 //=============================================================================
 static FORCEINLINE PVOID
 __FrontendAlloc(
-    IN  ULONG                   Size
+    _In_ ULONG  Size
     )
 {
     return AustereAllocate(Size);
 }
 static FORCEINLINE VOID
 __FrontendFree(
-    IN  PVOID                   Buffer
+    _In_ PVOID  Buffer
     )
 {
     AustereFree(Buffer);
@@ -120,14 +120,14 @@ __WriteMemoryBarrier()
 }
 static FORCEINLINE BOOLEAN
 __HasUnconsumedResponses(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     return (Frontend->SharedRing->rsp_prod - Frontend->FrontRing.rsp_cons) > 0;
 }
 static FORCEINLINE BOOLEAN
 __FinalCheckForResponses(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     if (__HasUnconsumedResponses(Frontend))
@@ -141,7 +141,7 @@ __FinalCheckForResponses(
 }
 static FORCEINLINE BOOLEAN
 __IsValidStatus(
-    IN  SHORT                   Status
+    _In_ SHORT  Status
     )
 {
     if (Status == BLKIF_RSP_OKAY ||
@@ -152,15 +152,15 @@ __IsValidStatus(
 }
 static FORCEINLINE ULONG
 __Idx(
-    IN  ULONG   Index,
-    IN  ULONG   nr_ents
+    _In_ ULONG  Index,
+    _In_ ULONG  nr_ents
     )
 {
     return Index & (nr_ents - 1);
 }
 static FORCEINLINE VOID
 FrontendCompleteResponses(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     for (;;) {
@@ -202,7 +202,7 @@ FrontendCompleteResponses(
 
 VOID
 FrontendEvtchnCallback(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     // complete responses
@@ -221,8 +221,8 @@ FrontendEvtchnCallback(
 // Ring Slots
 BOOLEAN
 FrontendCanSubmitRequest(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  ULONG                   NumRequests
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ ULONG              NumRequests
     )
 {
     // RING_PROD_SLOTS_AVAIL(...)
@@ -234,12 +234,12 @@ FrontendCanSubmitRequest(
 
 VOID
 FrontendInsertRequestOnRing(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  PXENVBD_REQUEST         Request
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PXENVBD_REQUEST    Request
     )
 {
-    ULONG               Index;
-    blkif_request_t*    RingReq;
+    ULONG                   Index;
+    blkif_request_t*        RingReq;
     //blkif_request_discard_t*    Discard;
 
     RingReq = RING_GET_REQUEST(&Frontend->FrontRing, Frontend->FrontRing.req_prod_pvt);
@@ -283,7 +283,7 @@ FrontendInsertRequestOnRing(
 
 VOID
 FrontendPushRequestAndCheckNotify(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     // RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(..)
@@ -308,17 +308,17 @@ FrontendPushRequestAndCheckNotify(
 extern PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Buffer);
 static FORCEINLINE PFN_NUMBER
 __VirtToPfn(
-    IN  PVOID                   VirtAddr
+    _In_ PVOID          VirtAddr
     )
 {
-    PHYSICAL_ADDRESS PhysAddr = MmGetPhysicalAddress(VirtAddr);
+    PHYSICAL_ADDRESS    PhysAddr = MmGetPhysicalAddress(VirtAddr);
     return (PFN_NUMBER)(ULONG_PTR)(PhysAddr.QuadPart >> 12);
 }
 //=============================================================================
 static FORCEINLINE ULONG
 __Min(
-    IN  ULONG                   A,
-    IN  ULONG                   B
+    _In_ ULONG  A,
+    _In_ ULONG  B
     )
 {
     if (A < B)  return A;
@@ -326,11 +326,11 @@ __Min(
 }
 static FORCEINLINE NTSTATUS
 __UpdateBackendPath(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
-    PCHAR       Path;
+    NTSTATUS                Status;
+    PCHAR                   Path;
 
     if (Frontend->BackendPath) {
         LogTrace("<< %s\n", Frontend->BackendPath);
@@ -358,13 +358,13 @@ __UpdateBackendPath(
 }
 static FORCEINLINE NTSTATUS
 __ReadState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  PCHAR                   Path,
-    OUT PXENBUS_STATE           State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              Path,
+    _Out_ PXENBUS_STATE     State
     )
 {
-    NTSTATUS        Status;
-    PCHAR           Buffer;
+    NTSTATUS                Status;
+    PCHAR                   Buffer;
 
     UNREFERENCED_PARAMETER(Frontend);
 
@@ -383,12 +383,12 @@ fail:
 }
 static FORCEINLINE NTSTATUS
 __PollState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN OUT PXENBUS_STATE        State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Inout_ PXENBUS_STATE   State
     )
 {
-    NTSTATUS        Status;
-    XENBUS_STATE    OldState = *State;
+    NTSTATUS                Status;
+    XENBUS_STATE            OldState = *State;
 
     while (OldState == *State) {
         Status = __ReadState(Frontend, Frontend->BackendPath, State);
@@ -407,19 +407,19 @@ fail:
 }
 static NTSTATUS
 __WaitState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN OUT PXENBUS_STATE        State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Inout_ PXENBUS_STATE   State
     )
 {
     return __PollState(Frontend, State);
 }
 static FORCEINLINE NTSTATUS
 ___SetState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  XENBUS_STATE            State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENBUS_STATE       State
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS                Status;
 
     Status = StorePrintf(NULL, Frontend->FrontendPath,
                     "state", "%u", State);
@@ -431,10 +431,10 @@ ___SetState(
 }
 static FORCEINLINE NTSTATUS
 __WriteTargetPath(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS                Status;
 
     Status = StorePrintf(NULL, Frontend->TargetPath, 
                         "frontend", "%s", Frontend->FrontendPath);
@@ -456,11 +456,11 @@ out:
 }
 static VOID
 __ReadFeatures(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
-    PCHAR       Buffer;
+    NTSTATUS                Status;
+    PCHAR                   Buffer;
 
     Status = StoreRead(NULL, Frontend->BackendPath,
                         "feature-barrier", &Buffer);
@@ -497,12 +497,12 @@ __ReadFeatures(
 }
 static VOID
 __ReadDiskInfo(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
-    PCHAR       Buffer;
-    BOOLEAN     Updated = FALSE;
+    NTSTATUS                Status;
+    PCHAR                   Buffer;
+    BOOLEAN                 Updated = FALSE;
 
     Status = StoreRead(NULL, Frontend->BackendPath, 
                         "info", &Buffer);
@@ -556,12 +556,12 @@ __ReadDiskInfo(
 }
 static FORCEINLINE NTSTATUS
 __AllocRing(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
-    ULONG       RingRef;
-    PFN_NUMBER  Pfn;
+    NTSTATUS                Status;
+    ULONG                   RingRef;
+    PFN_NUMBER              Pfn;
 
     // SharedRing
     ASSERT3P(Frontend->SharedRing, ==, NULL);
@@ -615,7 +615,7 @@ fail1:
 }
 static FORCEINLINE VOID
 __FreeRing(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     // EVTCHN
@@ -640,10 +640,10 @@ __FreeRing(
 }
 static NTSTATUS
 __WriteRing(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS                Status;
     
     for (;;) {
         PVOID                       Transaction;
@@ -698,11 +698,11 @@ abort:
 //=============================================================================
 static NTSTATUS
 FrontendClose(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XENBUS_STATE    BackendState;
+    NTSTATUS                Status;
+    XENBUS_STATE            BackendState;
 
     // get/update backend path
     Status = __UpdateBackendPath(Frontend);
@@ -774,11 +774,11 @@ fail1:
 }
 static NTSTATUS
 FrontendPrepare(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XENBUS_STATE    BackendState;
+    NTSTATUS                Status;
+    XENBUS_STATE            BackendState;
 
     // ASSERT(Backend : CLOSED)
     //__AssertBackendState(Frontend, XENBUS_STATE_CLOSED);
@@ -825,11 +825,11 @@ fail1:
 }
 static NTSTATUS
 FrontendConnect(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    NTSTATUS        Status;
-    XENBUS_STATE    BackendState;
+    NTSTATUS                Status;
+    XENBUS_STATE            BackendState;
 
     // ASSERT(Backend: INITWAIT)
     //__AssertBackendState(Frontend, XENBUS_STATE_INITWAIT);
@@ -889,7 +889,7 @@ fail1:
 }
 static FORCEINLINE VOID
 FrontendDisconnect(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     // Free Ring, Close Evtchn, Gnttab unmap
@@ -897,14 +897,14 @@ FrontendDisconnect(
 }
 static FORCEINLINE VOID
 FrontendEnable(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     Frontend->Connected = TRUE;
 }
 static FORCEINLINE VOID
 FrontendDisable(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
     Frontend->Connected = FALSE;
@@ -913,10 +913,10 @@ FrontendDisable(
 // Init/Term
 NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  PCHAR                   DeviceId, 
-    IN  ULONG                   TargetId, 
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              DeviceId,
+    _In_ ULONG              TargetId,
+    _In_ PXENVBD_PDO        Pdo
     )
 {
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
@@ -950,10 +950,10 @@ fail1:
 
 VOID
 FrontendDestroy(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     )
 {
-    const ULONG TargetId = Frontend->TargetId;
+    const ULONG             TargetId = Frontend->TargetId;
 
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
 
@@ -979,13 +979,13 @@ FrontendDestroy(
 
 NTSTATUS
 FrontendSetState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  XENVBD_STATE            State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_STATE       State
     )
 {
-    NTSTATUS    Status;
-    const ULONG TargetId = Frontend->TargetId;
-    BOOLEAN     Failed = FALSE;
+    NTSTATUS                Status;
+    const ULONG             TargetId = Frontend->TargetId;
+    BOOLEAN                 Failed = FALSE;
 
     LogTrace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     LogVerbose("Target[%d] : %s ----> %s\n", TargetId, __XenvbdStateName(Frontend->State), 
@@ -1115,13 +1115,13 @@ FrontendSetState(
 
 static FORCEINLINE NTSTATUS
 __WaitState2(
-    IN  PCHAR                   BackendPath,
-    IN OUT PXENBUS_STATE        State
+    _In_ PCHAR              BackendPath,
+    _Inout_ PXENBUS_STATE   State
     )
 {
-    NTSTATUS        Status;
-    PCHAR           Buffer;
-    XENBUS_STATE    OldState = *State;
+    NTSTATUS                Status;
+    PCHAR                   Buffer;
+    XENBUS_STATE            OldState = *State;
 
     while (OldState == *State) {
         Status = StoreRead(NULL, BackendPath, "state", &Buffer);
@@ -1142,11 +1142,11 @@ fail:
 }
 static FORCEINLINE NTSTATUS
 ___SetState2(
-    IN  PCHAR                   FrontendPath,
-    IN  XENBUS_STATE            State
+    _In_ PCHAR          FrontendPath,
+    _In_ XENBUS_STATE   State
     )
 {
-    NTSTATUS    Status;
+    NTSTATUS            Status;
 
     Status = StorePrintf(NULL, FrontendPath,
                     "state", "%u", State);
@@ -1158,8 +1158,8 @@ ___SetState2(
 }
 NTSTATUS
 FrontendCloseTarget(
-    IN  PCHAR                   FrontendPath,
-    IN  PCHAR                   BackendPath
+    _In_ PCHAR      FrontendPath,
+    _In_ PCHAR      BackendPath
     )
 {
     NTSTATUS        Status;

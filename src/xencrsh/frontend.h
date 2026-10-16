@@ -94,50 +94,50 @@ typedef struct _XENVBD_FRONTEND {
 // Init/Term
 extern NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  PCHAR                   DeviceId, 
-    IN  ULONG                   TargetId, 
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PCHAR              DeviceId,
+    _In_ ULONG              TargetId,
+    _In_ PXENVBD_PDO        Pdo
     );
 
 extern VOID
 FrontendDestroy(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 extern NTSTATUS
 FrontendSetState(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  XENVBD_STATE            State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_STATE       State
     );
 
 extern NTSTATUS
 FrontendCloseTarget(
-    IN  PCHAR                   FrontendPath,
-    IN  PCHAR                   BackendPath
+    _In_ PCHAR  FrontendPath,
+    _In_ PCHAR  BackendPath
     );
 
 // Ring Slots
 extern VOID
 FrontendEvtchnCallback(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 extern BOOLEAN
 FrontendCanSubmitRequest(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  ULONG                   NumRequests
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ ULONG              NumRequests
     );
 
 extern VOID
 FrontendInsertRequestOnRing(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  PXENVBD_REQUEST         Request
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ PXENVBD_REQUEST    Request
     );
 
 extern VOID
 FrontendPushRequestAndCheckNotify(
-    IN  PXENVBD_FRONTEND        Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 #endif // _XENVBD_FRONTEND_H

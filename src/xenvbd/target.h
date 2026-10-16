@@ -43,84 +43,84 @@ typedef struct _XENVBD_TARGET XENVBD_TARGET, *PXENVBD_TARGET;
 
 extern NTSTATUS
 TargetCreate(
-    IN  PXENVBD_ADAPTER Adapter,
-    IN  PCHAR           DeviceId,
-    OUT PXENVBD_TARGET* _Target
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PCHAR              DeviceId,
+    _Outptr_ PXENVBD_TARGET *_Target
     );
 
 extern VOID
 TargetDestroy(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     );
 
 extern NTSTATUS
 TargetD3ToD0(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     );
 
 extern VOID
 TargetD0ToD3(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     );
 
 extern NTSTATUS
 TargetDispatchPnp(
-    IN  PXENVBD_TARGET  Target,
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PXENVBD_TARGET Target,
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     );
 
 extern VOID
 TargetIssueDeviceEject(
-    IN  PXENVBD_TARGET  Target,
-    IN  const CHAR      *Reason
+    _In_ PXENVBD_TARGET Target,
+    _In_ const CHAR     *Reason
     );
 
 extern VOID
 TargetSetMissing(
-    IN  PXENVBD_TARGET  Target,
-    IN  const CHAR      *Reason
+    _In_ PXENVBD_TARGET Target,
+    _In_ const CHAR     *Reason
     );
 
 extern VOID
 TargetSetDevicePnpState(
-    IN  PXENVBD_TARGET      Target,
-    IN  DEVICE_PNP_STATE    State
+    _In_ PXENVBD_TARGET     Target,
+    _In_ DEVICE_PNP_STATE   State
     );
 
 extern VOID
 TargetSetDeviceObject(
-    IN  PXENVBD_TARGET  Target,
-    IN  PDEVICE_OBJECT  DeviceObject
+    _In_ PXENVBD_TARGET Target,
+    _In_ PDEVICE_OBJECT DeviceObject
     );
 
 extern VOID
 TargetPrepareIo(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 extern BOOLEAN
 TargetStartIo(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 extern VOID
 TargetReset(
-    IN  PXENVBD_TARGET  Target
+    _In_ PXENVBD_TARGET Target
     );
 
 extern BOOLEAN
 TargetFlush(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 extern BOOLEAN
 TargetShutdown(
-    IN  PXENVBD_TARGET  Target,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_TARGET Target,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 #define TARGET_GET_PROPERTY(_name, _type)       \

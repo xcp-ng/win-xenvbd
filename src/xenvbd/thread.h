@@ -39,13 +39,13 @@ typedef struct _XENVBD_THREAD XENVBD_THREAD, *PXENVBD_THREAD;
 
 typedef NTSTATUS (*XENVBD_THREAD_FUNCTION)(PXENVBD_THREAD, PVOID);
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 _ThreadCreate(
-    __in  PCHAR                   Name,
-    __in  XENVBD_THREAD_FUNCTION  Function,
-    __in_opt PVOID                Context,
-    __out PXENVBD_THREAD          *Thread
+    _In_ PCHAR                  Name,
+    _In_ XENVBD_THREAD_FUNCTION Function,
+    _In_opt_ PVOID              Context,
+    _Outptr_ PXENVBD_THREAD     *Thread
     );
 
 #define ThreadCreate(_f, _c, _t)    \
@@ -53,36 +53,36 @@ _ThreadCreate(
 
 extern PKEVENT
 ThreadGetEvent(
-    __in PXENVBD_THREAD  Self
+    _In_ PXENVBD_THREAD Self
     );
 
-__checkReturn
+_Check_return_
 extern BOOLEAN
 ThreadIsAlerted(
-    __in PXENVBD_THREAD  Self
+    _In_ PXENVBD_THREAD Self
     );
 
 extern VOID
 ThreadWake(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     );
 
 extern VOID
 ThreadAlert(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     );
 
-__checkReturn
-__drv_maxIRQL(PASSIVE_LEVEL)
+_Check_return_
+_IRQL_requires_max_(PASSIVE_LEVEL)
 extern BOOLEAN
 ThreadWait(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     );
 
-__drv_maxIRQL(PASSIVE_LEVEL)
+_IRQL_requires_max_(PASSIVE_LEVEL)
 extern VOID
 ThreadJoin(
-    __in PXENVBD_THREAD  Thread
+    _In_ PXENVBD_THREAD Thread
     );
 
 #endif  // _XENVBD_THREAD_H

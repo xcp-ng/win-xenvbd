@@ -50,36 +50,36 @@ typedef struct _SRB_QUEUE {
 
 PSCSI_REQUEST_BLOCK
 QueuePeek(
-    IN  PSRB_QUEUE          Queue
+    _In_ PSRB_QUEUE Queue
     );
 
 PSCSI_REQUEST_BLOCK
 QueuePop(
-    IN  PSRB_QUEUE          Queue
+    _In_ PSRB_QUEUE Queue
     );
 
 VOID
 QueueInsertHead(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueInsertTail(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueRemove(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     );
 
 VOID
 QueueDebugCallback(
-    IN  PSRB_QUEUE          Queue,
-    IN  PCHAR               Name
+    _In_ PSRB_QUEUE Queue,
+    _In_ PCHAR      Name
     );
 
 #endif // _XENVBD_QUEUE_H

@@ -87,70 +87,70 @@ typedef struct _XENVBD_FRONTEND XENVBD_FRONTEND, *PXENVBD_FRONTEND;
 
 extern VOID
 FrontendRemoveFeature(
-    IN  PXENVBD_FRONTEND        Frontend,
-    IN  UCHAR                   BlkifOperation
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ UCHAR              BlkifOperation
     );
 
 extern PVOID
 FrontendGetInquiryOverride(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  UCHAR               PageCode,
-    OUT PULONG              Length
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ UCHAR              PageCode,
+    _Out_ PULONG            Length
     );
 
 extern VOID
 FrontendSetEjected(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 extern VOID
 FrontendSetEjectFailed(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 extern VOID
 FrontendSetDeviceUsage(
-    IN  PXENVBD_FRONTEND                Frontend,
-    IN  DEVICE_USAGE_NOTIFICATION_TYPE  Type,
-    IN  BOOLEAN                         Value
+    _In_ PXENVBD_FRONTEND               Frontend,
+    _In_ DEVICE_USAGE_NOTIFICATION_TYPE Type,
+    _In_ BOOLEAN                        Value
     );
 
-__checkReturn
-__drv_maxIRQL(DISPATCH_LEVEL)
+_Check_return_
+_IRQL_requires_max_(DISPATCH_LEVEL)
 extern NTSTATUS
 FrontendD3ToD0(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
-__drv_maxIRQL(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 extern VOID
 FrontendD0ToD3(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
-__checkReturn
+_Check_return_
 extern NTSTATUS
 FrontendSetState(
-    IN  PXENVBD_FRONTEND    Frontend,
-    IN  XENVBD_STATE        State
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _In_ XENVBD_STATE       State
     );
 
 extern NTSTATUS
 FrontendReset(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 extern NTSTATUS
 FrontendCreate(
-    IN  PXENVBD_TARGET      Target,
-    IN  PCHAR               DeviceId,
-    IN  ULONG               TargetId,
-    OUT PXENVBD_FRONTEND*   _Frontend
+    _In_ PXENVBD_TARGET         Target,
+    _In_ PCHAR                  DeviceId,
+    _In_ ULONG                  TargetId,
+    _Outptr_ PXENVBD_FRONTEND   *_Frontend
     );
 
 extern VOID
 FrontendDestroy(
-    IN  PXENVBD_FRONTEND    Frontend
+    _In_ PXENVBD_FRONTEND   Frontend
     );
 
 #define FRONTEND_GET_PROPERTY(_name, _type)     \

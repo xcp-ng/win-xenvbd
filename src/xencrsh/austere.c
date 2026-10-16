@@ -99,14 +99,14 @@ __CompactBigHeap()
 }
 static PVOID
 __AllocBig(
-    IN  PCHAR   Caller,
-    IN  ULONG   Size
+    _In_ PCHAR  Caller,
+    _In_ ULONG  Size
     )
 {
-    ULONG   NumPages;
-    ULONG   i, n;
-    PVOID   Res;
-    BOOLEAN repeat = FALSE;
+    ULONG       NumPages;
+    ULONG       i, n;
+    PVOID       Res;
+    BOOLEAN     repeat = FALSE;
     
     NumPages = (ULONG)((Size + PAGE_SIZE - 1) / (PAGE_SIZE));
 
@@ -140,10 +140,10 @@ retry:
 }
 static VOID
 __FreeBig(
-    IN  PVOID   Buffer
+    _In_ PVOID  Buffer
     )
 {
-    int   StartNr;
+    int         StartNr;
     StartNr = (int)(((PUCHAR)Buffer - AustereHeap.BigHeapStart) / PAGE_SIZE);
     if (StartNr < 0 || (ULONG)StartNr >= AustereHeap.NumHeapPages)
         return;
@@ -156,12 +156,12 @@ __FreeBig(
 }
 static PVOID
 __TrySmall(
-    IN  PXENCRSH_SUBHEAP    SubHeap,
-    IN  ULONG               Size
+    _In_ PXENCRSH_SUBHEAP   SubHeap,
+    _In_ ULONG              Size
     )
 {
-    PUCHAR      Ptr;
-    ULONG       ThisSize;
+    PUCHAR                  Ptr;
+    ULONG                   ThisSize;
     
     if (SubHeap->Free < Size)
         return NULL;
@@ -226,8 +226,8 @@ __NewSubHeap(
 }
 static PVOID
 __AllocSmall(
-    IN  PCHAR   Caller,
-    IN  ULONG   Size
+    _In_ PCHAR          Caller,
+    _In_ ULONG          Size
     )
 {
     PXENCRSH_SUBHEAP    SubHeap;
@@ -271,7 +271,7 @@ __AllocSmall(
 }
 static VOID
 __FreeSmall(
-    IN  PVOID   Buffer
+    _In_ PVOID          Buffer
     )
 {
     PXENCRSH_SUBHEAP    SubHeap;
@@ -338,8 +338,8 @@ __FreeSmall(
 
 static FORCEINLINE PVOID
 __Round(
-    IN  PVOID               Buffer,
-    IN  ULONG               RoundTo
+    _In_ PVOID  Buffer,
+    _In_ ULONG  RoundTo
     )
 {
     // round buffer to (normally PAGE_SIZE) boundary
@@ -376,11 +376,11 @@ __SubHeapSize()
 }
 PVOID
 __AustereAllocate(
-    IN  PCHAR   Caller,
-    IN  ULONG   Size
+    _In_ PCHAR  Caller,
+    _In_ ULONG  Size
     )
 {
-    PVOID   Res;
+    PVOID       Res;
 
     if (Size < sizeof(PVOID))
         Size = sizeof(PVOID);
@@ -406,8 +406,8 @@ __AustereAllocate(
 
 VOID
 __AustereFree(
-    IN  PCHAR   Caller,
-    IN  PVOID   Buffer
+    _In_ PCHAR      Caller,
+    _In_ PVOID      Buffer
     )
 {   
     const ULONG_PTR AustereHeapStart = (ULONG_PTR)AustereHeap.BigHeapStart;

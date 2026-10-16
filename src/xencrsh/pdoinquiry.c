@@ -62,11 +62,11 @@ typedef struct _XENVBD_INQUIRY {
 
 static VOID
 __DefaultInquiry(
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    const UCHAR Evpd = Cdb_EVPD(Srb);
-    const UCHAR PageCode = Cdb_PageCode(Srb);
+    const UCHAR                 Evpd = Cdb_EVPD(Srb);
+    const UCHAR                 PageCode = Cdb_PageCode(Srb);
 
     if (Evpd == 0)
     {
@@ -133,13 +133,13 @@ __DefaultInquiry(
 
 static FORCEINLINE PXENVBD_PAGE
 __FindPage(
-    IN  PXENVBD_INQUIRY Inquiry,
-    IN  UCHAR           Evpd,
-    IN  UCHAR           PageCode
+    _In_ PXENVBD_INQUIRY    Inquiry,
+    _In_ UCHAR              Evpd,
+    _In_ UCHAR              PageCode
     )
 {
-    PLIST_ENTRY     Entry;
-    PXENVBD_PAGE    Page = NULL;
+    PLIST_ENTRY             Entry;
+    PXENVBD_PAGE            Page = NULL;
 
     if (Evpd == 0) {
         if (PageCode == 0) {
@@ -169,11 +169,11 @@ __FindPage(
 
 static VOID
 __FreeInquiryData(
-    IN  PXENVBD_INQUIRY     Inquiry
+    _In_ PXENVBD_INQUIRY    Inquiry
     )
 {
-    PLIST_ENTRY     Entry;
-    PXENVBD_PAGE    Page;
+    PLIST_ENTRY             Entry;
+    PXENVBD_PAGE            Page;
 
     // free standard page
     if (Inquiry->StandardPage.Data) {
@@ -200,10 +200,10 @@ __FreeInquiryData(
 
 static FORCEINLINE UCHAR
 __PageCode(
-    IN  PCHAR   PageCode
+    _In_ PCHAR  PageCode
     )
 {
-    ULONG Ret;
+    ULONG       Ret;
     if (PageCode[0] == '0' && PageCode[1] == 'x')
         Ret = strtoul(PageCode + 2, NULL, 16);
     else
@@ -213,7 +213,7 @@ __PageCode(
 }
 static FORCEINLINE UCHAR
 __DecodeChar(
-    IN  CHAR    Char
+    _In_ CHAR   Char
     )
 {
     if (Char >= 'A' && Char <= 'Z')
@@ -233,12 +233,12 @@ __DecodeChar(
 }
 static FORCEINLINE UCHAR
 __Decode(
-    IN  PUCHAR  Dest,
-    IN  PCHAR   Src,
-    IN  ULONG   RemainingChars
+    _In_ PUCHAR Dest,
+    _In_ PCHAR  Src,
+    _In_ ULONG  RemainingChars
     )
 {
-    UCHAR   Values[4]; 
+    UCHAR       Values[4];
 
     if (RemainingChars < 4)
         return 0xFF;
@@ -267,10 +267,10 @@ __Decode(
 }
 static NTSTATUS
 __DecodeBase64(
-    IN  PCHAR   Base64,
-    IN  ULONG   Base64Length,
-    OUT PVOID   *_Buffer,
-    OUT PULONG  BufferLength
+    _In_ PCHAR      Base64,
+    _In_ ULONG      Base64Length,
+    _Outptr_ PVOID  *_Buffer,
+    _Out_ PULONG    BufferLength
     )
 {
     // convert Base64(4chars) into Buffer(3bytes)
@@ -308,17 +308,17 @@ fail1:
 }
 static NTSTATUS
 __ReadPage(
-    IN  PXENVBD_INQUIRY         Inquiry,
-    IN  PCHAR                   BasePath,
-    IN  PCHAR                   PageCode
+    _In_ PXENVBD_INQUIRY    Inquiry,
+    _In_ PCHAR              BasePath,
+    _In_ PCHAR              PageCode
     )
 {
-    NTSTATUS        Status;
-    PCHAR           Base64;
-    ULONG           Base64Length;
-    PVOID           Buffer;
-    ULONG           BufferLength;
-    PXENVBD_PAGE    Page;
+    NTSTATUS                Status;
+    PCHAR                   Base64;
+    ULONG                   Base64Length;
+    PVOID                   Buffer;
+    ULONG                   BufferLength;
+    PXENVBD_PAGE            Page;
 
     Status = StoreRead(NULL, BasePath, PageCode, &Base64);
     if (!NT_SUCCESS(Status)) {
@@ -373,11 +373,11 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage83(
-    IN  PXENVBD_INQUIRY         Inquiry
+    _In_ PXENVBD_INQUIRY    Inquiry
     )
 {
-    PXENVBD_PAGE    Page;
-    PUCHAR          Data;
+    PXENVBD_PAGE            Page;
+    PUCHAR                  Data;
 
     Page = (PXENVBD_PAGE)AustereAllocate(sizeof(XENVBD_PAGE));
     if (!Page) {
@@ -408,7 +408,7 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage80(
-    IN  PXENVBD_INQUIRY         Inquiry
+    _In_ PXENVBD_INQUIRY    Inquiry
     )
 {
     PXENVBD_PAGE            Page;
@@ -445,10 +445,10 @@ fail1:
 }
 static FORCEINLINE NTSTATUS
 __GeneratePageStd(
-    IN  PXENVBD_INQUIRY         Inquiry
+    _In_ PXENVBD_INQUIRY    Inquiry
     )
 {
-    INQUIRYDATA     *Data;
+    INQUIRYDATA             *Data;
 
     Inquiry->StandardPage.PageCode = 0;
     Inquiry->StandardPage.Length = sizeof(INQUIRYDATA);
@@ -478,14 +478,14 @@ fail1:
 }
 static NTSTATUS
 __GeneratePage00(
-    IN  PXENVBD_INQUIRY         Inquiry
+    _In_ PXENVBD_INQUIRY    Inquiry
     )
 {
-    PUCHAR          Buffer;
-    ULONG           PageNum;
-    PLIST_ENTRY     Entry;
-    PXENVBD_PAGE    Page;
-    ULONG           NumPages = 0;
+    PUCHAR                  Buffer;
+    ULONG                   PageNum;
+    PLIST_ENTRY             Entry;
+    PXENVBD_PAGE            Page;
+    ULONG                   NumPages = 0;
     
     for (Entry = Inquiry->ListHead.Flink; Entry != &Inquiry->ListHead; Entry = Entry->Flink) {
         ++NumPages;
@@ -529,8 +529,8 @@ fail1:
 }
 static NTSTATUS
 __ReadInquiry(
-    IN  PCHAR                   Path,
-    OUT PVOID*                  _Inquiry
+    _In_ PCHAR      Path,
+    _Outptr_ PVOID  *_Inquiry
     )
 {
     NTSTATUS        Status;
@@ -620,19 +620,19 @@ fail1:
 
 static FORCEINLINE ULONG
 __Min(
-    IN  ULONG   A,
-    IN  ULONG   B
+    _In_ ULONG  A,
+    _In_ ULONG  B
     )
 {
     return A < B ? A : B;
 }
 static FORCEINLINE VOID
 __DumpBytes(
-    IN  PUCHAR  Bytes,
-    IN  ULONG   Length
+    _In_ PUCHAR Bytes,
+    _In_ ULONG  Length
     )
 {
-    ULONG ThisTime, Index;
+    ULONG       ThisTime, Index;
 
     for (Index = 0; Index < Length; ) {
         ThisTime = __Min(Length - Index, 8);
@@ -677,7 +677,7 @@ __DumpBytes(
 }
 static FORCEINLINE VOID
 __DumpPage(
-    IN  PXENVBD_PAGE    Page
+    _In_ PXENVBD_PAGE   Page
     )
 {
     LogTrace("PAGE_CODE : %02x\n", Page->PageCode);
@@ -686,7 +686,7 @@ __DumpPage(
 }
 static FORCEINLINE VOID
 __DumpPageStandard(
-    IN  PXENVBD_PAGE    Page
+    _In_ PXENVBD_PAGE   Page
     )
 {
     LogTrace("PAGE_CODE : %02x STANDARD\n", Page->PageCode);
@@ -695,7 +695,7 @@ __DumpPageStandard(
 }
 static FORCEINLINE VOID
 __DumpInquiry(
-    IN  PVOID           _Inquiry
+    _In_ PVOID      _Inquiry
     )
 {
     PLIST_ENTRY     Entry;
@@ -713,11 +713,11 @@ __DumpInquiry(
 
 VOID
 PdoReadInquiryData(
-    IN  PXENVBD_FRONTEND        Frontend,
-    OUT PVOID*                  _Inquiry
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Outptr_ PVOID          *_Inquiry
     )
 {
-    NTSTATUS        Status;
+    NTSTATUS                Status;
 
     Status = __ReadInquiry(Frontend->BackendPath, _Inquiry);
     if (!NT_SUCCESS(Status))
@@ -732,7 +732,7 @@ fail:
 
 VOID
 PdoFreeInquiryData(
-    IN  PVOID                   Inquiry
+    _In_ PVOID  Inquiry
     )
 {
     __FreeInquiryData((PXENVBD_INQUIRY)Inquiry);
@@ -740,14 +740,14 @@ PdoFreeInquiryData(
 
 VOID
 PdoInquiry(
-    IN  PVOID                   Inquiry,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PVOID                  Inquiry,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    ULONG           Length;
-    PXENVBD_PAGE    Page;
-    const UCHAR     Evpd = Cdb_EVPD(Srb);
-    const UCHAR     PageCode = Cdb_PageCode(Srb);
+    ULONG                       Length;
+    PXENVBD_PAGE                Page;
+    const UCHAR                 Evpd = Cdb_EVPD(Srb);
+    const UCHAR                 PageCode = Cdb_PageCode(Srb);
 
     if (Inquiry) {
         Page = __FindPage((PXENVBD_INQUIRY)Inquiry, Evpd, PageCode);

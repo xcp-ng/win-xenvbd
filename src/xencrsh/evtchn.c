@@ -54,8 +54,8 @@
 
 static FORCEINLINE LONG_PTR
 EventChannelOp(
-    IN  ULONG   Command,
-    IN  PVOID   Argument
+    _In_ ULONG  Command,
+    _In_ PVOID  Argument
     )
 {
     return Hypercall2(LONG_PTR, event_channel_op, Command, Argument);
@@ -63,7 +63,7 @@ EventChannelOp(
 
 NTSTATUS
 EventChannelSend(
-    IN  ULONG           LocalPort
+    _In_ ULONG          LocalPort
     )
 {
     struct evtchn_send  op;
@@ -115,9 +115,9 @@ fail1:
 
 NTSTATUS
 EventChannelBindInterDomain(
-    IN  USHORT                      RemoteDomain,
-    IN  ULONG                       RemotePort,
-    OUT PULONG                      LocalPort
+    _In_ USHORT                     RemoteDomain,
+    _In_ ULONG                      RemotePort,
+    _Out_ PULONG                    LocalPort
     )
 {
     struct evtchn_bind_interdomain  op;
@@ -146,9 +146,9 @@ fail1:
 
 NTSTATUS
 EventChannelQueryInterDomain(
-    IN  ULONG               LocalPort,
-    OUT PUSHORT             RemoteDomain,
-    OUT PULONG              RemotePort
+    _In_ ULONG              LocalPort,
+    _Out_ PUSHORT           RemoteDomain,
+    _Out_ PULONG            RemotePort
     )
 {
     struct evtchn_status    op;
@@ -185,8 +185,8 @@ fail1:
 
 NTSTATUS
 EventChannelAllocate(
-    IN  ULONG           Domain,
-    OUT PULONG          LocalPort
+    _In_ ULONG                  Domain,
+    _Out_ PULONG                LocalPort
     )
 {
     struct evtchn_alloc_unbound op;
@@ -215,7 +215,7 @@ fail1:
 
 NTSTATUS
 EventChannelClose(
-    IN  ULONG           LocalPort
+    _In_ ULONG          LocalPort
     )
 {
     struct evtchn_close op;

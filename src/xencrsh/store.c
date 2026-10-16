@@ -121,15 +121,15 @@ C_ASSERT(sizeof (struct xenstore_domain_interface) <= PAGE_SIZE);
 
 static VOID
 StorePrepareRequest(
-    OUT PSTORE_REQUEST              Request,
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  enum xsd_sockmsg_type       Type,
+    _Out_ PSTORE_REQUEST                Request,
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_ enum xsd_sockmsg_type          Type,
     IN  ...
     )
 {
-    static LONG                     Sequence;
-    PSTORE_SEGMENT                  Segment;
-    va_list                         Arguments;
+    static LONG                         Sequence;
+    PSTORE_SEGMENT                      Segment;
+    va_list                             Arguments;
 
     ASSERT(IsZeroMemory(Request, sizeof (STORE_REQUEST)));
 
@@ -176,8 +176,8 @@ StorePrepareRequest(
 
 static FORCEINLINE ULONG
 __StoreCopyToRing(
-    IN  PCHAR                           Data,
-    IN  ULONG                           Length
+    _In_ PCHAR                          Data,
+    _In_ ULONG                          Length
     )
 {
     struct xenstore_domain_interface    *Shared;
@@ -226,8 +226,8 @@ __StoreCopyToRing(
 
 static FORCEINLINE NTSTATUS
 StoreSendSegment(
-    IN OUT  PSTORE_SEGMENT          Segment,
-    IN OUT  PULONG                  Written
+    _Inout_ PSTORE_SEGMENT          Segment,
+    _Inout_ PULONG                  Written
     )
 {
     ULONG                           Copied;
@@ -244,7 +244,7 @@ StoreSendSegment(
 
 static VOID
 StoreSendRequests(
-    IN OUT  PULONG                  Written
+    _Inout_ PULONG  Written
     )
 {
     if (IsListEmpty(&StoreContext.SubmittedList))
@@ -285,8 +285,8 @@ StoreSendRequests(
 
 static FORCEINLINE ULONG
 __StoreCopyFromRing(
-    IN  PCHAR                           Data,
-    IN  ULONG                           Length
+    _In_ PCHAR                          Data,
+    _In_ ULONG                          Length
     )
 {
     struct xenstore_domain_interface    *Shared;
@@ -335,8 +335,8 @@ __StoreCopyFromRing(
 
 static NTSTATUS
 StoreReceiveSegment(
-    IN OUT  PSTORE_SEGMENT          Segment,
-    IN OUT  PULONG                  Read
+    _Inout_ PSTORE_SEGMENT          Segment,
+    _Inout_ PULONG                  Read
     )
 {
     ULONG                           Copied;
@@ -386,7 +386,7 @@ __StoreVerifyHeader(
 
 static FORCEINLINE NTSTATUS
 StoreReceiveResponse(
-    IN OUT  PULONG                  Read
+    _Inout_ PULONG                  Read
     )
 {
     PSTORE_RESPONSE                 Response = &StoreContext.Response;
@@ -421,7 +421,7 @@ done:
 
 static FORCEINLINE PSTORE_REQUEST
 StoreFindRequest(
-    IN  uint32_t                req_id
+    _In_ uint32_t               req_id
     )
 {
     PLIST_ENTRY                 ListEntry;
@@ -445,10 +445,10 @@ StoreFindRequest(
 
 static FORCEINLINE VOID
 __StoreResetResponse(
-    OUT PSTORE_RESPONSE  Response
+    _Out_ PSTORE_RESPONSE   Response
     )
 {
-    PSTORE_SEGMENT       Segment;
+    PSTORE_SEGMENT          Segment;
 
     RtlZeroMemory(Response, sizeof (STORE_RESPONSE));
 
@@ -511,7 +511,7 @@ StorePoll()
 
 static PSTORE_RESPONSE
 StoreSubmitRequest(
-    IN  PSTORE_REQUEST          Request
+    _In_ PSTORE_REQUEST         Request
     )
 {
     PSTORE_RESPONSE             Response;
@@ -537,10 +537,10 @@ StoreSubmitRequest(
 
 static FORCEINLINE NTSTATUS
 __StoreCheckResponse(
-    IN  PSTORE_RESPONSE Response
+    _In_ PSTORE_RESPONSE    Response
     )
 {
-    NTSTATUS            status;
+    NTSTATUS                status;
 
     status = STATUS_UNSUCCESSFUL;
     if (Response->Header.type == XS_ERROR) {
@@ -571,7 +571,7 @@ fail1:
 
 static FORCEINLINE ULONG
 __StorePayloadLength(
-    IN  PSTORE_RESPONSE Response
+    _In_ PSTORE_RESPONSE    Response
     )
 {
     return Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Length;
@@ -579,7 +579,7 @@ __StorePayloadLength(
 
 static FORCEINLINE PCHAR
 __StorePayloadData(
-    IN  PSTORE_RESPONSE Response
+    _In_ PSTORE_RESPONSE    Response
     )
 {
     return Response->Segment[RESPONSE_PAYLOAD_SEGMENT].Data;
@@ -587,10 +587,10 @@ __StorePayloadData(
 
 static FORCEINLINE VOID
 StoreFreeResponse(
-    IN  PSTORE_RESPONSE Response
+    _In_ PSTORE_RESPONSE    Response
     )
 {
-    PSTORE_SEGMENT      Segment;
+    PSTORE_SEGMENT          Segment;
 
     Segment = &Response->Segment[RESPONSE_PAYLOAD_SEGMENT];
 
@@ -602,18 +602,18 @@ StoreFreeResponse(
 
 NTSTATUS
 StoreRead(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node,
-    OUT PCHAR                       *Value
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node,
+    _Outptr_ PCHAR                      *Value
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    ULONG                           Length;
-    PCHAR                           Data;
-    PCHAR                           Buffer;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    ULONG                               Length;
+    PCHAR                               Data;
+    PCHAR                               Buffer;
+    NTSTATUS                            status;
 
     LogTrace("===> %p %s %s\n", Transaction, Prefix ? Prefix : "NULL", Node);
 
@@ -675,15 +675,15 @@ fail1:
 
 NTSTATUS
 StoreWrite(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node,
-    IN  PCHAR                       Value
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node,
+    _In_ PCHAR                          Value
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    NTSTATUS                            status;
 
     RtlZeroMemory(&Request, sizeof (STORE_REQUEST));
 
@@ -729,16 +729,16 @@ fail1:
 
 static FORCEINLINE NTSTATUS
 StoreVPrintf(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node,
-    IN  const CHAR                  *Format,
-    IN  va_list                     Arguments
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node,
+    _In_ const CHAR                     *Format,
+    _In_ va_list                        Arguments
     )
 {
-    PCHAR                           Buffer;
-    ULONG                           Length;
-    NTSTATUS                        status;
+    PCHAR                               Buffer;
+    ULONG                               Length;
+    NTSTATUS                            status;
 
     Length = 32;
     for (;;) {
@@ -794,15 +794,15 @@ fail1:
 
 NTSTATUS
 StorePrintf(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node,
-    IN  const CHAR                  *Format,
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node,
+    _In_ const CHAR                     *Format,
     ...
     )
 {
-    va_list                         Arguments;
-    NTSTATUS                        status;
+    va_list                             Arguments;
+    NTSTATUS                            status;
 
     va_start(Arguments, Format);
     status = StoreVPrintf(Transaction,
@@ -817,14 +817,14 @@ StorePrintf(
 
 NTSTATUS
 StoreRemove(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    NTSTATUS                            status;
 
     LogTrace("===> %p %s %s\n", Transaction, Prefix ? Prefix : "NULL", Node);
 
@@ -871,18 +871,18 @@ fail1:
 
 NTSTATUS
 StoreDirectory(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,
-    IN  PCHAR                       Node,
-    OUT PCHAR                       *Value
+    _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_opt_ PCHAR                      Prefix,
+    _In_ PCHAR                          Node,
+    _Outptr_ PCHAR                      *Value
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    ULONG                           Length;
-    PCHAR                           Data;
-    PCHAR                           Buffer;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    ULONG                               Length;
+    PCHAR                               Data;
+    PCHAR                               Buffer;
+    NTSTATUS                            status;
 
     LogTrace("===> %p %s %s\n", Transaction, Prefix ? Prefix : "NULL", Node);
 
@@ -944,12 +944,12 @@ fail1:
 
 NTSTATUS
 StoreTransactionStart(
-    OUT PXENBUS_STORE_TRANSACTION   *Transaction
+    _Outptr_ PXENBUS_STORE_TRANSACTION  *Transaction
     )
 {
-    STORE_REQUEST                   Request;
-    PSTORE_RESPONSE                 Response;
-    NTSTATUS                        status;
+    STORE_REQUEST                       Request;
+    PSTORE_RESPONSE                     Response;
+    NTSTATUS                            status;
 
     LogTrace("===>\n");
 
@@ -999,8 +999,8 @@ fail1:
 
 NTSTATUS
 StoreTransactionEnd(
-    IN  PXENBUS_STORE_TRANSACTION   Transaction,
-    IN  BOOLEAN                     Commit
+    _In_ PXENBUS_STORE_TRANSACTION  Transaction,
+    _In_ BOOLEAN                    Commit
     )
 {
     STORE_REQUEST                   Request;
@@ -1047,8 +1047,8 @@ extern PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID  BaseAddress);
 
 static FORCEINLINE int
 MemoryOp(
-    IN  ULONG   Command,
-    IN  PVOID   Argument
+    _In_ ULONG  Command,
+    _In_ PVOID  Argument
     )
 {
     return Hypercall2(int, memory_op, Command, Argument);
@@ -1056,8 +1056,8 @@ MemoryOp(
 
 static FORCEINLINE PVOID
 __Round(
-    IN  PVOID               Buffer,
-    IN  ULONG               RoundTo
+    _In_ PVOID  Buffer,
+    _In_ ULONG  RoundTo
     )
 {
     // round buffer to (normally PAGE_SIZE) boundary

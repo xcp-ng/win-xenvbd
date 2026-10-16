@@ -69,7 +69,7 @@ static XENVBD_DRIVER Driver;
 
 VOID
 DriverSetAdapter(
-    IN  PVOID   Adapter
+    _In_ PVOID  Adapter
     )
 {
     ASSERT3P(Driver.Adapter, ==, NULL);
@@ -95,8 +95,8 @@ DriverGetParametersKey(
 
 NTSTATUS
 DriverDispatchPnp(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     )
 {
     return Driver.StorPortDispatchPnp(DeviceObject, Irp);
@@ -104,20 +104,20 @@ DriverDispatchPnp(
 
 NTSTATUS
 DriverDispatchPower(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  PIRP            Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     )
 {
     return Driver.StorPortDispatchPower(DeviceObject, Irp);
 }
 
-__drv_dispatchType(IRP_MJ_PNP)
+_Dispatch_type_(IRP_MJ_PNP)
 DRIVER_DISPATCH             DispatchPnp;
 
 NTSTATUS 
 DispatchPnp(
-    IN PDEVICE_OBJECT   DeviceObject,
-    IN PIRP             Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     )
 {
     if (Driver.Adapter == NULL)
@@ -126,13 +126,13 @@ DispatchPnp(
     return AdapterDispatchPnp(Driver.Adapter, DeviceObject, Irp);
 }
 
-__drv_dispatchType(IRP_MJ_POWER)
+_Dispatch_type_(IRP_MJ_POWER)
 DRIVER_DISPATCH             DispatchPower;
 
 NTSTATUS 
 DispatchPower(
-    IN PDEVICE_OBJECT   DeviceObject,
-    IN PIRP             Irp
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP           Irp
     )
 {
     if (Driver.Adapter == NULL)
@@ -145,7 +145,7 @@ DRIVER_UNLOAD           DriverUnload;
 
 VOID
 DriverUnload(
-    IN  PDRIVER_OBJECT  DriverObject
+    _In_ PDRIVER_OBJECT DriverObject
     )
 {
     Verbose("%u.%u.%u.%u (%02u/%02u/%04u)\n",
@@ -170,7 +170,7 @@ DriverUnload(
     RegistryTeardown();
 }
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 static FORCEINLINE VOID
 __DriverInitializeOverrides(
     VOID
@@ -216,15 +216,15 @@ __DriverInitializeOverrides(
     }
 }
 
-__checkReturn
+_Check_return_
 _Success_(return)
 BOOLEAN
 DriverGetFeatureOverride(
-    IN  XENVBD_FEATURE   Feature,
-    OUT PULONG           Value
+    _In_ XENVBD_FEATURE Feature,
+    _Out_ PULONG        Value
     )
 {
-    BOOLEAN              Present = FALSE;
+    BOOLEAN             Present = FALSE;
 
     if ((ULONG)Feature < ARRAYSIZE(Driver.FeatureOverride)) {
         Present = Driver.FeatureOverride[Feature].Present;
@@ -234,10 +234,10 @@ DriverGetFeatureOverride(
     return Present;
 }
 
-__checkReturn
+_Check_return_
 const CHAR *
 DriverGetFeatureName(
-    IN  XENVBD_FEATURE  Feature
+    _In_ XENVBD_FEATURE Feature
     )
 {
     return ((ULONG)Feature < ARRAYSIZE(Driver.FeatureOverride)) ?
@@ -271,8 +271,8 @@ DRIVER_INITIALIZE   DriverEntry;
 
 NTSTATUS
 DriverEntry(
-    IN  PDRIVER_OBJECT      DriverObject,
-    IN  PUNICODE_STRING     RegistryPath
+    _In_ PDRIVER_OBJECT     DriverObject,
+    _In_ PUNICODE_STRING    RegistryPath
     )
 {
     HANDLE                  ParametersKey;

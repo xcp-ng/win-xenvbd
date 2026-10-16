@@ -88,14 +88,14 @@ struct _XENVBD_PDO {
 //=============================================================================
 static FORCEINLINE PVOID
 __PdoAlloc(
-    IN  ULONG                   Size
+    _In_ ULONG  Size
     )
 {
     return AustereAllocate(Size);
 }
 static FORCEINLINE VOID
 __PdoFree(
-    IN  PVOID                   Buffer
+    _In_ PVOID  Buffer
     )
 {
     AustereFree(Buffer);
@@ -105,14 +105,14 @@ __PdoFree(
 // Creation/Deletion
 NTSTATUS
 PdoCreate(
-    IN  PXENVBD_FDO             Fdo,
-    IN  PCHAR                   DeviceId,
-    IN  ULONG                   TargetId,
-    OUT PXENVBD_PDO*            _Pdo
+    _In_ PXENVBD_FDO        Fdo,
+    _In_ PCHAR              DeviceId,
+    _In_ ULONG              TargetId,
+    _Outptr_ PXENVBD_PDO    *_Pdo
     )
 {
-    PXENVBD_PDO         Pdo;
-    NTSTATUS            Status;
+    PXENVBD_PDO             Pdo;
+    NTSTATUS                Status;
 
     Status = STATUS_INSUFFICIENT_RESOURCES;
     Pdo = __PdoAlloc(sizeof(XENVBD_PDO));
@@ -136,7 +136,7 @@ fail1:
 
 VOID
 PdoDestroy(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     LARGE_INTEGER       Timeout;
@@ -156,7 +156,7 @@ PdoDestroy(
 
 DECLSPEC_NOINLINE VOID
 PdoD3ToD0(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     LogTrace("Target[%d] =====> (Irql=%d)\n", Pdo->Frontend.TargetId, KeGetCurrentIrql());
@@ -169,7 +169,7 @@ PdoD3ToD0(
 
 DECLSPEC_NOINLINE VOID
 PdoD0ToD3(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     LogTrace("Target[%d] =====> (Irql=%d)\n", Pdo->Frontend.TargetId, KeGetCurrentIrql());
@@ -185,7 +185,7 @@ PdoD0ToD3(
 // Reference Counting
 VOID
 PdoReference(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     if (Pdo)
@@ -194,7 +194,7 @@ PdoReference(
 
 VOID
 PdoDereference(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     if (Pdo)
@@ -206,7 +206,7 @@ PdoDereference(
 
 ULONG
 PdoSectorSize(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     ASSERT3U(Pdo->Frontend.SectorSize, !=, 0);
@@ -217,11 +217,11 @@ PdoSectorSize(
 // REQUEST related
 static VOID
 __CleanupRequest(
-    IN  PXENVBD_REQUEST         Request,
-    IN  BOOLEAN                 CopyOut
+    _In_ PXENVBD_REQUEST    Request,
+    _In_ BOOLEAN            CopyOut
     )
 {
-    ULONG               Index;
+    ULONG                   Index;
 
     for (Index = 0; Index < Request->NrSegments; ++Index) {
         // ungrant request
@@ -250,11 +250,11 @@ __CleanupRequest(
 }
 static VOID
 __CleanupSrb(
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
-    ULONG               Index;
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
+    ULONG                       Index;
 
     for (Index = 0; Index < SrbExt->NumRequests; ++Index) {
         PXENVBD_REQUEST Request = &SrbExt->Requests[Index];
@@ -266,8 +266,8 @@ __CleanupSrb(
 // Preparing Requests
 static FORCEINLINE VOID
 __UpdateStats(
-    __in PXENVBD_PDO             Pdo,
-    __in UCHAR                   Operation
+    _In_ PXENVBD_PDO    Pdo,
+    _In_ UCHAR          Operation
     )
 {
     switch (Operation) {
@@ -284,8 +284,8 @@ __UpdateStats(
 }
 static FORCEINLINE ULONG
 __Min(
-    IN  ULONG                   Val1,
-    IN  ULONG                   Val2
+    _In_ ULONG  Val1,
+    _In_ ULONG  Val2
     )
 {
     if (Val1 < Val2)
@@ -296,10 +296,10 @@ __Min(
 extern PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Buffer);
 static FORCEINLINE PFN_NUMBER
 VirtToPfn(
-    IN  PVOID                   VirtAddr
+    _In_ PVOID          VirtAddr
     )
 {
-    PHYSICAL_ADDRESS PhysAddr = MmGetPhysicalAddress(VirtAddr);
+    PHYSICAL_ADDRESS    PhysAddr = MmGetPhysicalAddress(VirtAddr);
     return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
 }
 static FORCEINLINE ULONG __SectorSize(
@@ -311,9 +311,9 @@ static FORCEINLINE ULONG __SectorSize(
 }
 static FORCEINLINE VOID
 __Operation(
-    IN  UCHAR                   CdbOp,
-    OUT PUCHAR                  RingOp,
-    OUT PBOOLEAN                ReadOnly
+    _In_ UCHAR      CdbOp,
+    _Out_ PUCHAR    RingOp,
+    _Out_ PBOOLEAN  ReadOnly
     )
 {
     switch (CdbOp) {
@@ -331,17 +331,17 @@ __Operation(
 }
 static FORCEINLINE ULONG
 __Offset(
-    IN  STOR_PHYSICAL_ADDRESS   PhysAddr
+    _In_ STOR_PHYSICAL_ADDRESS  PhysAddr
     )
 {
     return (ULONG)(PhysAddr.QuadPart & (PAGE_SIZE - 1));
 }
 static FORCEINLINE VOID
 __GetPhysAddr(
-    IN  PSTOR_SCATTER_GATHER_LIST   SGList,
-    IN OUT PXENVBD_SG_INDEX         SGIndex,
-    OUT PSTOR_PHYSICAL_ADDRESS      SGPhysAddr,
-    OUT PULONG                      SGPhysLen
+    _In_ PSTOR_SCATTER_GATHER_LIST  SGList,
+    _Inout_ PXENVBD_SG_INDEX        SGIndex,
+    _Out_ PSTOR_PHYSICAL_ADDRESS    SGPhysAddr,
+    _Out_ PULONG                    SGPhysLen
     )
 {
     PSTOR_SCATTER_GATHER_ELEMENT    SGElement;
@@ -366,9 +366,9 @@ __GetPhysAddr(
 }
 static FORCEINLINE BOOLEAN
 __PhysAddrIsAligned(
-    IN  STOR_PHYSICAL_ADDRESS   PhysAddr,
-    IN  ULONG                   Length,
-    IN  ULONG                   Alignment
+    _In_ STOR_PHYSICAL_ADDRESS  PhysAddr,
+    _In_ ULONG                  Length,
+    _In_ ULONG                  Alignment
     )
 {
     if ((PhysAddr.QuadPart & Alignment) || (Length & Alignment))
@@ -378,23 +378,23 @@ __PhysAddrIsAligned(
 }
 static FORCEINLINE PFN_NUMBER
 __Pfn(
-    IN  STOR_PHYSICAL_ADDRESS   PhysAddr
+    _In_ STOR_PHYSICAL_ADDRESS  PhysAddr
     )
 {
     return (PFN_NUMBER)(PhysAddr.QuadPart >> PAGE_SHIFT);
 }
 static NTSTATUS
 PrepareReadWrite(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    NTSTATUS        Status;
-    ULONG           SectorsDone;
-    UCHAR           Operation;
-    BOOLEAN         ReadOnly;
-    ULONG           Index1, Index2;
-    ULONG           SectorsNow;
+    NTSTATUS                    Status;
+    ULONG                       SectorsDone;
+    UCHAR                       Operation;
+    BOOLEAN                     ReadOnly;
+    ULONG                       Index1, Index2;
+    ULONG                       SectorsNow;
 
     PSTOR_SCATTER_GATHER_LIST   SGList;
     XENVBD_SG_INDEX             SGIndex;
@@ -557,13 +557,13 @@ done:
 }
 static VOID
 PrepareSyncCache(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
-    PXENVBD_REQUEST         Request;
-    UCHAR                   Operation;
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
+    PXENVBD_REQUEST             Request;
+    UCHAR                       Operation;
 
     if (Pdo->Frontend.FeatureBarrier) {
         Operation = BLKIF_OP_WRITE_BARRIER;
@@ -596,7 +596,7 @@ PrepareSyncCache(
 
 VOID
 PdoPrepareFresh(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO        Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;
@@ -622,7 +622,7 @@ PdoPrepareFresh(
 
 VOID
 PdoSubmitPrepared(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     for (;;) {
@@ -654,7 +654,7 @@ PdoSubmitPrepared(
 
 VOID
 PdoCompleteShutdown(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO        Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;
@@ -675,13 +675,13 @@ PdoCompleteShutdown(
 
 VOID
 PdoCompleteSubmittedRequest(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PXENVBD_REQUEST         Request,
-    IN  SHORT                   Status
+    _In_ PXENVBD_PDO        Pdo,
+    _In_ PXENVBD_REQUEST    Request,
+    _In_ SHORT              Status
     )
 {
-    PSCSI_REQUEST_BLOCK Srb = Request->Srb;
-    PXENVBD_SRBEXT      SrbExt = GetSrbExt(Srb);
+    PSCSI_REQUEST_BLOCK     Srb = Request->Srb;
+    PXENVBD_SRBEXT          SrbExt = GetSrbExt(Srb);
 
     if (Status != BLKIF_RSP_OKAY) {
         LogError("Request 0x%p was failed by the backend with %d\n", Request, Status);
@@ -766,11 +766,11 @@ __ValidateSectors(
 }
 static BOOLEAN
 PdoReadWrite(
-    IN  PXENVBD_PDO            Pdo,
-    IN  PSCSI_REQUEST_BLOCK    Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    NTSTATUS Status;
+    NTSTATUS                    Status;
 
     if (!Pdo->Frontend.Connected) {
         LogTrace("Target[%d] : Not Ready, fail SRB\n", Pdo->Frontend.TargetId);
@@ -800,8 +800,8 @@ PdoReadWrite(
 }
 static FORCEINLINE BOOLEAN
 PdoSyncCache(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     if (!Pdo->Frontend.Connected) {
@@ -829,14 +829,14 @@ PdoSyncCache(
 #define MODE_CACHING_PAGE_LENGTH 20
 static FORCEINLINE VOID
 PdoModeSense(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )    
 {
-    PMODE_PARAMETER_HEADER  Header  = Srb->DataBuffer;
-    const UCHAR PageCode            = Cdb_PageCode(Srb);
-    ULONG LengthLeft                = Cdb_AllocationLength(Srb);
-    PVOID CurrentPage               = Srb->DataBuffer;
+    PMODE_PARAMETER_HEADER      Header = Srb->DataBuffer;
+    const UCHAR                 PageCode = Cdb_PageCode(Srb);
+    ULONG                       LengthLeft = Cdb_AllocationLength(Srb);
+    PVOID                       CurrentPage = Srb->DataBuffer;
 
     UNREFERENCED_PARAMETER(Pdo);
 
@@ -934,11 +934,11 @@ PdoModeSense(
 }
 static FORCEINLINE VOID
 PdoRequestSense(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PSENSE_DATA         Sense = Srb->DataBuffer;
+    PSENSE_DATA                 Sense = Srb->DataBuffer;
 
     UNREFERENCED_PARAMETER(Pdo);
 
@@ -954,14 +954,14 @@ PdoRequestSense(
 }
 static FORCEINLINE VOID
 PdoReportLuns(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    ULONG           Length;
-    ULONG           Offset;
-    ULONG           AllocLength = Cdb_AllocationLength(Srb);
-    PUCHAR          Buffer = Srb->DataBuffer;
+    ULONG                       Length;
+    ULONG                       Offset;
+    ULONG                       AllocLength = Cdb_AllocationLength(Srb);
+    PUCHAR                      Buffer = Srb->DataBuffer;
 
     UNREFERENCED_PARAMETER(Pdo);
 
@@ -989,15 +989,15 @@ PdoReportLuns(
 }
 static FORCEINLINE VOID
 PdoReadCapacity(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_FRONTEND        Frontend = &Pdo->Frontend;
-    PREAD_CAPACITY_DATA     Capacity = Srb->DataBuffer;
-    ULONG64                 SectorCount;
-    ULONG                   SectorSize;
-    ULONG                   LastBlock;
+    PXENVBD_FRONTEND            Frontend = &Pdo->Frontend;
+    PREAD_CAPACITY_DATA         Capacity = Srb->DataBuffer;
+    ULONG64                     SectorCount;
+    ULONG                       SectorSize;
+    ULONG                       LastBlock;
 
     SectorCount = Frontend->BlkifSectorCount >> Frontend->SectorShift;
     SectorSize = Frontend->SectorSize;
@@ -1016,14 +1016,14 @@ PdoReadCapacity(
 }
 static FORCEINLINE VOID
 PdoReadCapacity16(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_FRONTEND        Frontend = &Pdo->Frontend;
-    PREAD_CAPACITY_DATA_EX  Capacity = Srb->DataBuffer;
-    ULONG64                 SectorCount;
-    ULONG                   SectorSize;
+    PXENVBD_FRONTEND            Frontend = &Pdo->Frontend;
+    PREAD_CAPACITY_DATA_EX      Capacity = Srb->DataBuffer;
+    ULONG64                     SectorCount;
+    ULONG                       SectorSize;
 
     SectorCount = Frontend->BlkifSectorCount >> Frontend->SectorShift;
     SectorSize = Frontend->SectorSize;
@@ -1040,7 +1040,7 @@ PdoReadCapacity16(
 // StorPort Methods
 static FORCEINLINE VOID
 __DisplayStats(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     LogVerbose("Target[%d] : BLKIF_OP_'s Reads %d / Writes %d / Others %d\n",
@@ -1050,10 +1050,10 @@ __DisplayStats(
 }
 static VOID
 __AbortSrbQueue(
-    IN  PSRB_QUEUE              Queue,
-    IN  PXENVBD_PDO             Pdo,
-    IN  BOOLEAN                 Free,
-    IN  PCHAR                   Name
+    _In_ PSRB_QUEUE     Queue,
+    _In_ PXENVBD_PDO    Pdo,
+    _In_ BOOLEAN        Free,
+    _In_ PCHAR          Name
     )
 {
     PSCSI_REQUEST_BLOCK Srb;
@@ -1069,11 +1069,11 @@ __AbortSrbQueue(
 }
 static BOOLEAN
 PdoExecuteScsi(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    const UCHAR Operation = Cdb_OperationEx(Srb);
+    const UCHAR                 Operation = Cdb_OperationEx(Srb);
     // idea: check pdo state here. still push to freshsrbs
     //LogVerbose("Target[%d] ====> %02x:%s\n", Pdo->Frontend.TargetId, Operation, Cdb_OperationName(Operation));
     switch (Operation) {
@@ -1132,8 +1132,8 @@ PdoExecuteScsi(
 }
 static FORCEINLINE VOID
 PdoQueueShutdown(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     LogVerbose("Target[%d] : shutdown\n", Pdo->Frontend.TargetId);
@@ -1143,7 +1143,7 @@ PdoQueueShutdown(
 
 VOID
 PdoReset(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO        Pdo
     )
 {
     PSCSI_REQUEST_BLOCK     Srb;
@@ -1180,8 +1180,8 @@ PdoReset(
 }
 static FORCEINLINE BOOLEAN
 ValidateSrbForPdo(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     if (Srb->PathId != 0) {
@@ -1205,8 +1205,8 @@ ValidateSrbForPdo(
 }
 BOOLEAN
 PdoStartIo(
-    IN  PXENVBD_PDO             Pdo,
-    IN  PSCSI_REQUEST_BLOCK     Srb
+    _In_ PXENVBD_PDO            Pdo,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     if (!ValidateSrbForPdo(Pdo, Srb))
@@ -1240,7 +1240,7 @@ PdoStartIo(
 
 VOID
 PdoAbortAllSrbs(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     __AbortSrbQueue(&Pdo->FreshSrbs, Pdo, FALSE, "Fresh");
@@ -1250,7 +1250,7 @@ PdoAbortAllSrbs(
 
 VOID
 PdoEvtchnInterruptHandler(
-    IN  PXENVBD_PDO             Pdo
+    _In_ PXENVBD_PDO    Pdo
     )
 {
     FrontendEvtchnCallback(&Pdo->Frontend);

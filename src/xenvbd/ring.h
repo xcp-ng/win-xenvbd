@@ -40,56 +40,56 @@ typedef struct _XENVBD_RING XENVBD_RING, *PXENVBD_RING;
 
 extern NTSTATUS
 RingCreate(
-    IN  PXENVBD_FRONTEND    Frontend,
-    OUT PXENVBD_RING*       Ring
+    _In_ PXENVBD_FRONTEND   Frontend,
+    _Outptr_ PXENVBD_RING   *Ring
     );
 
 extern VOID
 RingDestroy(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern NTSTATUS
 RingConnect(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern NTSTATUS
 RingStoreWrite(
-    IN  PXENVBD_RING    Ring,
-    IN  PVOID           Transaction
+    _In_ PXENVBD_RING   Ring,
+    _In_ PVOID          Transaction
     );
 
 extern VOID
 RingEnable(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern VOID
 RingDisable(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern VOID
 RingDisconnect(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern BOOLEAN
 RingIsPoisoned(
-    IN  PXENVBD_RING    Ring
+    _In_ PXENVBD_RING   Ring
     );
 
 extern BOOLEAN
 RingQueueRequest(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_RING   Ring,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 extern BOOLEAN
 RingQueueShutdown(
-    IN  PXENVBD_RING    Ring,
-    IN  PXENVBD_SRBEXT  SrbExt
+    _In_ PXENVBD_RING   Ring,
+    _In_ PXENVBD_SRBEXT SrbExt
     );
 
 #endif // _XENVBD_RING_H

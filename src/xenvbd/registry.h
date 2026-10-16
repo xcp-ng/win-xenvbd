@@ -37,8 +37,8 @@
 
 extern NTSTATUS
 RegistryInitialize(
-    IN  PDRIVER_OBJECT  DriverObject,
-    IN  PUNICODE_STRING Path
+    _In_ PDRIVER_OBJECT     DriverObject,
+    _In_ PUNICODE_STRING    Path
     );
 
 extern VOID
@@ -46,188 +46,188 @@ RegistryTeardown(
     VOID
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenKey(
-    IN  HANDLE          Parent,
-    IN  PUNICODE_STRING Path,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ HANDLE             Parent,
+    _In_ PUNICODE_STRING    Path,
+    _In_ ACCESS_MASK        DesiredAccess,
+    _Out_ PHANDLE           Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryCreateKey(
-    IN  HANDLE          Parent,
-    IN  PUNICODE_STRING Path,
-    IN  ULONG           Options,
-    OUT PHANDLE         Key
+    _In_ HANDLE             Parent,
+    _In_ PUNICODE_STRING    Path,
+    _In_ ULONG              Options,
+    _Out_ PHANDLE           Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenServiceKey(
-    IN  ACCESS_MASK DesiredAccess,
-    OUT PHANDLE     Key
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryCreateServiceKey(
-    OUT PHANDLE     Key
+    _Out_ PHANDLE   Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenParametersKey(
-    IN  ACCESS_MASK DesiredAccess,
-    OUT PHANDLE     Key
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenSoftwareKey(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenHardwareKey(
-    IN  PDEVICE_OBJECT  DeviceObject,
-    IN  ACCESS_MASK     DesiredAccess,
-    OUT PHANDLE         Key
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       Key
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenSubKey(
-    IN  HANDLE      Key,
-    IN  PCHAR       Name,
-    IN  ACCESS_MASK DesiredAccess,
-    OUT PHANDLE     SubKey
+    _In_ HANDLE         Key,
+    _In_ PCHAR          Name,
+    _In_ ACCESS_MASK    DesiredAccess,
+    _Out_ PHANDLE       SubKey
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryCreateSubKey(
-    IN  HANDLE      Key,
-    IN  PCHAR       Name,
-    IN  ULONG       Options,
-    OUT PHANDLE     SubKey
+    _In_ HANDLE     Key,
+    _In_ PCHAR      Name,
+    _In_ ULONG      Options,
+    _Out_ PHANDLE   SubKey
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryDeleteSubKey(
-    IN  HANDLE      Key,
-    IN  PCHAR       Name
+    _In_ HANDLE Key,
+    _In_ PCHAR  Name
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryEnumerateSubKeys(
-    IN  HANDLE      Key,
-    IN  NTSTATUS    (*Callback)(PVOID, HANDLE, PANSI_STRING),
-    IN  PVOID       Context
+    _In_ HANDLE     Key,
+    _In_ NTSTATUS   (*Callback)(PVOID, HANDLE, PANSI_STRING),
+    _In_ PVOID      Context
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryEnumerateValues(
-    IN  HANDLE      Key,
-    IN  NTSTATUS    (*Callback)(PVOID, HANDLE, PANSI_STRING, ULONG),
-    IN  PVOID       Context
+    _In_ HANDLE     Key,
+    _In_ NTSTATUS   (*Callback)(PVOID, HANDLE, PANSI_STRING, ULONG),
+    _In_ PVOID      Context
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryDeleteValue(
-    IN  HANDLE      Key,
-    IN  PCHAR       Name
+    _In_ HANDLE Key,
+    _In_ PCHAR  Name
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryDwordValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    OUT PULONG          Value
+    _In_ HANDLE     Key,
+    _In_ PCHAR      Name,
+    _Out_ PULONG    Value
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateDwordValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    IN  ULONG           Value
+    _In_ HANDLE Key,
+    _In_ PCHAR  Name,
+    _In_ ULONG  Value
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQuerySzValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    OUT PULONG          Type OPTIONAL,
-    OUT PANSI_STRING    *Array
+    _In_ HANDLE             Key,
+    _In_ PCHAR              Name,
+    _Out_opt_ PULONG        Type,
+    _Outptr_ PANSI_STRING   *Array
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryBinaryValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    OUT PVOID           *Buffer,
-    OUT PULONG          Length
+    _In_ HANDLE     Key,
+    _In_ PCHAR      Name,
+    _Outptr_ PVOID  *Buffer,
+    _Out_ PULONG    Length
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateBinaryValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    IN  PVOID           Buffer,
-    IN  ULONG           Length
+    _In_ HANDLE Key,
+    _In_ PCHAR  Name,
+    _In_ PVOID  Buffer,
+    _In_ ULONG  Length
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryKeyName(
-    IN  HANDLE              Key,
-    OUT PANSI_STRING        *Array
+    _In_ HANDLE             Key,
+    _Outptr_ PANSI_STRING   *Array
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQuerySystemStartOption(
-    IN  const CHAR      *Prefix,
-    OUT PANSI_STRING    *Option
+    _In_ const CHAR         *Prefix,
+    _Outptr_ PANSI_STRING   *Option
     );
 
 extern VOID
 RegistryFreeSzValue(
-    IN  PANSI_STRING    Array
+    _In_ PANSI_STRING   Array
     );
 
 extern VOID
 RegistryFreeBinaryValue(
-    IN  PVOID           Buffer
+    _In_ PVOID  Buffer
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateSzValue(
-    IN  HANDLE          Key,
-    IN  PCHAR           Name,
-    IN  ULONG           Type,
-    IN  PANSI_STRING    Array
+    _In_ HANDLE         Key,
+    _In_ PCHAR          Name,
+    _In_ ULONG          Type,
+    _In_ PANSI_STRING   Array
     );
 
-__drv_requiresIRQL(PASSIVE_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern VOID
 RegistryCloseKey(
-    IN  HANDLE  Key
+    _In_ HANDLE Key
     );
 
 #endif  // _XENVBD_REGISTRY_H

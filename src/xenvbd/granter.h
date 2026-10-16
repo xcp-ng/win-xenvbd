@@ -41,59 +41,59 @@ typedef struct _XENVBD_GRANTER XENVBD_GRANTER, *PXENVBD_GRANTER;
 
 extern NTSTATUS
 GranterCreate(
-    IN  PXENVBD_FRONTEND    Frontend,
-    OUT PXENVBD_GRANTER     *Granter
+    _In_ PXENVBD_FRONTEND       Frontend,
+    _Outptr_ PXENVBD_GRANTER    *Granter
     );
 
 extern VOID
 GranterDestroy(
-    IN  PXENVBD_GRANTER     Granter
+    _In_ PXENVBD_GRANTER    Granter
     );
 
 extern NTSTATUS
 GranterConnect(
-    IN  PXENVBD_GRANTER     Granter
+    _In_ PXENVBD_GRANTER    Granter
     );
 
 extern NTSTATUS
 GranterStoreWrite(
-    IN  PXENVBD_GRANTER Granter,
-    IN  PVOID           Transaction
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Transaction
     );
 
 extern VOID
 GranterEnable(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     );
 
 extern VOID
 GranterDisable(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     );
 
 extern VOID
 GranterDisconnect(
-    IN  PXENVBD_GRANTER Granter
+    _In_ PXENVBD_GRANTER    Granter
     );
 
 extern NTSTATUS
 GranterGet(
-    IN  PXENVBD_GRANTER Granter,
-    IN  PFN_NUMBER      Pfn,
-    IN  BOOLEAN         ReadOnly,
-    OUT PVOID           *Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PFN_NUMBER         Pfn,
+    _In_ BOOLEAN            ReadOnly,
+    _Outptr_ PVOID          *Handle
     );
 
 extern VOID
 GranterPut(
-    IN  PXENVBD_GRANTER Granter,
-    IN  PVOID           Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Handle
     );
 
 extern ULONG
 GranterReference(
-    IN  PXENVBD_GRANTER Granter,
-    IN  PVOID           Handle
+    _In_ PXENVBD_GRANTER    Granter,
+    _In_ PVOID              Handle
     );
 
 #endif // _XENVBD_GRANTER_H

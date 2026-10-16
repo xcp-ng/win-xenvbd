@@ -38,7 +38,7 @@
 
 static FORCEINLINE const PCHAR
 XenbusStateName(
-    IN  XenbusState     State
+    _In_ XenbusState    State
     )
 {
     switch (State) {
@@ -57,7 +57,7 @@ XenbusStateName(
 
 static FORCEINLINE const PCHAR
 SrbStatusName(
-    IN  ULONG       Status
+    _In_ ULONG  Status
     )
 {
     switch (Status) {
@@ -75,7 +75,7 @@ SrbStatusName(
 
 static FORCEINLINE const PCHAR
 StorStatusName(
-    IN  ULONG       Status
+    _In_ ULONG  Status
     )
 {
     switch (Status) {
@@ -87,7 +87,7 @@ StorStatusName(
 }
 static FORCEINLINE const PCHAR
 ScsiAdapterControlTypeName(
-    IN  SCSI_ADAPTER_CONTROL_TYPE   ControlType
+    _In_ SCSI_ADAPTER_CONTROL_TYPE  ControlType
     )
 {
 #define _SCSI_CONTROL_TYPE_NAME(_type)      \
@@ -107,7 +107,7 @@ ScsiAdapterControlTypeName(
 }
 static FORCEINLINE const PCHAR
 StorPnPActionName(
-    IN  STOR_PNP_ACTION         Action
+    _In_ STOR_PNP_ACTION    Action
     )
 {
     switch (Action) {
@@ -121,7 +121,7 @@ StorPnPActionName(
 }
 static FORCEINLINE const PCHAR
 StorDeviceStateName(
-    IN  STOR_DEVICE_POWER_STATE     State
+    _In_ STOR_DEVICE_POWER_STATE    State
     )
 {
     switch (State) {
@@ -136,7 +136,7 @@ StorDeviceStateName(
 }
 static FORCEINLINE const PCHAR
 StorPowerActionName(
-    IN  STOR_POWER_ACTION           Action
+    _In_ STOR_POWER_ACTION  Action
     )
 {
     switch (Action) {
@@ -154,7 +154,7 @@ StorPowerActionName(
 
 static FORCEINLINE const PCHAR
 PowerTypeName(
-    IN  POWER_STATE_TYPE    Type
+    _In_ POWER_STATE_TYPE   Type
     )
 {
 #define _POWER_TYPE_NAME(_Type) \
@@ -174,7 +174,7 @@ PowerTypeName(
 
 static FORCEINLINE const PCHAR
 PowerSystemStateName(
-    IN  SYSTEM_POWER_STATE State
+    _In_ SYSTEM_POWER_STATE State
     )
 {
 #define _POWER_SYSTEM_STATE_NAME(_State)    \
@@ -200,7 +200,7 @@ PowerSystemStateName(
 
 static FORCEINLINE const PCHAR
 PowerDeviceStateName(
-    IN  DEVICE_POWER_STATE State
+    _In_ DEVICE_POWER_STATE State
     )
 {
 #define _POWER_DEVICE_STATE_NAME(_State)    \
@@ -224,7 +224,7 @@ PowerDeviceStateName(
 
 static FORCEINLINE const PCHAR
 PowerActionName(
-    IN  POWER_ACTION    Type
+    _In_ POWER_ACTION   Type
     )
 {
 #define _POWER_ACTION_NAME(_Type)   \
@@ -250,7 +250,7 @@ PowerActionName(
 
 static FORCEINLINE const PCHAR
 PowerMinorFunctionName(
-    IN  ULONG   MinorFunction
+    _In_ ULONG  MinorFunction
     )
 {
 #define _POWER_MINOR_FUNCTION_NAME(_Function)   \
@@ -272,7 +272,7 @@ PowerMinorFunctionName(
 
 static FORCEINLINE const PCHAR
 PnpMinorFunctionName(
-    IN  ULONG   Function
+    _In_ ULONG  Function
     )
 {
 #define _PNP_MINOR_FUNCTION_NAME(_Function) \
@@ -315,7 +315,7 @@ PnpMinorFunctionName(
 
 static FORCEINLINE const PCHAR
 PartialResourceDescriptorTypeName(
-    IN  UCHAR   Type
+    _In_ UCHAR  Type
     )
 {
 #define _PARTIAL_RESOURCE_DESCRIPTOR_TYPE_NAME(_Type)   \
@@ -344,7 +344,7 @@ PartialResourceDescriptorTypeName(
 
 static FORCEINLINE const PCHAR
 PnPMinorFunction(
-    IN  ULONG   Func
+    _In_ ULONG  Func
     )
 {
 #define _PNP_MINOR_FUNC_NAME(_func)     \
@@ -385,7 +385,7 @@ PnPMinorFunction(
 
 static FORCEINLINE const PCHAR
 QueryDeviceRelationsName(
-    IN  ULONG   Type
+    _In_ ULONG  Type
     )
 {
     switch (Type) {

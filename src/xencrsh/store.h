@@ -43,53 +43,53 @@ StoreTerminate();
 
 NTSTATUS
 StoreRead(
-    IN  PVOID                       Transaction OPTIONAL,
-    IN  PCHAR                       Prefix OPTIONAL,     
-    IN  PCHAR                       Node,                
-    OUT PCHAR                       *Value               
+    _In_opt_ PVOID  Transaction,
+    _In_opt_ PCHAR  Prefix,
+    _In_ PCHAR      Node,
+    _Outptr_ PCHAR  *Value
     );
 
 NTSTATUS
 StoreWrite(
-    IN  PVOID                       Transaction OPTIONAL, 
-    IN  PCHAR                       Prefix OPTIONAL,      
-    IN  PCHAR                       Node,                 
-    IN  PCHAR                       Value
+    _In_opt_ PVOID  Transaction,
+    _In_opt_ PCHAR  Prefix,
+    _In_ PCHAR      Node,
+    _In_ PCHAR      Value
     );
 
 NTSTATUS
 StorePrintf(
-    IN  PVOID                       Transaction OPTIONAL, 
-    IN  PCHAR                       Prefix OPTIONAL,      
-    IN  PCHAR                       Node,                 
-    IN  const CHAR                  *Format,              
+    _In_opt_ PVOID  Transaction,
+    _In_opt_ PCHAR  Prefix,
+    _In_ PCHAR      Node,
+    _In_ const CHAR *Format,
     ...                                                   
     );
 
 NTSTATUS
 StoreRemove(                                                     
-    IN  PVOID                       Transaction OPTIONAL, 
-    IN  PCHAR                       Prefix OPTIONAL,      
-    IN  PCHAR                       Node                  
+    _In_opt_ PVOID  Transaction,
+    _In_opt_ PCHAR  Prefix,
+    _In_ PCHAR      Node
     );
 
 NTSTATUS
 StoreDirectory(                                                     
-    IN  PVOID                       Transaction OPTIONAL, 
-    IN  PCHAR                       Prefix OPTIONAL,      
-    IN  PCHAR                       Node,                 
-    OUT PCHAR                       *Value                
+    _In_opt_ PVOID  Transaction,
+    _In_opt_ PCHAR  Prefix,
+    _In_ PCHAR      Node,
+    _Outptr_ PCHAR  *Value
     );
 
 NTSTATUS
 StoreTransactionStart(                                                     
-    OUT PVOID                       *Transaction          
+    _Outptr_ PVOID  *Transaction
     );
 
 NTSTATUS
 StoreTransactionEnd(                                                     
-    IN  PVOID                       Transaction,          
-    IN  BOOLEAN                     Commit                
+    _In_ PVOID      Transaction,
+    _In_ BOOLEAN    Commit
     );
 
 #endif // _XENVBD_STORE_H

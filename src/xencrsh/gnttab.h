@@ -44,25 +44,25 @@ GnttabTerminate();
 
 NTSTATUS
 GnttabGet(
-    OUT PULONG                      Reference
+    _Out_ PULONG    Reference
     );
 
 VOID
 GnttabPut(
-    IN  ULONG                       Reference
+    _In_ ULONG  Reference
     );
 
 VOID
 GnttabPermitForeignAccess(
-    IN  ULONG                       Reference,
-    IN  USHORT                      Domain,
-    IN  PFN_NUMBER                  Frame,
-    IN  BOOLEAN                     ReadOnly
+    _In_ ULONG      Reference,
+    _In_ USHORT     Domain,
+    _In_ PFN_NUMBER Frame,
+    _In_ BOOLEAN    ReadOnly
     );
 
 VOID
 GnttabRevokeForeignAccess(
-    IN  ULONG                       Reference
+    _In_ ULONG  Reference
     );
 
 #endif // _XENVBD_GNTTAB_H

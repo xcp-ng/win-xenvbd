@@ -38,7 +38,7 @@
 
 static FORCEINLINE BOOLEAN
 __QueueValid(
-    IN  PSRB_QUEUE          Queue
+    _In_ PSRB_QUEUE Queue
     )
 {
     if (( Queue->Count == 0 && (Queue->Head != NULL || Queue->Tail != NULL) ) ||
@@ -51,11 +51,11 @@ __QueueValid(
 }
 static VOID
 __QueueRemoveLocked(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
 
     ASSERT3P(SrbExt->QueueHead, ==, Queue);
 
@@ -86,11 +86,11 @@ __QueueRemoveLocked(
 
 static FORCEINLINE VOID
 __QueueInsertHeadLocked(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
 
     ASSERT3P(SrbExt->QueueHead, ==, NULL);
 
@@ -117,11 +117,11 @@ __QueueInsertHeadLocked(
 
 static FORCEINLINE VOID
 __QueueInsertTailLocked(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
-    PXENVBD_SRBEXT  SrbExt = GetSrbExt(Srb);
+    PXENVBD_SRBEXT              SrbExt = GetSrbExt(Srb);
 
     ASSERT3P(SrbExt->QueueHead, ==, NULL);
 
@@ -148,7 +148,7 @@ __QueueInsertTailLocked(
 
 PSCSI_REQUEST_BLOCK
 QueuePeek(
-    IN  PSRB_QUEUE          Queue
+    _In_ PSRB_QUEUE Queue
     )
 {
     ASSERT(__QueueValid(Queue));
@@ -157,7 +157,7 @@ QueuePeek(
 
 PSCSI_REQUEST_BLOCK
 QueuePop(
-    IN  PSRB_QUEUE          Queue
+    _In_ PSRB_QUEUE     Queue
     )
 {
     PSCSI_REQUEST_BLOCK Srb = NULL;
@@ -170,8 +170,8 @@ QueuePop(
 
 VOID
 QueueInsertHead(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     __QueueInsertHeadLocked(Queue, Srb);
@@ -179,8 +179,8 @@ QueueInsertHead(
 
 VOID
 QueueInsertTail(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     __QueueInsertTailLocked(Queue, Srb);
@@ -188,8 +188,8 @@ QueueInsertTail(
 
 VOID
 QueueRemove(
-    IN  PSRB_QUEUE          Queue,
-    IN  PSCSI_REQUEST_BLOCK Srb
+    _In_ PSRB_QUEUE             Queue,
+    _In_ PSCSI_REQUEST_BLOCK    Srb
     )
 {
     __QueueRemoveLocked(Queue, Srb);
@@ -197,8 +197,8 @@ QueueRemove(
 
 VOID
 QueueDebugCallback(
-    IN  PSRB_QUEUE          Queue,
-    IN  PCHAR               Name
+    _In_ PSRB_QUEUE Queue,
+    _In_ PCHAR      Name
     )
 {
     LogTrace("=====> %s\n", Name);

@@ -39,7 +39,7 @@
 
 XEN_API NTSTATUS
 XencrshEntryPoint(
-    IN  PDRIVER_OBJECT  _DriverObject
+    _In_ PDRIVER_OBJECT _DriverObject
     );
 
 #endif // _XENCRSH_XENCRSH_INTERFACE_H

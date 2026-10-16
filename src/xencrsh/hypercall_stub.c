@@ -91,14 +91,14 @@ static HYPERCALL_INSTRUCTION    HypercallInstruction
 
 static FORCEINLINE VOID
 __CpuId(
-    IN  ULONG   Leaf,
-    OUT PULONG  EAX OPTIONAL,
-    OUT PULONG  EBX OPTIONAL,
-    OUT PULONG  ECX OPTIONAL,
-    OUT PULONG  EDX OPTIONAL
+    _In_ ULONG          Leaf,
+    _Out_opt_ PULONG    EAX,
+    _Out_opt_ PULONG    EBX,
+    _Out_opt_ PULONG    ECX,
+    _Out_opt_ PULONG    EDX
     )
 {
-    int         Value[4] = {0};
+    int                 Value[4] = {0};
 
     __cpuid(Value, Leaf);
 
