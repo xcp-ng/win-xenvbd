@@ -48,7 +48,7 @@
 */
 typedef NTSTATUS
 (*XENBUS_UNPLUG_ACQUIRE)(
-    IN  PINTERFACE  Interface
+    _In_ PINTERFACE Interface
     );
 
 /*! \typedef XENBUS_UNPLUG_RELEASE
@@ -58,7 +58,7 @@ typedef NTSTATUS
 */
 typedef VOID
 (*XENBUS_UNPLUG_RELEASE)(
-    IN  PINTERFACE  Interface
+    _In_ PINTERFACE Interface
     );
 
 /*! \enum _XENBUS_UNPLUG_DEVICE_TYPE
@@ -80,9 +80,9 @@ typedef enum _XENBUS_UNPLUG_DEVICE_TYPE {
 */
 typedef VOID
 (*XENBUS_UNPLUG_REQUEST)(
-    IN  PINTERFACE                  Interface,
-    IN  XENBUS_UNPLUG_DEVICE_TYPE   Type,
-    IN  BOOLEAN                     Make
+    _In_ PINTERFACE                 Interface,
+    _In_ XENBUS_UNPLUG_DEVICE_TYPE  Type,
+    _In_ BOOLEAN                    Make
     );
 
 /*! \typedef XENBUS_UNPLUG_IS_REQUESTED
@@ -95,8 +95,8 @@ typedef VOID
 */
 typedef BOOLEAN
 (*XENBUS_UNPLUG_IS_REQUESTED)(
-    IN  PINTERFACE                  Interface,
-    IN  XENBUS_UNPLUG_DEVICE_TYPE   Type
+    _In_ PINTERFACE                 Interface,
+    _In_ XENBUS_UNPLUG_DEVICE_TYPE  Type
     );
 
 /*! \typedef XENBUS_UNPLUG_BOOT_EMULATED
@@ -106,7 +106,7 @@ typedef BOOLEAN
 */
 typedef BOOLEAN
 (*XENBUS_UNPLUG_BOOT_EMULATED)(
-    IN  PINTERFACE                  Interface
+    _In_ PINTERFACE                 Interface
     );
 
 /*! \typedef XENBUS_UNPLUG_REBOOT
@@ -117,8 +117,8 @@ typedef BOOLEAN
 */
 typedef VOID
 (*XENBUS_UNPLUG_REBOOT)(
-    IN  PINTERFACE                  Interface,
-    IN  PCHAR                       Module
+    _In_ PINTERFACE                 Interface,
+    _In_ PSTR                       Module
     );
 
 // {73db6517-3d06-4937-989f-199b7501e229}
