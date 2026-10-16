@@ -635,6 +635,10 @@ __DumpBytes(
 {
     ULONG       ThisTime, Index;
 
+    // ThisTime = min(Length - Index, 8): reads stay below Length.
+    // The analyzer loses that bound through the switch (C6385 false positive).
+#pragma warning(push)
+#pragma warning(disable: 6385)
     for (Index = 0; Index < Length; ) {
         ThisTime = __Min(Length - Index, 8);
         switch (ThisTime) {
@@ -675,6 +679,7 @@ __DumpBytes(
         }
         Index += ThisTime;
     }
+#pragma warning(pop)
 }
 static FORCEINLINE VOID
 __DumpPage(
