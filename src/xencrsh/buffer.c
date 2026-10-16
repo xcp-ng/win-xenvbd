@@ -98,10 +98,11 @@ BufferTerminate(
     __Buffer.Next = 0;
 }
 
+_Success_(return)
 BOOLEAN
 BufferGet(
     _Out_ PULONG        BufferId,
-    _Outptr_ PFN_NUMBER *Pfn
+    _Out_ PFN_NUMBER    *Pfn
     )
 {
     ULONG               BufId;

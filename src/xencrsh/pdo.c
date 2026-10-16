@@ -768,7 +768,7 @@ __ValidateSectors(
 static BOOLEAN
 PdoReadWrite(
     _Inout_ PXENVBD_PDO         Pdo,
-    _Out_ PSCSI_REQUEST_BLOCK   Srb
+    _Inout_ PSCSI_REQUEST_BLOCK Srb
     )
 {
     NTSTATUS                    Status;
