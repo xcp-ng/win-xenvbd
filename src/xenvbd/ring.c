@@ -140,7 +140,7 @@ __RingAllocate(
 
 static FORCEINLINE VOID
 __RingFree(
-    _In_ PVOID  Buffer
+    _In_opt_ PVOID  Buffer
     )
 {
     if (Buffer)
