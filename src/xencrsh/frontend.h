@@ -95,7 +95,7 @@ typedef struct _XENVBD_FRONTEND {
 extern NTSTATUS
 FrontendCreate(
     _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _In_ ULONG              TargetId,
     _In_ PXENVBD_PDO        Pdo
     );
@@ -113,8 +113,8 @@ FrontendSetState(
 
 extern NTSTATUS
 FrontendCloseTarget(
-    _In_ PCHAR  FrontendPath,
-    _In_ PCHAR  BackendPath
+    _In_ PSTR   FrontendPath,
+    _In_ PSTR   BackendPath
     );
 
 // Ring Slots

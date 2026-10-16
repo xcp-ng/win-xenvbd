@@ -106,7 +106,7 @@ __PdoFree(
 NTSTATUS
 PdoCreate(
     _In_ PXENVBD_FDO        Fdo,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _In_ ULONG              TargetId,
     _Outptr_ PXENVBD_PDO    *_Pdo
     )
@@ -1053,7 +1053,7 @@ __AbortSrbQueue(
     _In_ PSRB_QUEUE     Queue,
     _In_ PXENVBD_PDO    Pdo,
     _In_ BOOLEAN        Free,
-    _In_ PCHAR          Name
+    _In_ PSTR           Name
     )
 {
     PSCSI_REQUEST_BLOCK Srb;

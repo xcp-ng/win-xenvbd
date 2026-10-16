@@ -99,7 +99,7 @@ __CompactBigHeap()
 }
 static PVOID
 __AllocBig(
-    _In_ PCHAR  Caller,
+    _In_ PSTR   Caller,
     _In_ ULONG  Size
     )
 {
@@ -226,7 +226,7 @@ __NewSubHeap(
 }
 static PVOID
 __AllocSmall(
-    _In_ PCHAR          Caller,
+    _In_ PSTR           Caller,
     _In_ ULONG          Size
     )
 {
@@ -376,7 +376,7 @@ __SubHeapSize()
 }
 PVOID
 __AustereAllocate(
-    _In_ PCHAR  Caller,
+    _In_ PSTR   Caller,
     _In_ ULONG  Size
     )
 {
@@ -406,7 +406,7 @@ __AustereAllocate(
 
 VOID
 __AustereFree(
-    _In_ PCHAR      Caller,
+    _In_ PSTR       Caller,
     _In_ PVOID      Buffer
     )
 {   

@@ -44,40 +44,40 @@ StoreTerminate();
 NTSTATUS
 StoreRead(
     _In_opt_ PVOID  Transaction,
-    _In_opt_ PCHAR  Prefix,
-    _In_ PCHAR      Node,
+    _In_opt_ PSTR   Prefix,
+    _In_ PSTR       Node,
     _Outptr_ PCHAR  *Value
     );
 
 NTSTATUS
 StoreWrite(
     _In_opt_ PVOID  Transaction,
-    _In_opt_ PCHAR  Prefix,
-    _In_ PCHAR      Node,
-    _In_ PCHAR      Value
+    _In_opt_ PSTR   Prefix,
+    _In_ PSTR       Node,
+    _In_ PSTR       Value
     );
 
 NTSTATUS
 StorePrintf(
     _In_opt_ PVOID  Transaction,
-    _In_opt_ PCHAR  Prefix,
-    _In_ PCHAR      Node,
-    _In_ const CHAR *Format,
+    _In_opt_ PSTR   Prefix,
+    _In_ PSTR       Node,
+    _In_ PCSTR      Format,
     ...                                                   
     );
 
 NTSTATUS
 StoreRemove(                                                     
     _In_opt_ PVOID  Transaction,
-    _In_opt_ PCHAR  Prefix,
-    _In_ PCHAR      Node
+    _In_opt_ PSTR   Prefix,
+    _In_ PSTR       Node
     );
 
 NTSTATUS
 StoreDirectory(                                                     
     _In_opt_ PVOID  Transaction,
-    _In_opt_ PCHAR  Prefix,
-    _In_ PCHAR      Node,
+    _In_opt_ PSTR   Prefix,
+    _In_ PSTR       Node,
     _Outptr_ PCHAR  *Value
     );
 

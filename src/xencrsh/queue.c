@@ -198,7 +198,7 @@ QueueRemove(
 VOID
 QueueDebugCallback(
     _In_ PSRB_QUEUE Queue,
-    _In_ PCHAR      Name
+    _In_ PSTR       Name
     )
 {
     LogTrace("=====> %s\n", Name);

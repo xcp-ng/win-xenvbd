@@ -44,7 +44,7 @@ typedef struct _XENVBD_TARGET XENVBD_TARGET, *PXENVBD_TARGET;
 extern NTSTATUS
 TargetCreate(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _Outptr_ PXENVBD_TARGET *_Target
     );
 
@@ -73,13 +73,13 @@ TargetDispatchPnp(
 extern VOID
 TargetIssueDeviceEject(
     _In_ PXENVBD_TARGET Target,
-    _In_ const CHAR     *Reason
+    _In_ PCSTR          Reason
     );
 
 extern VOID
 TargetSetMissing(
     _In_ PXENVBD_TARGET Target,
-    _In_ const CHAR     *Reason
+    _In_ PCSTR          Reason
     );
 
 extern VOID

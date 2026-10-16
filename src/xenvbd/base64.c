@@ -75,7 +75,7 @@ __DecodeChar(
 static DECLSPEC_NOINLINE CHAR
 __Decode(
     _In_ PUCHAR Dst,
-    _In_ PCHAR  Src,
+    _In_ PSTR   Src,
     _In_ ULONG  Left
     )
 {
@@ -113,7 +113,7 @@ __Decode(
 
 NTSTATUS
 Base64Decode(
-    _In_ PCHAR      String,
+    _In_ PSTR       String,
     _Outptr_ PVOID  *Binary,
     _Out_ PULONG    Length
     )

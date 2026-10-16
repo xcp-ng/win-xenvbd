@@ -118,7 +118,7 @@ __AdapterFree(
 
 static FORCEINLINE PANSI_STRING
 __AdapterMultiSzToAnsi(
-    _In_ PCHAR      Buffer
+    _In_ PSTR       Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -181,7 +181,7 @@ fail1:
 
 static FORCEINLINE PANSI_STRING
 __AdapterMultiSzToUpcaseAnsi(
-    _In_ PCHAR      Buffer
+    _In_ PSTR       Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -314,7 +314,7 @@ AdapterGetTarget(
 static FORCEINLINE BOOLEAN
 __AdapterHiddenTarget(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PCHAR              DeviceId
+    _In_ PSTR               DeviceId
     )
 {
     NTSTATUS                status;
@@ -592,7 +592,7 @@ done:
 static FORCEINLINE BOOLEAN
 __AdapterMatchDistribution(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PCHAR              Buffer
+    _In_ PSTR               Buffer
     )
 {
     PCHAR                   Vendor;
@@ -2101,7 +2101,7 @@ AdapterHwFindAdapter(
     _In_ PVOID                              DevExt,
     _In_ PVOID                              Context,
     _In_ PVOID                              BusInformation,
-    _In_ PCHAR                              ArgumentString,
+    _In_ PSTR                               ArgumentString,
     _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
     _Out_ PBOOLEAN                          Again
     )

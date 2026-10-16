@@ -42,7 +42,7 @@ typedef NTSTATUS (*XENVBD_THREAD_FUNCTION)(PXENVBD_THREAD, PVOID);
 _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 _ThreadCreate(
-    _In_ PCHAR                  Name,
+    _In_ PSTR                   Name,
     _In_ XENVBD_THREAD_FUNCTION Function,
     _In_opt_ PVOID              Context,
     _Outptr_ PXENVBD_THREAD     *Thread

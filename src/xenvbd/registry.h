@@ -104,7 +104,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryOpenSubKey(
     _In_ HANDLE         Key,
-    _In_ PCHAR          Name,
+    _In_ PSTR           Name,
     _In_ ACCESS_MASK    DesiredAccess,
     _Out_ PHANDLE       SubKey
     );
@@ -113,7 +113,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryCreateSubKey(
     _In_ HANDLE     Key,
-    _In_ PCHAR      Name,
+    _In_ PSTR       Name,
     _In_ ULONG      Options,
     _Out_ PHANDLE   SubKey
     );
@@ -122,7 +122,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryDeleteSubKey(
     _In_ HANDLE Key,
-    _In_ PCHAR  Name
+    _In_ PSTR   Name
     );
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -145,14 +145,14 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryDeleteValue(
     _In_ HANDLE Key,
-    _In_ PCHAR  Name
+    _In_ PSTR   Name
     );
 
 _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryDwordValue(
     _In_ HANDLE     Key,
-    _In_ PCHAR      Name,
+    _In_ PSTR       Name,
     _Out_ PULONG    Value
     );
 
@@ -160,7 +160,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateDwordValue(
     _In_ HANDLE Key,
-    _In_ PCHAR  Name,
+    _In_ PSTR   Name,
     _In_ ULONG  Value
     );
 
@@ -168,7 +168,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQuerySzValue(
     _In_ HANDLE             Key,
-    _In_ PCHAR              Name,
+    _In_ PSTR               Name,
     _Out_opt_ PULONG        Type,
     _Outptr_ PANSI_STRING   *Array
     );
@@ -177,7 +177,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryBinaryValue(
     _In_ HANDLE     Key,
-    _In_ PCHAR      Name,
+    _In_ PSTR       Name,
     _Outptr_ PVOID  *Buffer,
     _Out_ PULONG    Length
     );
@@ -186,7 +186,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateBinaryValue(
     _In_ HANDLE Key,
-    _In_ PCHAR  Name,
+    _In_ PSTR   Name,
     _In_ PVOID  Buffer,
     _In_ ULONG  Length
     );
@@ -201,7 +201,7 @@ RegistryQueryKeyName(
 _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQuerySystemStartOption(
-    _In_ const CHAR         *Prefix,
+    _In_ PCSTR              Prefix,
     _Outptr_ PANSI_STRING   *Option
     );
 
@@ -219,7 +219,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateSzValue(
     _In_ HANDLE         Key,
-    _In_ PCHAR          Name,
+    _In_ PSTR           Name,
     _In_ ULONG          Type,
     _In_ PANSI_STRING   Array
     );

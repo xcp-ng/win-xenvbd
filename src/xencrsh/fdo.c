@@ -61,7 +61,7 @@ struct _XENVBD_FDO {
 // Initialize, Start, Stop
 static FORCEINLINE PCHAR
 __Next(
-    _In_ PCHAR  Ptr
+    _In_ PSTR   Ptr
     )
 {
     if (Ptr == NULL)
@@ -117,8 +117,8 @@ fail1:
 }
 static BOOLEAN
 FdoGetFeatureFlag(
-    _In_ PCHAR  Path,
-    _In_ PCHAR  Feature
+    _In_ PSTR   Path,
+    _In_ PSTR   Feature
     )
 {
     BOOLEAN     Ret = FALSE;
@@ -139,7 +139,7 @@ FdoGetFeatureFlag(
 static FORCEINLINE NTSTATUS
 FdoCreateTarget(
     _In_ PXENVBD_FDO    Fdo,
-    _In_ PCHAR          DeviceId,
+    _In_ PSTR           DeviceId,
     _In_ ULONG          TargetId
     )
 {

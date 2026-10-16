@@ -142,7 +142,7 @@ TargetSetDevicePowerState(
 VOID
 TargetSetMissing(
     _In_ PXENVBD_TARGET Target,
-    _In_ const CHAR     *Reason
+    _In_ PCSTR          Reason
     )
 {
     KIRQL               Irql;
@@ -1156,7 +1156,7 @@ TargetShutdown(
 VOID
 TargetIssueDeviceEject(
     _In_ PXENVBD_TARGET Target,
-    _In_ const CHAR     *Reason
+    _In_ PCSTR          Reason
     )
 {
     KIRQL               Irql;
@@ -1475,7 +1475,7 @@ TargetD0ToD3(
 
 static FORCEINLINE ULONG
 __ParseVbd(
-    _In_ PCHAR  DeviceIdStr
+    _In_ PSTR   DeviceIdStr
     )
 {
     ULONG       DeviceId = strtoul(DeviceIdStr, NULL, 10);
@@ -1503,7 +1503,7 @@ __ParseVbd(
 NTSTATUS
 TargetCreate(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PCHAR              DeviceId,
+    _In_ PSTR               DeviceId,
     _Outptr_ PXENVBD_TARGET *_Target
     )
 {

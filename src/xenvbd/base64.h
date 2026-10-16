@@ -42,7 +42,7 @@ Base64Free(
 
 extern NTSTATUS
 Base64Decode(
-    _In_ PCHAR      String,
+    _In_ PSTR       String,
     _Outptr_ PVOID  *Binary,
     _Out_ PULONG    Length
     );
