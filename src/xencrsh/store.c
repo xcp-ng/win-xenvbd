@@ -874,7 +874,7 @@ StoreDirectory(
     _In_opt_ PXENBUS_STORE_TRANSACTION  Transaction,
     _In_opt_ PSTR                       Prefix,
     _In_ PSTR                           Node,
-    _Outptr_ PCHAR                      *Value
+    _Outptr_ PZZSTR                     *Value
     )
 {
     STORE_REQUEST                       Request;
