@@ -48,7 +48,7 @@ LogQemuPut(
 
 static DECLSPEC_NOINLINE PCHAR
 LogFormatNumber(
-    _In_ PSTR       Buffer,
+    _Out_ PSTR      Buffer,
     _In_ ULONGLONG  Value,
     _In_ UCHAR      Base,
     _In_ BOOLEAN    UpperCase

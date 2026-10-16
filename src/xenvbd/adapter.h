@@ -80,7 +80,7 @@ AdapterRequestReboot(
 
 extern VOID
 AdapterCompleteSrb(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PXENVBD_SRBEXT     SrbExt
     );
 
@@ -98,7 +98,7 @@ AdapterSetDeviceQueueDepth(
 extern PFN_NUMBER
 AdapterGetNextSGEntry(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PXENVBD_SRBEXT     SrbExt,
+    _Inout_ PXENVBD_SRBEXT  SrbExt,
     _In_ ULONG              Existing,
     _Out_ PULONG            Offset,
     _Out_ PULONG            Length
@@ -117,14 +117,14 @@ AdapterPutBounce(
 
 extern NTSTATUS
 AdapterDispatchPnp(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
     _In_ PIRP               Irp
     );
 
 extern NTSTATUS
 AdapterDispatchPower(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
     _In_ PIRP               Irp
     );

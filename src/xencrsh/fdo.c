@@ -138,7 +138,7 @@ FdoGetFeatureFlag(
 }
 static FORCEINLINE NTSTATUS
 FdoCreateTarget(
-    _In_ PXENVBD_FDO    Fdo,
+    _Inout_ PXENVBD_FDO Fdo,
     _In_ PSTR           DeviceId,
     _In_ ULONG          TargetId
     )
@@ -158,7 +158,7 @@ FdoCreateTarget(
 }
 static NTSTATUS
 FdoFindTarget(
-    _In_ PXENVBD_FDO    Fdo
+    _Inout_ PXENVBD_FDO Fdo
     )
 {
     NTSTATUS            Status;
@@ -264,7 +264,7 @@ fail:
 
 VOID
 FdoTerminate(
-    _In_ PXENVBD_FDO    Fdo
+    _Inout_ PXENVBD_FDO Fdo
     )
 {
     LogTrace("====>\n");

@@ -191,8 +191,8 @@ __FrontendFree(
 
 VOID
 FrontendRemoveFeature(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ UCHAR              BlkifOperation
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ UCHAR                  BlkifOperation
     )
 {
     switch (BlkifOperation) {
@@ -265,7 +265,7 @@ FrontendSetEjectFailed(
 
 VOID
 FrontendSetDeviceUsage(
-    _In_ PXENVBD_FRONTEND               Frontend,
+    _Inout_ PXENVBD_FRONTEND            Frontend,
     _In_ DEVICE_USAGE_NOTIFICATION_TYPE Type,
     _In_ BOOLEAN                        Value
     )
@@ -590,7 +590,7 @@ static FORCEINLINE BOOLEAN
 FrontendReadFeature(
     _In_ PXENVBD_FRONTEND   Frontend,
     _In_ XENVBD_FEATURE     Feature,
-    _In_ PBOOLEAN           Value
+    _Inout_ PBOOLEAN        Value
 )
 {
     NTSTATUS                status;
@@ -631,7 +631,7 @@ static FORCEINLINE BOOLEAN
 FrontendReadDiskFeature(
     _In_ PXENVBD_FRONTEND   Frontend,
     _In_ PSTR               Name,
-    _In_ PBOOLEAN           Value
+    _Inout_ PBOOLEAN        Value
     )
 {
     NTSTATUS                status;
@@ -661,7 +661,7 @@ FrontendReadValue32(
     _In_ PXENVBD_FRONTEND   Frontend,
     _In_ XENVBD_FEATURE     Feature,
     _In_ BOOLEAN            AllowOverride,
-    _In_ PULONG             Value
+    _Inout_ PULONG          Value
 )
 {
     NTSTATUS                status;
@@ -703,7 +703,7 @@ static FORCEINLINE BOOLEAN
 FrontendReadDiskValue32(
     _In_ PXENVBD_FRONTEND   Frontend,
     _In_ PSTR               Name,
-    _In_ PULONG             Value
+    _Inout_ PULONG          Value
 )
 {
     NTSTATUS                status;
@@ -784,11 +784,11 @@ __Units(
 
 static FORCEINLINE VOID
 FrontendReadFeatures(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    BOOLEAN                 DiscardFeature = FALSE;
-    BOOLEAN                 DiscardEnable = TRUE;
+    BOOLEAN                     DiscardFeature = FALSE;
+    BOOLEAN                     DiscardEnable = TRUE;
 
     FrontendReadFeature(Frontend,
                         FeatureRemovable,
@@ -853,11 +853,11 @@ FrontendReadFeatures(
 
 static FORCEINLINE VOID
 FrontendReadDiskInfo(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    BOOLEAN                 Changed;
-    PXENVBD_DISKINFO        DiskInfo = &Frontend->DiskInfo;
+    BOOLEAN                     Changed;
+    PXENVBD_DISKINFO            DiskInfo = &Frontend->DiskInfo;
 
     Changed = FrontendReadDiskValue32(Frontend,
                                       "info",
@@ -928,11 +928,11 @@ FrontendReadDiskInfo(
 
 static FORCEINLINE VOID
 FrontendReadInquiryOverrides(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    PCHAR                   Buffer;
-    NTSTATUS                status;
+    PCHAR                       Buffer;
+    NTSTATUS                    status;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -1035,11 +1035,11 @@ fail1:
 _IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendPrepare(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    XenbusState             BackendState;
+    NTSTATUS                    Status;
+    XenbusState                 BackendState;
 
     // get/update backend path
     Status = __UpdateBackendPath(Frontend);
@@ -1133,12 +1133,12 @@ fail1:
 }
 static VOID
 FrontendSetNumQueues(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    PCHAR                   Buffer;
-    ULONG                   BackendMaxQueues;
-    NTSTATUS                status;
+    PCHAR                       Buffer;
+    ULONG                       BackendMaxQueues;
+    NTSTATUS                    status;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
@@ -1166,11 +1166,11 @@ FrontendSetNumQueues(
 _IRQL_requires_(DISPATCH_LEVEL)
 static NTSTATUS
 FrontendConnect(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                Status;
-    XenbusState             BackendState;
+    NTSTATUS                    Status;
+    XenbusState                 BackendState;
 
     FrontendSetNumQueues(Frontend);
 
@@ -1378,13 +1378,13 @@ _IRQL_requires_(DISPATCH_LEVEL)
 _Requires_lock_held_(Frontend->StateLock)
 static DECLSPEC_NOINLINE NTSTATUS
 __FrontendSetState(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ XENVBD_STATE       State
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ XENVBD_STATE           State
     )
 {
-    NTSTATUS                Status;
-    const ULONG             TargetId = Frontend->TargetId;
-    BOOLEAN                 Failed = FALSE;
+    NTSTATUS                    Status;
+    const ULONG                 TargetId = Frontend->TargetId;
+    BOOLEAN                     Failed = FALSE;
 
     Trace("Target[%d] @ (%d) =====>\n", TargetId, KeGetCurrentIrql());
     Verbose("Target[%d] : %s ----> %s\n", 
@@ -1672,12 +1672,12 @@ _Check_return_
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NTSTATUS
 FrontendD3ToD0(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    PXENVBD_ADAPTER         Adapter = TargetGetAdapter(Frontend->Target);
-    KIRQL                   Irql;
-    NTSTATUS                status;
+    PXENVBD_ADAPTER             Adapter = TargetGetAdapter(Frontend->Target);
+    KIRQL                       Irql;
+    NTSTATUS                    status;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
@@ -1752,10 +1752,10 @@ fail1:
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 FrontendD0ToD3(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    KIRQL                   Irql;
+    KIRQL                       Irql;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
@@ -1792,12 +1792,12 @@ FrontendD0ToD3(
 _Check_return_
 NTSTATUS
 FrontendSetState(
-    _In_ PXENVBD_FRONTEND   Frontend,
-    _In_ XENVBD_STATE       State
+    _Inout_ PXENVBD_FRONTEND    Frontend,
+    _In_ XENVBD_STATE           State
     )
 {
-    KIRQL                   Irql;
-    NTSTATUS                status;
+    KIRQL                       Irql;
+    NTSTATUS                    status;
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
@@ -1837,10 +1837,10 @@ FrontendBackend(
 
 NTSTATUS
 FrontendReset(
-    _In_ PXENVBD_FRONTEND   Frontend
+    _Inout_ PXENVBD_FRONTEND    Frontend
     )
 {
-    NTSTATUS                status;
+    NTSTATUS                    status;
 
     if (Frontend->State != XENVBD_ENABLED)
         goto done;

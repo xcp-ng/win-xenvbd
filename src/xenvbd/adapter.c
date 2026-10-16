@@ -181,7 +181,7 @@ fail1:
 
 static FORCEINLINE PANSI_STRING
 __AdapterMultiSzToUpcaseAnsi(
-    _In_ PSTR       Buffer
+    _Inout_ PSTR    Buffer
     )
 {
     PANSI_STRING    Ansi;
@@ -258,7 +258,7 @@ __AdapterFreeAnsi(
 
 static FORCEINLINE BOOLEAN
 __AdapterSetDevicePowerState(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ DEVICE_POWER_STATE State
     )
 {
@@ -438,7 +438,7 @@ AdapterRequestReboot(
 
 static FORCEINLINE VOID
 __AdapterEnumerate(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PANSI_STRING       Devices
     )
 {
@@ -592,7 +592,7 @@ done:
 static FORCEINLINE BOOLEAN
 __AdapterMatchDistribution(
     _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ PSTR               Buffer
+    _Inout_ PZZSTR          Buffer
     )
 {
     PCHAR                   Vendor;
@@ -808,7 +808,7 @@ fail1:
 
 static FORCEINLINE NTSTATUS
 __AdapterD3ToD0(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     NTSTATUS                status;
@@ -854,7 +854,7 @@ fail1:
 
 static FORCEINLINE VOID
 __AdapterD0ToD3(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     Trace("=====>\n");
@@ -939,7 +939,7 @@ AdapterDebugCallback(
 
 static NTSTATUS
 AdapterD3ToD0(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     NTSTATUS                status;
@@ -1034,7 +1034,7 @@ fail1:
 
 static VOID
 AdapterD0ToD3(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     ULONG                   TargetId;
@@ -1205,7 +1205,7 @@ AdapterReleaseLock(
 
 static FORCEINLINE VOID
 __AdapterSetBootEmulated(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     NTSTATUS                status;
@@ -1306,7 +1306,7 @@ fail1:
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 AdapterInitialize(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
     _In_ PDEVICE_OBJECT     PhysicalDeviceObject,
     _In_ PDEVICE_OBJECT     LowerDeviceObject
@@ -1480,7 +1480,7 @@ fail1:
 
 static VOID
 AdapterTeardown(
-    _In_ PXENVBD_ADAPTER    Adapter
+    _Inout_ PXENVBD_ADAPTER Adapter
     )
 {
     ULONG                   TargetId;
@@ -1563,7 +1563,7 @@ AdapterTeardown(
 
 VOID
 AdapterCompleteSrb(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PXENVBD_SRBEXT     SrbExt
     )
 {
@@ -1607,7 +1607,7 @@ AdapterSetDeviceQueueDepth(
 PFN_NUMBER
 AdapterGetNextSGEntry(
     _In_ PXENVBD_ADAPTER            Adapter,
-    _In_ PXENVBD_SRBEXT             SrbExt,
+    _Inout_ PXENVBD_SRBEXT          SrbExt,
     _In_ ULONG                      Existing,
     _Out_ PULONG                    Offset,
     _Out_ PULONG                    Length
@@ -1811,7 +1811,7 @@ AdapterForwardPnp(
 
 NTSTATUS
 AdapterDispatchPnp(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
     _In_ PIRP               Irp
     )
@@ -1854,7 +1854,7 @@ AdapterDispatchPnp(
 
 NTSTATUS
 AdapterDispatchPower(
-    _In_ PXENVBD_ADAPTER    Adapter,
+    _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
     _In_ PIRP               Irp
     )

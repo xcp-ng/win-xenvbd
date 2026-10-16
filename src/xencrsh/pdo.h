@@ -53,28 +53,28 @@ PdoCreate(
 
 extern VOID
 PdoDestroy(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoD3ToD0(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoD0ToD3(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 // Reference Counting
 extern VOID
 PdoReference(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoDereference(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 // Query Methods
@@ -86,30 +86,30 @@ PdoSectorSize(
 // Queue-Related
 extern VOID
 PdoPrepareFresh(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoSubmitPrepared(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoCompleteShutdown(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern VOID
 PdoCompleteSubmittedRequest(
-    _In_ PXENVBD_PDO        Pdo,
-    _In_ PXENVBD_REQUEST    Request,
+    _Inout_ PXENVBD_PDO     Pdo,
+    _Inout_ PXENVBD_REQUEST Request,
     _In_ SHORT              Status
     );
 
 // StorPort Methods
 extern VOID
 PdoReset(
-    _In_ PXENVBD_PDO    Pdo
+    _Inout_ PXENVBD_PDO Pdo
     );
 
 extern BOOLEAN

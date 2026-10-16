@@ -43,7 +43,7 @@ typedef struct _XENVBD_FDO XENVBD_FDO, *PXENVBD_FDO;
 
 extern VOID
 FdoTerminate(
-    _In_ PXENVBD_FDO    Fdo
+    _Inout_ PXENVBD_FDO Fdo
     );
 
 // Query Methods
