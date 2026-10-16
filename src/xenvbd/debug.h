@@ -55,8 +55,8 @@
 static __inline VOID
 __DebugMessage(
     _In_ ULONG                          Level,
-    _In_ __nullterminated const CHAR    *Prefix,
-    _In_ __nullterminated const CHAR    *Format,
+    _In_ PCSTR                          Prefix,
+    _In_ _Printf_format_string_ PCSTR   Format,
     ...
     )
 {

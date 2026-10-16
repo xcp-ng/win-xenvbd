@@ -41,8 +41,8 @@
 extern void
 __LogMessage(
     _In_ ULONG      Level,
-    _In_ const char *Func,
-    _In_ const char *Format,
+    _In_ PCSTR      Function,
+    _In_ PCSTR      Format,
     ...
     );
 
