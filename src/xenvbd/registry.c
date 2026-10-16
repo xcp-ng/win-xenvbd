@@ -394,8 +394,11 @@ RegistryOpenHardwareKey(
                         0,
                         &Length);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail2;
+    }
 
 #pragma prefast(suppress:6102)
     Info = __RegistryAllocate(Length + sizeof (WCHAR));
@@ -575,8 +578,11 @@ RegistryEnumerateSubKeys(
                         0,
                         &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail1;
+    }
 
 #pragma prefast(suppress:6102)
     Full = __RegistryAllocate(Size);
@@ -680,8 +686,11 @@ RegistryEnumerateValues(
                         0,
                         &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail1;
+    }
 
 #pragma prefast(suppress:6102)
     Full = __RegistryAllocate(Size);
@@ -820,8 +829,11 @@ RegistryQueryDwordValue(
                              0,
                              &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail2;
+    }
 
 #pragma prefast(suppress:6102)
     Partial = __RegistryAllocate(Size);
@@ -1054,8 +1066,11 @@ RegistryQuerySzValue(
                              0,
                              &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail2;
+    }
 
 #pragma prefast(suppress:6102)
     Value = __RegistryAllocate(Size);
@@ -1142,8 +1157,11 @@ RegistryQueryBinaryValue(
                              0,
                              &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail2;
+    }
 
 #pragma prefast(suppress:6102)
     Partial = __RegistryAllocate(Size);
@@ -1277,8 +1295,11 @@ RegistryQueryKeyName(
                         0,
                         &Size);
     if (status != STATUS_BUFFER_OVERFLOW &&
-        status != STATUS_BUFFER_TOO_SMALL)
+        status != STATUS_BUFFER_TOO_SMALL) {
+        if (NT_SUCCESS(status))
+            status = STATUS_UNSUCCESSFUL;
         goto fail1;
+    }
 
     // Name information is not intrinsically NULL terminated
 #pragma prefast(suppress:6102)
