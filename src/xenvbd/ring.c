@@ -1611,10 +1611,11 @@ BlkifRingReleaseLock(
 
 KSERVICE_ROUTINE    BlkifRingInterrupt;
 
+_Use_decl_annotations_
 BOOLEAN
 BlkifRingInterrupt(
-    _In_ PKINTERRUPT    InterruptObject,
-    _In_ PVOID          Argument
+    PKINTERRUPT         InterruptObject,
+    PVOID               Argument
     )
 {
     PXENVBD_BLKIF_RING  BlkifRing = Argument;

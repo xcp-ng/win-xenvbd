@@ -191,14 +191,15 @@ HwAdapterControl(
 
 HW_FIND_ADAPTER     HwFindAdapter;
 
+_Use_decl_annotations_
 ULONG
 HwFindAdapter(
-    _In_ PVOID                              HwDeviceExtension,
-    _In_ PVOID                              Context,
-    _In_ PVOID                              BusInformation,
-    _In_ PSTR                               ArgumentString,
-    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-    _In_ PBOOLEAN                           Again
+    PVOID                           HwDeviceExtension,
+    PVOID                           Context,
+    PVOID                           BusInformation,
+    PSTR                            ArgumentString,
+    PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+    PBOOLEAN                        Again
     )
 {
     UNREFERENCED_PARAMETER(Context);

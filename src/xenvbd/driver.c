@@ -114,10 +114,11 @@ DriverDispatchPower(
 _Dispatch_type_(IRP_MJ_PNP)
 DRIVER_DISPATCH             DispatchPnp;
 
+_Use_decl_annotations_
 NTSTATUS 
 DispatchPnp(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp
+    PDEVICE_OBJECT  DeviceObject,
+    PIRP            Irp
     )
 {
     if (Driver.Adapter == NULL)
@@ -129,10 +130,11 @@ DispatchPnp(
 _Dispatch_type_(IRP_MJ_POWER)
 DRIVER_DISPATCH             DispatchPower;
 
+_Use_decl_annotations_
 NTSTATUS 
 DispatchPower(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp
+    PDEVICE_OBJECT  DeviceObject,
+    PIRP            Irp
     )
 {
     if (Driver.Adapter == NULL)
