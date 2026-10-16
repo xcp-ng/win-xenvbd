@@ -1225,19 +1225,19 @@ __AdapterSetBootEmulated(
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 __AdapterQueryInterface(
-    _In_ PXENVBD_ADAPTER    Adapter,
-    _In_ const GUID         *Guid,
-    _In_ ULONG              Version,
-    _Out_ PINTERFACE        Interface,
-    _In_ ULONG              Size,
-    _In_ BOOLEAN            Optional
+    _In_ PXENVBD_ADAPTER                    Adapter,
+    _In_ const GUID                         *Guid,
+    _In_ ULONG                              Version,
+    _Inout_updates_bytes_(Size) PINTERFACE  Interface,
+    _In_ ULONG                              Size,
+    _In_ BOOLEAN                            Optional
     )
 {
-    KEVENT                  Event;
-    IO_STATUS_BLOCK         StatusBlock;
-    PIRP                    Irp;
-    PIO_STACK_LOCATION      StackLocation;
-    NTSTATUS                status;
+    KEVENT                                  Event;
+    IO_STATUS_BLOCK                         StatusBlock;
+    PIRP                                    Irp;
+    PIO_STACK_LOCATION                      StackLocation;
+    NTSTATUS                                status;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
 
