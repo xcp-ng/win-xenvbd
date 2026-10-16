@@ -150,9 +150,9 @@ BufferPut(
 
 VOID
 BufferCopyIn(
-    _In_ ULONG      BufferId,
-    _In_ PVOID      Input,
-    _In_ ULONG      Length
+    _In_ ULONG                      BufferId,
+    _In_reads_bytes_(Length) PVOID  Input,
+    _In_ ULONG                      Length
     )
 {
     PXENVBD_BUFFER  Buf;
@@ -170,9 +170,9 @@ BufferCopyIn(
 
 VOID
 BufferCopyOut(
-    _In_ ULONG      BufferId,
-    _Out_ PVOID     Output,
-    _In_ ULONG      Length
+    _In_ ULONG                          BufferId,
+    _Out_writes_bytes_(Length) PVOID    Output,
+    _In_ ULONG                          Length
     )
 {
     PXENVBD_BUFFER  Buf;

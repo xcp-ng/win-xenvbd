@@ -330,13 +330,13 @@ fail1:
 
 static FORCEINLINE VOID
 __TargetModeSense(
-    _In_ PXENVBD_TARGET         Target,
-    _In_ PSCSI_REQUEST_BLOCK    Srb,
-    _In_ PVOID                  Data,
-    _In_ ULONG                  Length,
-    _Out_ PULONG                Size,
-    _Out_ PULONG                ModeDataLength,
-    _Out_ PULONG                BlockDescrLength
+    _In_ PXENVBD_TARGET                     Target,
+    _In_ PSCSI_REQUEST_BLOCK                Srb,
+    _Inout_updates_bytes_(Length) PVOID     Data,
+    _In_ ULONG                              Length,
+    _Inout_ PULONG                          Size,
+    _Inout_ PULONG                          ModeDataLength,
+    _Inout_ PULONG                          BlockDescrLength
     )
 {
     const UCHAR                 PageCode = Cdb_PageCode(Srb);

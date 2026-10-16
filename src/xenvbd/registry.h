@@ -176,19 +176,19 @@ RegistryQuerySzValue(
 _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryQueryBinaryValue(
-    _In_ HANDLE     Key,
-    _In_ PSTR       Name,
-    _Outptr_ PVOID  *Buffer,
-    _Out_ PULONG    Length
+    _In_ HANDLE                                 Key,
+    _In_ PSTR                                   Name,
+    _Outptr_result_bytebuffer_(*Length) PVOID   *Buffer,
+    _Out_ PULONG                                Length
     );
 
 _IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 RegistryUpdateBinaryValue(
-    _In_ HANDLE Key,
-    _In_ PSTR   Name,
-    _In_ PVOID  Buffer,
-    _In_ ULONG  Length
+    _In_ HANDLE                     Key,
+    _In_ PSTR                       Name,
+    _In_reads_bytes_(Length) PVOID  Buffer,
+    _In_ ULONG                      Length
     );
 
 _IRQL_requires_(PASSIVE_LEVEL)

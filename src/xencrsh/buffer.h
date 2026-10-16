@@ -58,16 +58,16 @@ BufferPut(
 
 extern VOID
 BufferCopyIn(
-    _In_ ULONG  BufferId,
-    _In_ PVOID  Input,
-    _In_ ULONG  Length
+    _In_ ULONG                      BufferId,
+    _In_reads_bytes_(Length) PVOID  Input,
+    _In_ ULONG                      Length
     );
 
 extern VOID
 BufferCopyOut(
-    _In_ ULONG  BufferId,
-    _Out_ PVOID Output,
-    _In_ ULONG  Length
+    _In_ ULONG                          BufferId,
+    _Out_writes_bytes_(Length) PVOID    Output,
+    _In_ ULONG                          Length
     );
     
 #endif // _XENVBD_BUFFER_H
