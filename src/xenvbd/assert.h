@@ -56,7 +56,6 @@ __Bug(
 
 #define ASSERTION_FAILURE   0x0000DEAD
 
-
 #define BUG(_TEXT)                                              \
         do {                                                    \
             PCSTR       _Text = (_TEXT);                       \
@@ -155,13 +154,13 @@ __Bug(
 
 static __inline BOOLEAN
 _IsZeroMemory(
-    _In_ PCSTR      Caller,
-    _In_ PCSTR      Name,
-    _In_ PVOID      Buffer,
-    _In_ ULONG      Length
+    _In_ PCSTR                      Caller,
+    _In_ PCSTR                      Name,
+    _In_reads_bytes_(Length) PVOID  Buffer,
+    _In_ ULONG                      Length
     )
 {
-    ULONG           Offset;
+    ULONG                           Offset;
 
     Offset = 0;
     while (Offset < Length) {
@@ -179,10 +178,10 @@ _IsZeroMemory(
 
 static __inline BOOLEAN
 _IsZeroMemory(
-    _In_ PCSTR  Caller,
-    _In_ PCSTR  Name,
-    _In_ PVOID  Buffer,
-    _In_ ULONG  Length
+    _In_ PCSTR                      Caller,
+    _In_ PCSTR                      Name,
+    _In_reads_bytes_(Length) PVOID  Buffer,
+    _In_ ULONG                      Length
     )
 {
     UNREFERENCED_PARAMETER(Caller);
