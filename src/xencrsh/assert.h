@@ -71,7 +71,7 @@ __Bug(
         } while (FALSE)
 
 #define BUG_ON(_EXP)                \
-        if (!(_EXP)) BUG(#_EXP)
+        if (_EXP) BUG(#_EXP)
 
 #undef  ASSERT
 
