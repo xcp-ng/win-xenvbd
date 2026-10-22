@@ -1679,11 +1679,6 @@ BlkifRingDpc(
     }
 }
 
-#define TIME_US(_us)        ((_us) * 10)
-#define TIME_MS(_ms)        (TIME_US((_ms) * 1000))
-#define TIME_S(_s)          (TIME_MS((_s) * 1000))
-#define TIME_RELATIVE(_t)   (-(_t))
-
 #define XENVBD_WATCHDOG_PERIOD 30
 
 static NTSTATUS
@@ -2050,7 +2045,7 @@ BlkifRingConnect(
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order);
+    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order, FALSE);
 
     status = STATUS_NO_MEMORY;
     if (BlkifRing->Mdl == NULL)

@@ -41,6 +41,11 @@
 #define	P2ROUNDUP(_t, _x, _a)   \
         (-(-((_t)(_x)) & -(((_t)(_a)))))
 
+#define TIME_US(_us)            ((_us) * 10ll)
+#define TIME_MS(_ms)            (TIME_US((_ms) * 1000ll))
+#define TIME_S(_s)              (TIME_MS((_s) * 1000ll))
+#define TIME_RELATIVE(_t)       (-(_t))
+
 static FORCEINLINE LONG
 __ffs(
     _In_ unsigned long long mask
@@ -89,7 +94,7 @@ __CpuId(
     _Out_opt_ PULONG    EDX
     )
 {
-    int                 Value[4] = {0};
+    int         Value[4] = {0};
 
     __cpuid(Value, Leaf);
 
@@ -181,13 +186,15 @@ __FreePoolWithTag(
 
 static FORCEINLINE PMDL
 __AllocatePages(
-    _In_ ULONG          Count
+    _In_ ULONG          Count,
+    _In_ BOOLEAN        Contiguous
     )
 {
     PHYSICAL_ADDRESS    LowAddress;
     PHYSICAL_ADDRESS    HighAddress;
     LARGE_INTEGER       SkipBytes;
     SIZE_T              TotalBytes;
+    ULONG               Flags;
     PMDL                Mdl;
     PUCHAR              MdlMappedSystemVa;
     NTSTATUS            status;
@@ -197,12 +204,18 @@ __AllocatePages(
     SkipBytes.QuadPart = 0ull;
     TotalBytes = (SIZE_T)PAGE_SIZE * Count;
 
+    if (Contiguous) {
+        Flags = MM_ALLOCATE_REQUIRE_CONTIGUOUS_CHUNKS;
+    } else {
+        Flags = MM_ALLOCATE_FULLY_REQUIRED;
+    }
+
     Mdl = MmAllocatePagesForMdlEx(LowAddress,
                                   HighAddress,
                                   SkipBytes,
                                   TotalBytes,
                                   MmCached,
-                                  MM_ALLOCATE_FULLY_REQUIRED);
+                                  Flags);
 
     status = STATUS_NO_MEMORY;
     if (Mdl == NULL)
@@ -246,14 +259,14 @@ fail1:
     return NULL;
 }
 
-#define __AllocatePage()    __AllocatePages(1)
+#define __AllocatePage()    __AllocatePages(1, FALSE)
 
 static FORCEINLINE VOID
 __FreePages(
     _In_ PMDL   Mdl
     )
 {
-    PUCHAR      MdlMappedSystemVa;
+    PUCHAR	MdlMappedSystemVa;
 
     ASSERT(Mdl->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA);
     MdlMappedSystemVa = Mdl->MappedSystemVa;
