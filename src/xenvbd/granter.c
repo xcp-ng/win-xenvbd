@@ -461,23 +461,6 @@ fail1:
     return status;
 }
 
-VOID
-GranterPut(
-    _Inout_ PXENVBD_GRANTER Granter,
-    _In_ PVOID              Handle
-    )
-{
-    NTSTATUS                status;
-
-    for (;;) {
-        status = GranterTryPut(Granter, Handle);
-        if (NT_SUCCESS(status))
-            break;
-
-        YieldProcessor();
-    }
-}
-
 ULONG
 GranterReference(
     _In_ PXENVBD_GRANTER    Granter,
