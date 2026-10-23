@@ -346,8 +346,9 @@ fail1:
     return status;
 }
 
-VOID
-GranterPut(
+_Check_return_
+NTSTATUS
+GranterTryPut(
     _Inout_ PXENVBD_GRANTER Granter,
     _In_ PVOID              Handle
     )
@@ -355,22 +356,42 @@ GranterPut(
     PXENBUS_GNTTAB_ENTRY    Entry = Handle;
     NTSTATUS                status;
 
+    ASSERT3P(Granter->Cache, !=, NULL);
+
+    status = XENBUS_GNTTAB(RevokeForeignAccess,
+                           &Granter->GnttabInterface,
+                           Granter->Cache,
+                           FALSE,
+                           Entry);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    InterlockedDecrement(&Granter->Current);
+
+    return STATUS_SUCCESS;
+
+fail1:
+    return status;
+}
+
+VOID
+GranterPut(
+    _Inout_ PXENVBD_GRANTER Granter,
+    _In_ PVOID              Handle
+    )
+{
+    NTSTATUS                status;
+
     if (Granter->Connected == FALSE)
         return;
 
     for (;;) {
-        status = XENBUS_GNTTAB(RevokeForeignAccess,
-                               &Granter->GnttabInterface,
-                               Granter->Cache,
-                               FALSE,
-                               Entry);
+        status = GranterTryPut(Granter, Handle);
         if (NT_SUCCESS(status))
             break;
 
         YieldProcessor();
     }
-
-    InterlockedDecrement(&Granter->Current);
 }
 
 ULONG
