@@ -49,6 +49,19 @@ RingDestroy(
     _Inout_ PXENVBD_RING    Ring
     );
 
+_Check_return_
+_IRQL_requires_(PASSIVE_LEVEL)
+extern NTSTATUS
+RingD3ToD0(
+    _Inout_ PXENVBD_RING    Ring
+    );
+
+_IRQL_requires_(PASSIVE_LEVEL)
+extern VOID
+RingD0ToD3(
+    _Inout_ PXENVBD_RING    Ring
+    );
+
 extern NTSTATUS
 RingConnect(
     _Inout_ PXENVBD_RING    Ring
