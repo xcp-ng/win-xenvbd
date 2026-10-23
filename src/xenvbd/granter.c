@@ -319,7 +319,9 @@ GranterGet(
     if (Granter->Connected == FALSE)
         goto fail1;
 
-    status = XENBUS_GNTTAB(PermitForeignAccess, 
+    Value = InterlockedIncrement(&Granter->Current);
+
+    status = XENBUS_GNTTAB(PermitForeignAccess,
                            &Granter->GnttabInterface,
                            Granter->Cache,
                            FALSE,
@@ -329,8 +331,7 @@ GranterGet(
                            &Entry);
     if (!NT_SUCCESS(status))
         goto fail2;
-    
-    Value = InterlockedIncrement(&Granter->Current);
+
     if (Value > Granter->Maximum)
         Granter->Maximum = Value;
 
@@ -339,6 +340,7 @@ GranterGet(
 
 fail2:
     Error("fail2\n");
+    InterlockedDecrement(&Granter->Current);
 fail1:
     Error("fail1 %08x\n", status);
     return status;
