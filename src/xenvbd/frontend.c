@@ -1681,6 +1681,10 @@ FrontendD3ToD0(
 
     GranterD3ToD0(Frontend->Granter);
 
+    status = RingD3ToD0(Frontend->Ring);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
     AdapterGetStoreInterface(Adapter, &Frontend->StoreInterface);
@@ -1689,15 +1693,15 @@ FrontendD3ToD0(
 
     status = XENBUS_STORE(Acquire, &Frontend->StoreInterface);
     if (!NT_SUCCESS(status))
-        goto fail1;
+        goto fail2;
 
     status = XENBUS_DEBUG(Acquire, &Frontend->DebugInterface);
     if (!NT_SUCCESS(status))
-        goto fail2;
+        goto fail3;
 
     status = XENBUS_SUSPEND(Acquire, &Frontend->SuspendInterface);
     if (!NT_SUCCESS(status))
-        goto fail3;
+        goto fail4;
 
     status = XENBUS_SUSPEND(Register,
                             &Frontend->SuspendInterface,
@@ -1706,7 +1710,7 @@ FrontendD3ToD0(
                             Frontend,
                             &Frontend->SuspendCallback);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail5;
 
     status = XENBUS_DEBUG(Register,
                           &Frontend->DebugInterface,
@@ -1715,30 +1719,30 @@ FrontendD3ToD0(
                           Frontend,
                           &Frontend->DebugCallback);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail6;
 
     Frontend->Active = TRUE;
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
     return STATUS_SUCCESS;
 
-fail5:
-    Error("fail5\n");
+fail6:
+    Error("fail6\n");
     XENBUS_SUSPEND(Deregister,
                    &Frontend->SuspendInterface,
                    Frontend->SuspendCallback);
     Frontend->SuspendCallback = NULL;
+fail5:
+    Error("fail5\n");
+    XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
 fail4:
     Error("fail4\n");
-    XENBUS_SUSPEND(Release, &Frontend->SuspendInterface);
+    XENBUS_DEBUG(Release, &Frontend->DebugInterface);
 fail3:
     Error("fail3\n");
-    XENBUS_DEBUG(Release, &Frontend->DebugInterface);
+    XENBUS_STORE(Release, &Frontend->StoreInterface);
 fail2:
     Error("fail2\n");
-    XENBUS_STORE(Release, &Frontend->StoreInterface);
-fail1:
-    Error("fail1 (%08x)\n", status);
 
     RtlZeroMemory(&Frontend->SuspendInterface,
                   sizeof(XENBUS_SUSPEND_INTERFACE));
@@ -1748,6 +1752,11 @@ fail1:
                   sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
+
+    RingD0ToD3(Frontend->Ring);
+
+fail1:
+    Error("fail1 (%08x)\n", status);
 
     GranterD0ToD3(Frontend->Granter);
 
@@ -1793,6 +1802,7 @@ FrontendD0ToD3(
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
 
+    RingD0ToD3(Frontend->Ring);
     GranterD0ToD3(Frontend->Granter);
 }
 

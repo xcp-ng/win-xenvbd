@@ -2595,6 +2595,28 @@ RingDestroy(
 }
 
 NTSTATUS
+RingD3ToD0(
+    _Inout_ PXENVBD_RING    Ring
+    )
+{
+    UNREFERENCED_PARAMETER(Ring);
+
+    ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
+
+    return STATUS_SUCCESS;
+}
+
+VOID
+RingD0ToD3(
+    _Inout_ PXENVBD_RING    Ring
+    )
+{
+    UNREFERENCED_PARAMETER(Ring);
+
+    ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
+}
+
+NTSTATUS
 RingConnect(
     _Inout_ PXENVBD_RING    Ring
     )
