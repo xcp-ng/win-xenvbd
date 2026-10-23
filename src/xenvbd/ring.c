@@ -57,6 +57,14 @@
 #define XENVBD_MAX_RING_PAGE_ORDER  (4)
 #define XENVBD_MAX_RING_PAGES       (1 << XENVBD_MAX_RING_PAGE_ORDER)
 
+// Separate struct to be transferred to ReclaimThread on ring page reclaim.
+typedef struct _XENVBD_BLKIF_PAGES {
+    LIST_ENTRY                      ListEntry;
+    PMDL                            Mdl;
+    ULONG                           Count;
+    PXENBUS_GNTTAB_ENTRY            Grants[XENVBD_MAX_RING_PAGES];
+} XENVBD_BLKIF_PAGES, *PXENVBD_BLKIF_PAGES;
+
 typedef struct _XENVBD_BLKIF_RING {
     PXENVBD_RING                    Ring;
     ULONG                           Index;
@@ -64,10 +72,9 @@ typedef struct _XENVBD_BLKIF_RING {
     PXENBUS_CACHE                   RequestCache;
     PXENBUS_CACHE                   SegmentCache;
     PXENBUS_CACHE                   IndirectCache;
-    PMDL                            Mdl;
+    PXENVBD_BLKIF_PAGES             Pages;
     blkif_sring_t                   *Shared;
     blkif_front_ring_t              Front;
-    PXENBUS_GNTTAB_ENTRY            Grants[XENVBD_MAX_RING_PAGES];
     PXENBUS_EVTCHN_CHANNEL          Channel;
     KDPC                            Dpc;
     ULONG                           Dpcs;
@@ -84,6 +91,8 @@ typedef struct _XENVBD_BLKIF_RING {
     LIST_ENTRY                      PreparedQueue;
     LIST_ENTRY                      SubmittedList;
     LIST_ENTRY                      ShutdownQueue;
+    // List of XENVBD_BLKIF_PAGES still being held by the backend
+    LIST_ENTRY                      DeferredPages;
     ULONG                           SrbsQueued;
     ULONG                           SrbsCompleted;
     ULONG                           SrbsFailed;
@@ -119,6 +128,8 @@ struct _XENVBD_RING {
     PXENBUS_DEBUG_CALLBACK          DebugCallback;
     ULONG                           Order;
     PXENVBD_BLKIF_RING              *Ring;
+    PXENVBD_THREAD                  ReclaimThread;
+    KEVENT                          ReclaimEvent;
     LONG                            Stats[XENVBD_STAT__MAX];
 };
 
@@ -1754,6 +1765,239 @@ RingWatchdog(
     return STATUS_SUCCESS;
 }
 
+static PXENVBD_BLKIF_PAGES
+BlkifRingAllocatePages(
+    _In_ ULONG          Count
+    )
+{
+    PXENVBD_BLKIF_PAGES Pages;
+
+    ASSERT3U(Count, <=, XENVBD_MAX_RING_PAGES);
+
+    Pages = __RingAllocate(sizeof(XENVBD_BLKIF_PAGES));
+    if (Pages == NULL)
+        goto fail1;
+
+    Pages->Mdl = __AllocatePages(Count, FALSE);
+    if (Pages->Mdl == NULL)
+        goto fail2;
+
+    Pages->Count = Count;
+
+    return Pages;
+
+fail2:
+    __RingFree(Pages);
+
+fail1:
+    return NULL;
+}
+
+static VOID
+__BlkifRingFreePages(
+    _In_ PXENVBD_BLKIF_PAGES    Pages
+    )
+{
+#if DBG
+    ULONG                       Index;
+
+    for (Index = 0; Index < Pages->Count; ++Index)
+        ASSERT3P(Pages->Grants[Index], ==, NULL);
+#endif
+
+    __FreePages(Pages->Mdl);
+    Pages->Mdl = NULL;
+    Pages->Count = 0;
+
+    RtlZeroMemory(&Pages->ListEntry, sizeof(LIST_ENTRY));
+
+    ASSERT(IsZeroMemory(Pages, sizeof(XENVBD_BLKIF_PAGES)));
+    __RingFree(Pages);
+}
+
+_Check_return_
+static BOOLEAN
+__BlkifRingRevokePages(
+    _In_ PXENVBD_BLKIF_RING     BlkifRing,
+    _Inout_ PXENVBD_BLKIF_PAGES Pages
+    )
+{
+    PXENVBD_RING                Ring = BlkifRing->Ring;
+    PXENVBD_GRANTER             Granter = FrontendGetGranter(Ring->Frontend);
+    ULONG                       Index;
+    BOOLEAN                     Revoked = TRUE;
+
+    for (Index = 0; Index < Pages->Count; ++Index) {
+        if (Pages->Grants[Index] == NULL)
+            continue;
+
+        if (NT_SUCCESS(GranterTryPut(Granter, Pages->Grants[Index])))
+            Pages->Grants[Index] = NULL;
+        else
+            Revoked = FALSE;
+    }
+
+    return Revoked;
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+static VOID
+BlkifRingReleasePages(
+    _Inout_ PXENVBD_BLKIF_RING  BlkifRing
+    )
+{
+    PXENVBD_RING                Ring = BlkifRing->Ring;
+    PXENVBD_BLKIF_PAGES         Pages = BlkifRing->Pages;
+
+    BlkifRing->Shared = NULL;
+    BlkifRing->Pages = NULL;
+
+    if (__BlkifRingRevokePages(BlkifRing, Pages)) {
+        __BlkifRingFreePages(Pages);
+        return;
+    }
+
+    Warning("Target[%u][%u] : deferring ring pages\n",
+            FrontendGetTargetId(Ring->Frontend),
+            BlkifRing->Index);
+
+    __BlkifRingAcquireLock(BlkifRing);
+    InsertTailList(&BlkifRing->DeferredPages, &Pages->ListEntry);
+    __BlkifRingReleaseLock(BlkifRing);
+
+    ThreadWake(Ring->ReclaimThread);
+}
+
+static FORCEINLINE BOOLEAN
+__BlkifRingIsDeferring(
+    _In_ PXENVBD_BLKIF_RING BlkifRing
+    )
+{
+    return !IsListEmpty(&BlkifRing->DeferredPages);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+static VOID
+BlkifRingReclaim(
+    _Inout_ PXENVBD_BLKIF_RING  BlkifRing
+    )
+{
+#if DBG
+    ASSERT3P(BlkifRing->LockThread, ==, KeGetCurrentThread());
+#endif
+
+    while (!IsListEmpty(&BlkifRing->DeferredPages)) {
+        PLIST_ENTRY         ListEntry;
+        PXENVBD_BLKIF_PAGES Pages;
+
+        ListEntry = RemoveHeadList(&BlkifRing->DeferredPages);
+        Pages = CONTAINING_RECORD(ListEntry, XENVBD_BLKIF_PAGES, ListEntry);
+
+        if (!__BlkifRingRevokePages(BlkifRing, Pages)) {
+            // Move this reclaim failure to the back so that entries behind it
+            // are tried first on the next pass.
+            InsertTailList(&BlkifRing->DeferredPages, ListEntry);
+            break;
+        }
+
+        __BlkifRingFreePages(Pages);
+    }
+}
+
+#define XENVBD_RECLAIM_PERIOD           TIME_MS(1000)
+
+static NTSTATUS
+RingReclaim(
+    _In_ PXENVBD_THREAD Self,
+    _In_ PVOID          Context
+    )
+{
+    PXENVBD_RING        Ring = Context;
+    LARGE_INTEGER       Timeout;
+    BOOLEAN             Deferring;
+
+    Trace("====>\n");
+
+    Timeout.QuadPart = TIME_RELATIVE(XENVBD_RECLAIM_PERIOD);
+    Deferring = FALSE;
+
+    for (;;) {
+        PKEVENT Event;
+        ULONG   Index;
+        KIRQL   Irql;
+
+        Event = ThreadGetEvent(Self);
+
+        (VOID) KeWaitForSingleObject(Event,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     Deferring ? &Timeout : NULL);
+        KeClearEvent(Event);
+
+        if (ThreadIsAlerted(Self))
+            break;
+
+        Deferring = FALSE;
+
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+
+        for (Index = 0; Index < FrontendGetMaxQueues(Ring->Frontend); ++Index) {
+            PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
+
+            __BlkifRingAcquireLock(BlkifRing);
+
+            BlkifRingReclaim(BlkifRing);
+
+            if (__BlkifRingIsDeferring(BlkifRing))
+                Deferring = TRUE;
+
+            __BlkifRingReleaseLock(BlkifRing);
+        }
+
+        KeLowerIrql(Irql);
+
+        if (!Deferring)
+            KeSetEvent(&Ring->ReclaimEvent, IO_NO_INCREMENT, FALSE);
+    }
+
+    KeSetEvent(&Ring->ReclaimEvent, IO_NO_INCREMENT, FALSE);
+
+    Trace("<====\n");
+
+    return STATUS_SUCCESS;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN
+RingIsDeferring(
+    _In_ PXENVBD_RING   Ring
+    )
+{
+    ULONG               Index;
+    KIRQL               Irql;
+    BOOLEAN             Deferring;
+
+    Deferring = FALSE;
+
+    KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+
+    for (Index = 0; Index < FrontendGetMaxQueues(Ring->Frontend); ++Index) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
+
+        __BlkifRingAcquireLock(BlkifRing);
+
+        if (__BlkifRingIsDeferring(BlkifRing))
+            Deferring = TRUE;
+
+        __BlkifRingReleaseLock(BlkifRing);
+    }
+
+    KeLowerIrql(Irql);
+
+    return Deferring;
+}
+
 static FORCEINLINE NTSTATUS
 BlkifRingCacheCreate(
     _Inout_ PXENVBD_BLKIF_RING  BlkifRing
@@ -1940,6 +2184,7 @@ BlkifRingCreate(
     InitializeListHead(&(*BlkifRing)->ShutdownQueue);
     InitializeListHead(&(*BlkifRing)->SubmittedList);
     InitializeListHead(&(*BlkifRing)->PreparedQueue);
+    InitializeListHead(&(*BlkifRing)->DeferredPages);
 
     KeInitializeThreadedDpc(&(*BlkifRing)->Dpc, BlkifRingDpc, *BlkifRing);
 
@@ -1956,6 +2201,7 @@ fail4:
 
     RtlZeroMemory(&(*BlkifRing)->Dpc, sizeof(KDPC));
 
+    RtlZeroMemory(&(*BlkifRing)->DeferredPages, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->PreparedQueue, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->SubmittedList, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->ShutdownQueue, sizeof(LIST_ENTRY));
@@ -1988,7 +2234,11 @@ BlkifRingDestroy(
     ThreadJoin(BlkifRing->WatchdogThread);
     BlkifRing->WatchdogThread = NULL;
 
+    BUG_ON(__BlkifRingIsDeferring(BlkifRing));
+
     RtlZeroMemory(&BlkifRing->Dpc, sizeof(KDPC));
+
+    RtlZeroMemory(&BlkifRing->DeferredPages, sizeof(LIST_ENTRY));
 
     ASSERT(IsListEmpty(&BlkifRing->PreparedQueue));
     RtlZeroMemory(&BlkifRing->PreparedQueue, sizeof(LIST_ENTRY));
@@ -2045,13 +2295,13 @@ BlkifRingConnect(
     if (!NT_SUCCESS(status))
         goto fail1;
 
-    BlkifRing->Mdl = __AllocatePages(1 << Ring->Order, FALSE);
+    BlkifRing->Pages = BlkifRingAllocatePages(1ul << Ring->Order);
 
     status = STATUS_NO_MEMORY;
-    if (BlkifRing->Mdl == NULL)
+    if (BlkifRing->Pages == NULL)
         goto fail2;
 
-    BlkifRing->Shared = MmGetSystemAddressForMdlSafe(BlkifRing->Mdl,
+    BlkifRing->Shared = MmGetSystemAddressForMdlSafe(BlkifRing->Pages->Mdl,
                                                      NormalPagePriority);
     ASSERT(BlkifRing->Shared != NULL);
 
@@ -2062,11 +2312,11 @@ BlkifRingConnect(
     FRONT_RING_INIT(&BlkifRing->Front, BlkifRing->Shared, PAGE_SIZE << Ring->Order);
 #pragma warning(pop)
 
-    for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
+    for (Index = 0; Index < BlkifRing->Pages->Count; ++Index) {
         status = GranterGet(Granter,
-                            MmGetMdlPfnArray(BlkifRing->Mdl)[Index],
+                            MmGetMdlPfnArray(BlkifRing->Pages->Mdl)[Index],
                             FALSE,
-                            &BlkifRing->Grants[Index]);
+                            &BlkifRing->Pages->Grants[Index]);
         if (!NT_SUCCESS(status))
             goto fail3;
     }
@@ -2121,19 +2371,9 @@ fail4:
     Error("fail4\n");
 fail3:
     Error("fail3\n");
-    for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
-        if (BlkifRing->Grants[Index] == NULL)
-            continue;
-
-        GranterPut(Granter, BlkifRing->Grants[Index]);
-        BlkifRing->Grants[Index] = NULL;
-    }
-
     RtlZeroMemory(&BlkifRing->Front, sizeof(blkif_front_ring_t));
 
-    __FreePages(BlkifRing->Mdl);
-    BlkifRing->Shared = NULL;
-    BlkifRing->Mdl = NULL;
+    BlkifRingReleasePages(BlkifRing);
 fail2:
     Error("fail2\n");
     BlkifRingCacheDestroy(BlkifRing);
@@ -2177,13 +2417,13 @@ BlkifRingStoreWrite(
                               Path,
                               "ring-ref",
                               "%u",
-                              GranterReference(Granter, BlkifRing->Grants[0]));
+                              GranterReference(Granter, BlkifRing->Pages->Grants[0]));
         if (!NT_SUCCESS(status))
             goto fail2;
     } else {
         ULONG           Index;
 
-        for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
+        for (Index = 0; Index < BlkifRing->Pages->Count; ++Index) {
             CHAR        Name[MAX_NAME_LEN + 1];
 
             status = RtlStringCchPrintfA(Name,
@@ -2199,7 +2439,7 @@ BlkifRingStoreWrite(
                                   Path,
                                   Name,
                                   "%u",
-                                  GranterReference(Granter, BlkifRing->Grants[Index]));
+                                  GranterReference(Granter, BlkifRing->Pages->Grants[Index]));
             if (!NT_SUCCESS(status))
                 goto fail4;
         }
@@ -2331,8 +2571,6 @@ BlkifRingDisconnect(
     )
 {
     PXENVBD_RING                Ring = BlkifRing->Ring;
-    PXENVBD_GRANTER             Granter = FrontendGetGranter(Ring->Frontend);
-    ULONG                       Index;
 
     Trace("====> %u\n", BlkifRing->Index);
     ASSERT(BlkifRing->Connected);
@@ -2347,19 +2585,15 @@ BlkifRingDisconnect(
                   BlkifRing->Channel);
     BlkifRing->Channel = NULL;
 
-    for (Index = 0; Index < (1ul << Ring->Order); ++Index) {
-        if (BlkifRing->Grants[Index] == NULL)
-            continue;
-
-        GranterPut(Granter, BlkifRing->Grants[Index]);
-        BlkifRing->Grants[Index] = NULL;
-    }
+    // Normally the backend has closed by now, so ring pages left over from
+    // earlier connections should be revocable
+    __BlkifRingAcquireLock(BlkifRing);
+    BlkifRingReclaim(BlkifRing);
+    __BlkifRingReleaseLock(BlkifRing);
 
     RtlZeroMemory(&BlkifRing->Front, sizeof(blkif_front_ring_t));
 
-    __FreePages(BlkifRing->Mdl);
-    BlkifRing->Shared = NULL;
-    BlkifRing->Mdl = NULL;
+    BlkifRingReleasePages(BlkifRing);
 
     BlkifRingCacheDestroy(BlkifRing);
 
@@ -2514,7 +2748,20 @@ RingCreate(
         Index++;
     }
 
+    KeInitializeEvent(&(*Ring)->ReclaimEvent, NotificationEvent, FALSE);
+
+    status = ThreadCreate(RingReclaim,
+                          *Ring,
+                          &(*Ring)->ReclaimThread);
+    if (!NT_SUCCESS(status))
+        goto fail4;
+
     return STATUS_SUCCESS;
+
+fail4:
+    Error("fail4\n");
+
+    RtlZeroMemory(&(*Ring)->ReclaimEvent, sizeof(KEVENT));
 
 fail3:
     Error("fail3\n");
@@ -2560,6 +2807,12 @@ RingDestroy(
     )
 {
     LONG                    Index;
+
+    ThreadAlert(Ring->ReclaimThread);
+    ThreadJoin(Ring->ReclaimThread);
+    Ring->ReclaimThread = NULL;
+
+    RtlZeroMemory(&Ring->ReclaimEvent, sizeof(KEVENT));
 
     Index = (LONG) FrontendGetMaxQueues(Ring->Frontend);
     ASSERT3U(Index, !=, 0);
@@ -2615,9 +2868,34 @@ RingD0ToD3(
     _Inout_ PXENVBD_RING    Ring
     )
 {
-    UNREFERENCED_PARAMETER(Ring);
+    ULONG                   Index;
 
     ASSERT3U(KeGetCurrentIrql(), ==, PASSIVE_LEVEL);
+
+#if DBG
+    // Grants are only handed over to the reclaim thread at disconnect, so a
+    // ring still connected here would never be drained
+    for (Index = 0; Index < FrontendGetMaxQueues(Ring->Frontend); ++Index)
+        ASSERT(!Ring->Ring[Index]->Connected);
+#endif
+
+    // Only return once the backend has released everything, so that no grant
+    // survives into D3. Freeing pages that backends may still access is worse
+    // than holding up D0->D3.
+    while (RingIsDeferring(Ring)) {
+        Trace("waiting for reclaim thread...\n");
+
+        KeClearEvent(&Ring->ReclaimEvent);
+        ThreadWake(Ring->ReclaimThread);
+
+        (VOID) KeWaitForSingleObject(&Ring->ReclaimEvent,
+                                     Executive,
+                                     KernelMode,
+                                     FALSE,
+                                     NULL);
+
+        Trace("done\n");
+    }
 }
 
 NTSTATUS
