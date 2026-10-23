@@ -91,8 +91,12 @@ typedef struct _XENVBD_BLKIF_RING {
     LIST_ENTRY                      PreparedQueue;
     LIST_ENTRY                      SubmittedList;
     LIST_ENTRY                      ShutdownQueue;
+    // List of XENVBD_REQUEST still being held by the backend
+    LIST_ENTRY                      DeferredList;
     // List of XENVBD_BLKIF_PAGES still being held by the backend
     LIST_ENTRY                      DeferredPages;
+    ULONG                           RequestsDeferred;
+    ULONG                           RequestsReclaimed;
     ULONG                           SrbsQueued;
     ULONG                           SrbsCompleted;
     ULONG                           SrbsFailed;
@@ -288,12 +292,8 @@ BlkifRingPutIndirect(
     )
 {
     PXENVBD_RING                Ring = BlkifRing->Ring;
-    PXENVBD_FRONTEND            Frontend = Ring->Frontend;
-    PXENVBD_GRANTER             Granter = FrontendGetGranter(Frontend);
 
-    if (Indirect->Grant)
-        GranterPut(Granter, Indirect->Grant);
-    Indirect->Grant = NULL;
+    ASSERT3P(Indirect->Grant, ==, NULL);
 
     RtlZeroMemory(&Indirect->ListEntry, sizeof(LIST_ENTRY));
 
@@ -325,12 +325,9 @@ BlkifRingPutSegment(
 {
     PXENVBD_RING            Ring = BlkifRing->Ring;
     PXENVBD_FRONTEND        Frontend = Ring->Frontend;
-    PXENVBD_GRANTER         Granter = FrontendGetGranter(Frontend);
     PXENVBD_BOUNCE          Bounce = Segment->Bounce;
 
-    if (Segment->Grant)
-        GranterPut(Granter, Segment->Grant);
-    Segment->Grant = NULL;
+    ASSERT3P(Segment->Grant, ==, NULL);
 
     if (Bounce) {
         if (Bounce->SourcePtr) {
@@ -358,6 +355,19 @@ BlkifRingPutSegment(
                  TRUE);
 }
 
+/*
+ * Request lifecycle:
+ * - Prepare: BlkifRingPrepare*() attach segments, bounce buffers, indirect
+ *   pages and grants, and take a SrbExt->RequestCount reference for each
+ *   request. The SRB completes when the last reference is dropped.
+ * - Done (response received or faked, or preparation failed):
+ *   BlkifRingTryPutRequest(), then BlkifRingDeferRequest() if that fails.
+ * - If deferred: ReclaimThread retries BlkifRingTryPutRequest() until it
+ *   succeeds.
+ * - BlkifRingTryPutRequest() revokes all grants first, then puts everything
+ *   back into the caches and drops the SRB reference (__BlkifRingPutSrb()).
+ *   Revocation can fail and be retried.
+ */
 static PXENVBD_REQUEST
 BlkifRingGetRequest(
     _In_ PXENVBD_BLKIF_RING BlkifRing
@@ -372,47 +382,17 @@ BlkifRingGetRequest(
 }
 
 static VOID
-BlkifRingPutRequest(
-    _In_ PXENVBD_BLKIF_RING BlkifRing,
-    _Inout_ PXENVBD_REQUEST Request
+BlkifRingDeferRequest(
+    _Inout_ PXENVBD_BLKIF_RING  BlkifRing,
+    _Inout_ PXENVBD_REQUEST     Request
     )
 {
-    PXENVBD_RING            Ring = BlkifRing->Ring;
-    PLIST_ENTRY             ListEntry;
+    PXENVBD_RING                Ring = BlkifRing->Ring;
 
-    for (;;) {
-        PXENVBD_SEGMENT Segment;
+    InsertTailList(&BlkifRing->DeferredList, &Request->ListEntry);
+    BlkifRing->RequestsDeferred++;
 
-        ListEntry = RemoveHeadList(&Request->Segments);
-        if (ListEntry == &Request->Segments)
-            break;
-        Segment = CONTAINING_RECORD(ListEntry, XENVBD_SEGMENT, ListEntry);
-        BlkifRingPutSegment(BlkifRing, Segment);
-    }
-
-    for (;;) {
-        PXENVBD_INDIRECT    Indirect;
-
-        ListEntry = RemoveHeadList(&Request->Indirects);
-        if (ListEntry == &Request->Indirects)
-            break;
-        Indirect = CONTAINING_RECORD(ListEntry, XENVBD_INDIRECT, ListEntry);
-        BlkifRingPutIndirect(BlkifRing, Indirect);
-    }
-
-    Request->SrbExt = NULL;
-    Request->Operation = 0;
-    Request->Flags = 0;
-    Request->NrSegments = 0;
-    Request->FirstSector = 0;
-    Request->NrSectors = 0;
-    RtlZeroMemory(&Request->ListEntry, sizeof(LIST_ENTRY));
-
-    XENBUS_CACHE(Put,
-                 &Ring->CacheInterface,
-                 BlkifRing->RequestCache,
-                 Request,
-                 TRUE);
+    ThreadWake(Ring->ReclaimThread);
 }
 
 static DECLSPEC_NOINLINE NTSTATUS
@@ -554,6 +534,13 @@ BlkifRingDebugCallback(
 
     XENBUS_DEBUG(Printf,
                  &Ring->DebugInterface,
+                 "RequestsDeferred = %u RequestsReclaimed = %u%s\n",
+                 BlkifRing->RequestsDeferred,
+                 BlkifRing->RequestsReclaimed,
+                 IsListEmpty(&BlkifRing->DeferredPages) ? "" : " (ring pages deferred)");
+
+    XENBUS_DEBUG(Printf,
+                 &Ring->DebugInterface,
                  "Dpcs = %u, Events = %u\n",
                  BlkifRing->Dpcs,
                  BlkifRing->Events);
@@ -587,6 +574,101 @@ __BlkifRingCompleteSrb(
 }
 
 static FORCEINLINE VOID
+__BlkifRingPutSrb(
+    _Inout_ PXENVBD_BLKIF_RING  BlkifRing,
+    _In_ PXENVBD_SRBEXT         SrbExt
+    )
+{
+    ASSERT3S(SrbExt->RequestCount, >, 0);
+
+    if (--SrbExt->RequestCount == 0)
+        __BlkifRingCompleteSrb(BlkifRing, SrbExt);
+}
+
+_Check_return_
+static BOOLEAN
+BlkifRingTryPutRequest(
+    _Inout_ PXENVBD_BLKIF_RING  BlkifRing,
+    _Inout_ PXENVBD_REQUEST     Request
+    )
+{
+    PXENVBD_RING                Ring = BlkifRing->Ring;
+    PXENVBD_GRANTER             Granter = FrontendGetGranter(Ring->Frontend);
+    PXENVBD_SRBEXT              SrbExt = Request->SrbExt;
+    PLIST_ENTRY                 ListEntry;
+    BOOLEAN                     Revoked = TRUE;
+
+    for (ListEntry = Request->Segments.Flink;
+         ListEntry != &Request->Segments;
+         ListEntry = ListEntry->Flink) {
+        PXENVBD_SEGMENT Segment = CONTAINING_RECORD(ListEntry, XENVBD_SEGMENT, ListEntry);
+
+        if (Segment->Grant == NULL)
+            continue;
+
+        if (NT_SUCCESS(GranterTryPut(Granter, Segment->Grant)))
+            Segment->Grant = NULL;
+        else
+            Revoked = FALSE;
+    }
+
+    for (ListEntry = Request->Indirects.Flink;
+         ListEntry != &Request->Indirects;
+         ListEntry = ListEntry->Flink) {
+        PXENVBD_INDIRECT    Indirect = CONTAINING_RECORD(ListEntry, XENVBD_INDIRECT, ListEntry);
+
+        if (Indirect->Grant == NULL)
+            continue;
+
+        if (NT_SUCCESS(GranterTryPut(Granter, Indirect->Grant)))
+            Indirect->Grant = NULL;
+        else
+            Revoked = FALSE;
+    }
+
+    if (!Revoked)
+        return FALSE;
+
+    for (;;) {
+        PXENVBD_SEGMENT Segment;
+
+        ListEntry = RemoveHeadList(&Request->Segments);
+        if (ListEntry == &Request->Segments)
+            break;
+        Segment = CONTAINING_RECORD(ListEntry, XENVBD_SEGMENT, ListEntry);
+        BlkifRingPutSegment(BlkifRing, Segment);
+    }
+
+    for (;;) {
+        PXENVBD_INDIRECT    Indirect;
+
+        ListEntry = RemoveHeadList(&Request->Indirects);
+        if (ListEntry == &Request->Indirects)
+            break;
+        Indirect = CONTAINING_RECORD(ListEntry, XENVBD_INDIRECT, ListEntry);
+        BlkifRingPutIndirect(BlkifRing, Indirect);
+    }
+
+    Request->SrbExt = NULL;
+    Request->Operation = 0;
+    Request->Flags = 0;
+    Request->NrSegments = 0;
+    Request->FirstSector = 0;
+    Request->NrSectors = 0;
+    RtlZeroMemory(&Request->ListEntry, sizeof(LIST_ENTRY));
+
+    XENBUS_CACHE(Put,
+                 &Ring->CacheInterface,
+                 BlkifRing->RequestCache,
+                 Request,
+                 TRUE);
+
+    __BlkifRingPutSrb(BlkifRing, SrbExt);
+
+    return TRUE;
+}
+
+static FORCEINLINE VOID
 BlkifRingUnprepareRequest(
     _In_ PXENVBD_BLKIF_RING BlkifRing,
     _In_ PLIST_ENTRY        List
@@ -604,7 +686,8 @@ BlkifRingUnprepareRequest(
                                     XENVBD_REQUEST,
                                     ListEntry);
 
-        BlkifRingPutRequest(BlkifRing, Request);
+        if (!BlkifRingTryPutRequest(BlkifRing, Request))
+            BlkifRingDeferRequest(BlkifRing, Request);
     }
 }
 
@@ -771,8 +854,6 @@ BlkifRingPrepareReadWrite(
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
-    SrbExt->RequestCount = 0;
-
     while (SectorsLeft > 0) {
         ULONG           Index;
         ULONG           MaxSegments;
@@ -846,7 +927,6 @@ fail3:
 fail2:
 fail1:
     BlkifRingUnprepareRequest(BlkifRing, &List);
-    SrbExt->RequestCount = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return STATUS_UNSUCCESSFUL;
 }
@@ -871,8 +951,6 @@ BlkifRingPrepareUnmap(
     Count = _byteswap_ushort(*(PUSHORT)Unmap->BlockDescrDataLength) / sizeof(UNMAP_BLOCK_DESCRIPTOR);
     Srb->SrbStatus = SRB_STATUS_PENDING;
 
-    SrbExt->RequestCount = 0;
-
     for (Index = 0; Index < Count; ++Index) {
         PUNMAP_BLOCK_DESCRIPTOR Descr = &Unmap->Descriptors[Index];
         PXENVBD_REQUEST         Request;
@@ -885,13 +963,14 @@ BlkifRingPrepareUnmap(
         InsertTailList(&List, &Request->ListEntry);
         SrbExt->RequestCount++;
 
+        Request->SrbExt = SrbExt;
+
         StartLBA = _byteswap_uint64(*(PULONG64)Descr->StartingLba);
         CountLBA = _byteswap_ulong(*(PULONG)Descr->LbaCount);
 
         if (!DiskInfoIsValidExtent(DiskInfo, StartLBA, CountLBA))
             goto fail2;
 
-        Request->SrbExt = SrbExt;
         Request->Operation = BLKIF_OP_DISCARD;
         Request->FirstSector = StartLBA << DiskInfo->SectorShift;
         Request->NrSectors = CountLBA << DiskInfo->SectorShift;
@@ -904,7 +983,6 @@ BlkifRingPrepareUnmap(
 fail2:
 fail1:
     BlkifRingUnprepareRequest(BlkifRing, &List);
-    SrbExt->RequestCount = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return STATUS_UNSUCCESSFUL;
 }
@@ -931,8 +1009,6 @@ BlkifRingPrepareSyncCache(
     else
         Operation = BLKIF_OP_WRITE_BARRIER;
 
-    SrbExt->RequestCount = 0;
-
     Request = BlkifRingGetRequest(BlkifRing);
     if (Request == NULL)
         goto fail1;
@@ -948,35 +1024,50 @@ BlkifRingPrepareSyncCache(
 
 fail1:
     BlkifRingUnprepareRequest(BlkifRing, &List);
-    SrbExt->RequestCount = 0;
     Srb->SrbStatus = SRB_STATUS_ERROR;
     return STATUS_UNSUCCESSFUL;
 }
 
-static DECLSPEC_NOINLINE NTSTATUS
+static DECLSPEC_NOINLINE VOID
 __BlkifRingPrepareSrb(
     _Inout_ PXENVBD_BLKIF_RING  BlkifRing,
     _Inout_ PXENVBD_SRBEXT      SrbExt
     )
 {
-    switch (Cdb_OperationEx(SrbExt->Srb)) {
+    PSCSI_REQUEST_BLOCK         Srb = SrbExt->Srb;
+    NTSTATUS                    status;
+
+    // Held while the requests are built, so that releasing them on failure
+    // cannot complete the SRB before its status is set
+    SrbExt->RequestCount = 1;
+
+    switch (Cdb_OperationEx(Srb)) {
     case SCSIOP_READ:
     case SCSIOP_WRITE:
-        return BlkifRingPrepareReadWrite(BlkifRing,
-                                         SrbExt);
+        status = BlkifRingPrepareReadWrite(BlkifRing,
+                                           SrbExt);
+        break;
 
     case SCSIOP_SYNCHRONIZE_CACHE:
-        return BlkifRingPrepareSyncCache(BlkifRing,
-                                         SrbExt);
+        status = BlkifRingPrepareSyncCache(BlkifRing,
+                                           SrbExt);
+        break;
 
     case SCSIOP_UNMAP:
-        return BlkifRingPrepareUnmap(BlkifRing,
-                                     SrbExt);
+        status = BlkifRingPrepareUnmap(BlkifRing,
+                                       SrbExt);
+        break;
 
     default:
         ASSERT(FALSE);
-        return STATUS_NOT_SUPPORTED;
+        status = STATUS_NOT_SUPPORTED;
+        break;
     }
+
+    if (!NT_SUCCESS(status))
+        Srb->SrbStatus = SRB_STATUS_BUSY;
+
+    __BlkifRingPutSrb(BlkifRing, SrbExt);
 }
 
 static FORCEINLINE VOID
@@ -1213,12 +1304,8 @@ __BlkifRingCompleteResponse(
         }
     }
 
-    BlkifRingPutRequest(BlkifRing, Request);
-
-    // complete srb
-    if (--SrbExt->RequestCount == 0) {
-        __BlkifRingCompleteSrb(BlkifRing, SrbExt);
-    }
+    if (!BlkifRingTryPutRequest(BlkifRing, Request))
+        BlkifRingDeferRequest(BlkifRing, Request);
 }
 
 static FORCEINLINE BOOLEAN
@@ -1468,12 +1555,7 @@ BlkifRingSchedule(
                                    XENVBD_SRBEXT,
                                    ListEntry);
 
-        status = __BlkifRingPrepareSrb(BlkifRing, SrbExt);
-        if (!NT_SUCCESS(status)) {
-            PSCSI_REQUEST_BLOCK Srb = SrbExt->Srb;
-            Srb->SrbStatus = SRB_STATUS_BUSY;
-            __BlkifRingCompleteSrb(BlkifRing, SrbExt);
-        }
+        __BlkifRingPrepareSrb(BlkifRing, SrbExt);
     }
 
     __BlkifRingPushRequests(BlkifRing);
@@ -1873,7 +1955,8 @@ __BlkifRingIsDeferring(
     _In_ PXENVBD_BLKIF_RING BlkifRing
     )
 {
-    return !IsListEmpty(&BlkifRing->DeferredPages);
+    return !IsListEmpty(&BlkifRing->DeferredList) ||
+           !IsListEmpty(&BlkifRing->DeferredPages);
 }
 
 _IRQL_requires_(DISPATCH_LEVEL)
@@ -1886,6 +1969,23 @@ BlkifRingReclaim(
     ASSERT3P(BlkifRing->LockThread, ==, KeGetCurrentThread());
 #endif
 
+    while (!IsListEmpty(&BlkifRing->DeferredList)) {
+        PLIST_ENTRY         ListEntry;
+        PXENVBD_REQUEST     Request;
+
+        ListEntry = RemoveHeadList(&BlkifRing->DeferredList);
+        Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
+
+        if (!BlkifRingTryPutRequest(BlkifRing, Request)) {
+            // Move this reclaim failure to the back so that entries behind it
+            // are tried first on the next pass.
+            InsertTailList(&BlkifRing->DeferredList, ListEntry);
+            break;
+        }
+
+        BlkifRing->RequestsReclaimed++;
+    }
+
     while (!IsListEmpty(&BlkifRing->DeferredPages)) {
         PLIST_ENTRY         ListEntry;
         PXENVBD_BLKIF_PAGES Pages;
@@ -1894,8 +1994,6 @@ BlkifRingReclaim(
         Pages = CONTAINING_RECORD(ListEntry, XENVBD_BLKIF_PAGES, ListEntry);
 
         if (!__BlkifRingRevokePages(BlkifRing, Pages)) {
-            // Move this reclaim failure to the back so that entries behind it
-            // are tried first on the next pass.
             InsertTailList(&BlkifRing->DeferredPages, ListEntry);
             break;
         }
@@ -2011,13 +2109,19 @@ BlkifRingCacheCreate(
     Ring = BlkifRing->Ring;
     Frontend = Ring->Frontend;
 
+    // The caches hold their own reference on the interface, as they outlive
+    // a disconnect while any of their objects are deferred.
+    status = XENBUS_CACHE(Acquire, &Ring->CacheInterface);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
     status = RtlStringCbPrintfA(Name,
                                 sizeof(Name),
                                 "vbd_%u_queue_%u_request",
                                 FrontendGetTargetId(Frontend),
                                 BlkifRing->Index);
     if (!NT_SUCCESS(status))
-        goto fail1;
+        goto fail2;
 
     status = XENBUS_CACHE(Create,
                           &Ring->CacheInterface,
@@ -2032,7 +2136,7 @@ BlkifRingCacheCreate(
                           BlkifRing,
                           &BlkifRing->RequestCache);
     if (!NT_SUCCESS(status))
-        goto fail2;
+        goto fail3;
 
     status = RtlStringCbPrintfA(Name,
                                 sizeof(Name),
@@ -2040,7 +2144,7 @@ BlkifRingCacheCreate(
                                 FrontendGetTargetId(Frontend),
                                 BlkifRing->Index);
     if (!NT_SUCCESS(status))
-        goto fail3;
+        goto fail4;
 
     status = XENBUS_CACHE(Create,
                           &Ring->CacheInterface,
@@ -2055,7 +2159,7 @@ BlkifRingCacheCreate(
                           BlkifRing,
                           &BlkifRing->SegmentCache);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail5;
 
     status = RtlStringCbPrintfA(Name,
                                 sizeof(Name),
@@ -2063,7 +2167,7 @@ BlkifRingCacheCreate(
                                 FrontendGetTargetId(Frontend),
                                 BlkifRing->Index);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail6;
 
     status = XENBUS_CACHE(Create,
                           &Ring->CacheInterface,
@@ -2078,34 +2182,39 @@ BlkifRingCacheCreate(
                           BlkifRing,
                           &BlkifRing->IndirectCache);
     if (!NT_SUCCESS(status))
-        goto fail6;
+        goto fail7;
 
     return STATUS_SUCCESS;
 
+fail7:
+    Error("fail7\n");
+
 fail6:
     Error("fail6\n");
-
-fail5:
-    Error("fail5\n");
 
     XENBUS_CACHE(Destroy,
                  &Ring->CacheInterface,
                  BlkifRing->SegmentCache);
     BlkifRing->SegmentCache = NULL;
 
+fail5:
+    Error("fail5\n");
+
 fail4:
     Error("fail4\n");
-
-fail3:
-    Error("fail3\n");
 
     XENBUS_CACHE(Destroy,
                  &Ring->CacheInterface,
                  BlkifRing->RequestCache);
     BlkifRing->RequestCache = NULL;
 
+fail3:
+    Error("fail3\n");
+
 fail2:
     Error("fail2\n");
+
+    XENBUS_CACHE(Release, &Ring->CacheInterface);
 
 fail1:
     Error("fail1 %08x\n", status);
@@ -2136,6 +2245,8 @@ BlkifRingCacheDestroy(
                  &Ring->CacheInterface,
                  BlkifRing->RequestCache);
     BlkifRing->RequestCache = NULL;
+
+    XENBUS_CACHE(Release, &Ring->CacheInterface);
 }
 
 static NTSTATUS
@@ -2184,6 +2295,7 @@ BlkifRingCreate(
     InitializeListHead(&(*BlkifRing)->ShutdownQueue);
     InitializeListHead(&(*BlkifRing)->SubmittedList);
     InitializeListHead(&(*BlkifRing)->PreparedQueue);
+    InitializeListHead(&(*BlkifRing)->DeferredList);
     InitializeListHead(&(*BlkifRing)->DeferredPages);
 
     KeInitializeThreadedDpc(&(*BlkifRing)->Dpc, BlkifRingDpc, *BlkifRing);
@@ -2202,6 +2314,7 @@ fail4:
     RtlZeroMemory(&(*BlkifRing)->Dpc, sizeof(KDPC));
 
     RtlZeroMemory(&(*BlkifRing)->DeferredPages, sizeof(LIST_ENTRY));
+    RtlZeroMemory(&(*BlkifRing)->DeferredList, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->PreparedQueue, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->SubmittedList, sizeof(LIST_ENTRY));
     RtlZeroMemory(&(*BlkifRing)->ShutdownQueue, sizeof(LIST_ENTRY));
@@ -2235,10 +2348,15 @@ BlkifRingDestroy(
     BlkifRing->WatchdogThread = NULL;
 
     BUG_ON(__BlkifRingIsDeferring(BlkifRing));
+    ASSERT3P(BlkifRing->RequestCache, ==, NULL);
+
+    BlkifRing->RequestsDeferred = 0;
+    BlkifRing->RequestsReclaimed = 0;
 
     RtlZeroMemory(&BlkifRing->Dpc, sizeof(KDPC));
 
     RtlZeroMemory(&BlkifRing->DeferredPages, sizeof(LIST_ENTRY));
+    RtlZeroMemory(&BlkifRing->DeferredList, sizeof(LIST_ENTRY));
 
     ASSERT(IsListEmpty(&BlkifRing->PreparedQueue));
     RtlZeroMemory(&BlkifRing->PreparedQueue, sizeof(LIST_ENTRY));
@@ -2274,6 +2392,7 @@ BlkifRingConnect(
     PXENVBD_FRONTEND            Frontend = Ring->Frontend;
     PXENVBD_GRANTER             Granter = FrontendGetGranter(Frontend);
     CHAR                        Name[MAX_NAME_LEN];
+    BOOLEAN                     CacheCreated;
     ULONG                       Index;
     NTSTATUS                    status;
 
@@ -2291,9 +2410,15 @@ BlkifRingConnect(
     }
     KeSetImportanceDpc(&BlkifRing->Dpc, MediumHighImportance);
 
-    status = BlkifRingCacheCreate(BlkifRing);
-    if (!NT_SUCCESS(status))
-        goto fail1;
+    // The caches are kept by a disconnect that left requests deferred
+    CacheCreated = FALSE;
+    if (BlkifRing->RequestCache == NULL) {
+        status = BlkifRingCacheCreate(BlkifRing);
+        if (!NT_SUCCESS(status))
+            goto fail1;
+
+        CacheCreated = TRUE;
+    }
 
     BlkifRing->Pages = BlkifRingAllocatePages(1ul << Ring->Order);
 
@@ -2376,7 +2501,8 @@ fail3:
     BlkifRingReleasePages(BlkifRing);
 fail2:
     Error("fail2\n");
-    BlkifRingCacheDestroy(BlkifRing);
+    if (CacheCreated)
+        BlkifRingCacheDestroy(BlkifRing);
 fail1:
     Error("fail1 %08x\n", status);
     return status;
@@ -2571,6 +2697,7 @@ BlkifRingDisconnect(
     )
 {
     PXENVBD_RING                Ring = BlkifRing->Ring;
+    BOOLEAN                     Deferring;
 
     Trace("====> %u\n", BlkifRing->Index);
     ASSERT(BlkifRing->Connected);
@@ -2585,17 +2712,27 @@ BlkifRingDisconnect(
                   BlkifRing->Channel);
     BlkifRing->Channel = NULL;
 
-    // Normally the backend has closed by now, so ring pages left over from
-    // earlier connections should be revocable
+    // Normally the backend has closed by now, so anything still deferred
+    // should be revocable
     __BlkifRingAcquireLock(BlkifRing);
     BlkifRingReclaim(BlkifRing);
+    Deferring = !IsListEmpty(&BlkifRing->DeferredList);
     __BlkifRingReleaseLock(BlkifRing);
 
     RtlZeroMemory(&BlkifRing->Front, sizeof(blkif_front_ring_t));
 
     BlkifRingReleasePages(BlkifRing);
 
-    BlkifRingCacheDestroy(BlkifRing);
+    // Deferred requests still own objects from the caches, so keep them (and
+    // let the next connection reuse them) until the requests are reclaimed
+    if (Deferring) {
+        Warning("Target[%u][%u] : %u request(s) still deferred\n",
+                FrontendGetTargetId(Ring->Frontend),
+                BlkifRing->Index,
+                BlkifRing->RequestsDeferred - BlkifRing->RequestsReclaimed);
+    } else {
+        BlkifRingCacheDestroy(BlkifRing);
+    }
 
     BlkifRing->Events = 0;
     BlkifRing->Dpcs = 0;
@@ -2895,6 +3032,20 @@ RingD0ToD3(
                                      NULL);
 
         Trace("done\n");
+    }
+
+    // Caches kept by a disconnect that left requests deferred, along with
+    // their cache interface references, can go now
+    for (Index = 0; Index < FrontendGetMaxQueues(Ring->Frontend); ++Index) {
+        PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
+        KIRQL               Irql;
+
+        if (BlkifRing->RequestCache == NULL)
+            continue;
+
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        BlkifRingCacheDestroy(BlkifRing);
+        KeLowerIrql(Irql);
     }
 }
 
