@@ -358,12 +358,17 @@ GranterPut(
     if (Granter->Connected == FALSE)
         return;
 
-    status = XENBUS_GNTTAB(RevokeForeignAccess,
-                           &Granter->GnttabInterface,
-                           Granter->Cache,
-                           FALSE,
-                           Entry);
-    ASSERT(NT_SUCCESS(status));
+    for (;;) {
+        status = XENBUS_GNTTAB(RevokeForeignAccess,
+                               &Granter->GnttabInterface,
+                               Granter->Cache,
+                               FALSE,
+                               Entry);
+        if (NT_SUCCESS(status))
+            break;
+
+        YieldProcessor();
+    }
 
     InterlockedDecrement(&Granter->Current);
 }
