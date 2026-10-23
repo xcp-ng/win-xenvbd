@@ -111,14 +111,7 @@ GranterDestroy(
     )
 {
     BUG_ON(Granter->Current != 0);
-
-    if (Granter->Cache != NULL) {
-        KIRQL   Irql;
-
-        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
-        __GranterDestroyCache(Granter);
-        KeLowerIrql(Irql);
-    }
+    ASSERT3P(Granter->Cache, ==, NULL);
 
     Granter->Frontend = NULL;
     RtlZeroMemory(&Granter->Lock, sizeof(KSPIN_LOCK));
@@ -365,6 +358,38 @@ GranterDisconnect(
     }
 
     __GranterDestroyCache(Granter);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID
+GranterD3ToD0(
+    _Inout_ PXENVBD_GRANTER Granter
+    )
+{
+    ASSERT3P(Granter->Cache, ==, NULL);
+    ASSERT3S(Granter->Current, ==, 0);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID
+GranterD0ToD3(
+    _Inout_ PXENVBD_GRANTER Granter
+    )
+{
+    KIRQL                   Irql;
+
+    ASSERT(!Granter->Connected);
+
+    // All grants must be revoked before transitioning to S3.
+
+    BUG_ON(Granter->Current != 0);
+
+    if (Granter->Cache == NULL)
+        return;
+
+    KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+    __GranterDestroyCache(Granter);
+    KeLowerIrql(Irql);
 }
 
 NTSTATUS

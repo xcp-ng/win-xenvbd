@@ -116,13 +116,13 @@ FrontendSetDeviceUsage(
     );
 
 _Check_return_
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern NTSTATUS
 FrontendD3ToD0(
     _Inout_ PXENVBD_FRONTEND    Frontend
     );
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 extern VOID
 FrontendD0ToD3(
     _Inout_ PXENVBD_FRONTEND    Frontend

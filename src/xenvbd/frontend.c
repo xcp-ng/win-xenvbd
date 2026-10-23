@@ -1669,7 +1669,7 @@ FrontendDebugCallback(
 }
 
 _Check_return_
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 FrontendD3ToD0(
     _Inout_ PXENVBD_FRONTEND    Frontend
@@ -1678,6 +1678,8 @@ FrontendD3ToD0(
     PXENVBD_ADAPTER             Adapter = TargetGetAdapter(Frontend->Target);
     KIRQL                       Irql;
     NTSTATUS                    status;
+
+    GranterD3ToD0(Frontend->Granter);
 
     KeAcquireSpinLock(&Frontend->StateLock, &Irql);
 
@@ -1746,10 +1748,13 @@ fail1:
                   sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
+
+    GranterD0ToD3(Frontend->Granter);
+
     return status;
 }
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 VOID
 FrontendD0ToD3(
     _Inout_ PXENVBD_FRONTEND    Frontend
@@ -1787,6 +1792,8 @@ FrontendD0ToD3(
                   sizeof(XENBUS_STORE_INTERFACE));
 
     KeReleaseSpinLock(&Frontend->StateLock, Irql);
+
+    GranterD0ToD3(Frontend->Granter);
 }
 
 _Check_return_
