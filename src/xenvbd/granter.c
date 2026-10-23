@@ -100,11 +100,26 @@ fail1:
     return status;
 }
 
+static VOID
+__GranterDestroyCache(
+    _Inout_ PXENVBD_GRANTER Granter
+    );
+
 VOID
 GranterDestroy(
     _Inout_ PXENVBD_GRANTER Granter
     )
 {
+    BUG_ON(Granter->Current != 0);
+
+    if (Granter->Cache != NULL) {
+        KIRQL   Irql;
+
+        KeRaiseIrql(DISPATCH_LEVEL, &Irql);
+        __GranterDestroyCache(Granter);
+        KeLowerIrql(Irql);
+    }
+
     Granter->Frontend = NULL;
     RtlZeroMemory(&Granter->Lock, sizeof(KSPIN_LOCK));
 
@@ -166,8 +181,8 @@ GranterDebugCallback(
 
 #define MAXNAMELEN  32
 
-NTSTATUS
-GranterConnect(
+static NTSTATUS
+__GranterCreateCache(
     _Inout_ PXENVBD_GRANTER Granter
     )
 {
@@ -175,25 +190,20 @@ GranterConnect(
     CHAR                    Name[MAXNAMELEN];
     NTSTATUS                status;
 
-    ASSERT(Granter->Connected == FALSE);
+    ASSERT3P(Granter->Cache, ==, NULL);
 
     AdapterGetGnttabInterface(Adapter, &Granter->GnttabInterface);
-    AdapterGetDebugInterface(Adapter, &Granter->DebugInterface);
 
     status = XENBUS_GNTTAB(Acquire, &Granter->GnttabInterface);
     if (!NT_SUCCESS(status))
         goto fail1;
-
-    status = XENBUS_DEBUG(Acquire, &Granter->DebugInterface);
-    if (!NT_SUCCESS(status))
-        goto fail2;
 
     status = RtlStringCbPrintfA(Name,
                                 sizeof (Name),
                                 "disk_%u",
                                 FrontendGetTargetId(Granter->Frontend));
     if (!NT_SUCCESS(status))
-        goto fail3;
+        goto fail2;
 
     status = XENBUS_GNTTAB(CreateCache,
                            &Granter->GnttabInterface,
@@ -205,7 +215,64 @@ GranterConnect(
                            Granter,
                            &Granter->Cache);
     if (!NT_SUCCESS(status))
-        goto fail4;
+        goto fail3;
+
+    return STATUS_SUCCESS;
+
+fail3:
+    Error("fail3\n");
+
+fail2:
+    Error("fail2\n");
+
+    XENBUS_GNTTAB(Release, &Granter->GnttabInterface);
+
+fail1:
+    Error("fail1 %08x\n", status);
+
+    RtlZeroMemory(&Granter->GnttabInterface, sizeof(XENBUS_GNTTAB_INTERFACE));
+
+    return status;
+}
+
+static VOID
+__GranterDestroyCache(
+    _Inout_ PXENVBD_GRANTER Granter
+    )
+{
+    ASSERT3S(Granter->Current, ==, 0);
+
+    XENBUS_GNTTAB(DestroyCache,
+                  &Granter->GnttabInterface,
+                  Granter->Cache);
+    Granter->Cache = NULL;
+
+    XENBUS_GNTTAB(Release, &Granter->GnttabInterface);
+
+    RtlZeroMemory(&Granter->GnttabInterface, sizeof(XENBUS_GNTTAB_INTERFACE));
+}
+
+NTSTATUS
+GranterConnect(
+    _Inout_ PXENVBD_GRANTER Granter
+    )
+{
+    PXENVBD_ADAPTER         Adapter = TargetGetAdapter(FrontendGetTarget(Granter->Frontend));
+    NTSTATUS                status;
+
+    ASSERT(Granter->Connected == FALSE);
+
+    if (Granter->Cache == NULL) {
+        status = __GranterCreateCache(Granter);
+        if (!NT_SUCCESS(status))
+            goto fail1;
+    }
+
+    AdapterGetDebugInterface(Adapter, &Granter->DebugInterface);
+
+    status = XENBUS_DEBUG(Acquire, &Granter->DebugInterface);
+    if (!NT_SUCCESS(status))
+        goto fail2;
 
     status = XENBUS_DEBUG(Register,
                           &Granter->DebugInterface,
@@ -214,30 +281,26 @@ GranterConnect(
                           Granter,
                           &Granter->DebugCallback);
     if (!NT_SUCCESS(status))
-        goto fail5;
+        goto fail3;
 
     Granter->Connected = TRUE;
     return STATUS_SUCCESS;
 
-fail5:
-    Error("fail5\n");
-    XENBUS_GNTTAB(DestroyCache,
-                  &Granter->GnttabInterface,
-                  Granter->Cache);
-    Granter->Cache = NULL;
-fail4:
-    Error("fail4\n");
 fail3:
     Error("fail3\n");
+
     XENBUS_DEBUG(Release, &Granter->DebugInterface);
+
 fail2:
     Error("fail2\n");
-    XENBUS_GNTTAB(Release, &Granter->GnttabInterface);
-fail1:
-    Error("fail1 %08x\n", status);
 
     RtlZeroMemory(&Granter->DebugInterface, sizeof(XENBUS_DEBUG_INTERFACE));
-    RtlZeroMemory(&Granter->GnttabInterface, sizeof(XENBUS_GNTTAB_INTERFACE));
+
+    if (Granter->Current == 0)
+        __GranterDestroyCache(Granter);
+
+fail1:
+    Error("fail1 %08x\n", status);
 
     return status;
 }
@@ -281,7 +344,6 @@ GranterDisconnect(
 {
     ASSERT(Granter->Connected == TRUE);
 
-    ASSERT3S(Granter->Current, ==, 0);
     Granter->Maximum = 0;
 
     XENBUS_DEBUG(Deregister,
@@ -289,18 +351,20 @@ GranterDisconnect(
                  Granter->DebugCallback);
     Granter->DebugCallback = NULL;
 
-    XENBUS_GNTTAB(DestroyCache,
-                  &Granter->GnttabInterface,
-                  Granter->Cache);
-    Granter->Cache = NULL;
-
     XENBUS_DEBUG(Release, &Granter->DebugInterface);
-    XENBUS_GNTTAB(Release, &Granter->GnttabInterface);
 
     RtlZeroMemory(&Granter->DebugInterface, sizeof(XENBUS_DEBUG_INTERFACE));
-    RtlZeroMemory(&Granter->GnttabInterface, sizeof(XENBUS_GNTTAB_INTERFACE));
 
     Granter->Connected = FALSE;
+
+    if (Granter->Current != 0) {
+        Warning("Target[%u] : %ld grants outstanding\n",
+                FrontendGetTargetId(Granter->Frontend),
+                Granter->Current);
+        return;
+    }
+
+    __GranterDestroyCache(Granter);
 }
 
 NTSTATUS
@@ -381,9 +445,6 @@ GranterPut(
     )
 {
     NTSTATUS                status;
-
-    if (Granter->Connected == FALSE)
-        return;
 
     for (;;) {
         status = GranterTryPut(Granter, Handle);
