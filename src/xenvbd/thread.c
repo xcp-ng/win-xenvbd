@@ -30,6 +30,7 @@
  * SUCH DAMAGE.
  */ 
 
+#include <ntifs.h>
 #include <ntddk.h>
 #include "util.h"
 
@@ -207,6 +208,7 @@ fail3:
     Error("fail3\n");
 
     __ThreadAlert(Thread);
+    ZwWaitForSingleObject(Handle, FALSE, NULL);
     ZwClose(Handle);
 
 fail2:
