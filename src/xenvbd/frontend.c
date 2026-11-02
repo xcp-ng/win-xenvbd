@@ -75,6 +75,7 @@ struct _XENVBD_FRONTEND {
     XENVBD_DISKINFO             DiskInfo;
     XENVBD_PAGE                 Page80;
     XENVBD_PAGE                 Page83;
+    BOOLEAN                     InquiryInitialized;
     ULONG                       MaxQueues;
     ULONG                       NumQueues;
 
@@ -927,44 +928,85 @@ FrontendReadDiskInfo(
 }
 
 static FORCEINLINE VOID
-FrontendReadInquiryOverrides(
-    _Inout_ PXENVBD_FRONTEND    Frontend
+__FrontendFreePage(
+    _Inout_ PXENVBD_PAGE        Page
+    )
+{
+    if (Page->Data)
+        Base64Free(Page->Data);
+    Page->Data = NULL;
+    Page->Size = 0;
+}
+
+static FORCEINLINE BOOLEAN
+__FrontendPageEqual(
+    _In_ PXENVBD_PAGE           Page1,
+    _In_ PXENVBD_PAGE           Page2
+    )
+{
+    if (Page1->Size != Page2->Size)
+        return FALSE;
+    if (Page1->Size == 0)
+        return TRUE;
+    return RtlEqualMemory(Page1->Data, Page2->Data, Page1->Size);
+}
+
+static FORCEINLINE VOID
+__FrontendReadPage(
+    _In_ PXENVBD_FRONTEND       Frontend,
+    _In_ PCHAR                  Node,
+    _Out_ PXENVBD_PAGE          Page
     )
 {
     PCHAR                       Buffer;
     NTSTATUS                    status;
 
-    status = XENBUS_STORE(Read,
-                          &Frontend->StoreInterface,
-                          NULL,
-                          Frontend->BackendPath,
-                          "sm-data/scsi/0x12/0x80",
-                          &Buffer);
-    if (NT_SUCCESS(status)) {
-        (VOID) Base64Decode(Buffer,
-                            &Frontend->Page80.Data,
-                            &Frontend->Page80.Size);
-
-        XENBUS_STORE(Free,
-                     &Frontend->StoreInterface,
-                     Buffer);
-    }
+    Page->Data = NULL;
+    Page->Size = 0;
 
     status = XENBUS_STORE(Read,
                           &Frontend->StoreInterface,
                           NULL,
                           Frontend->BackendPath,
-                          "sm-data/scsi/0x12/0x83",
+                          Node,
                           &Buffer);
-    if (NT_SUCCESS(status)) {
-        (VOID) Base64Decode(Buffer,
-                            &Frontend->Page83.Data,
-                            &Frontend->Page83.Size);
+    if (!NT_SUCCESS(status))
+        return;
 
-        XENBUS_STORE(Free,
-                     &Frontend->StoreInterface,
-                     Buffer);
+    (VOID) Base64Decode(Buffer,
+                        &Page->Data,
+                        &Page->Size);
+
+    XENBUS_STORE(Free,
+                 &Frontend->StoreInterface,
+                 Buffer);
+}
+
+static FORCEINLINE VOID
+FrontendReadInquiryOverrides(
+    _Inout_ PXENVBD_FRONTEND    Frontend
+    )
+{
+    XENVBD_PAGE                 Page80;
+    XENVBD_PAGE                 Page83;
+
+    __FrontendReadPage(Frontend, "sm-data/scsi/0x12/0x80", &Page80);
+    __FrontendReadPage(Frontend, "sm-data/scsi/0x12/0x83", &Page83);
+
+    if (!Frontend->InquiryInitialized) {
+        Frontend->Page80 = Page80;
+        Frontend->Page83 = Page83;
+        Frontend->InquiryInitialized = TRUE;
+        return;
     }
+
+    if (!__FrontendPageEqual(&Frontend->Page80, &Page80) ||
+        !__FrontendPageEqual(&Frontend->Page83, &Page83))
+        Warning("Target[%d] : backend inquiry data has changed, using cached value\n",
+                Frontend->TargetId);
+
+    __FrontendFreePage(&Page80);
+    __FrontendFreePage(&Page83);
 }
 
 //=============================================================================
@@ -1287,17 +1329,6 @@ abort:
 fail7:
     Error("Fail7\n");
     RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
-
-    if (Frontend->Page80.Data)
-        Base64Free(Frontend->Page80.Data);
-    Frontend->Page80.Data = NULL;
-    Frontend->Page80.Size = 0;
-
-    if (Frontend->Page83.Data)
-        Base64Free(Frontend->Page83.Data);
-    Frontend->Page83.Data = NULL;
-    Frontend->Page83.Size = 0;
-
     RtlZeroMemory(&Frontend->DiskInfo, sizeof(XENVBD_DISKINFO));
 
 fail6:
@@ -1327,16 +1358,6 @@ FrontendDisconnect(
     GranterDisconnect(Frontend->Granter);
 
     Frontend->NumQueues = 0;
-
-    if (Frontend->Page80.Data)
-        Base64Free(Frontend->Page80.Data);
-    Frontend->Page80.Data = NULL;
-    Frontend->Page80.Size = 0;
-
-    if (Frontend->Page83.Data)
-        Base64Free(Frontend->Page83.Data);
-    Frontend->Page83.Data = NULL;
-    Frontend->Page83.Size = 0;
 
     RtlZeroMemory(&Frontend->Features, sizeof(XENVBD_FEATURES));
 }
@@ -1999,6 +2020,10 @@ FrontendDestroy(
     RtlZeroMemory(Frontend->FrontendPath, sizeof(Frontend->FrontendPath));
     RtlZeroMemory(&Frontend->DiskInfo, sizeof(XENVBD_DISKINFO));
     RtlZeroMemory(&Frontend->Caps, sizeof(XENVBD_CAPS));
+
+    __FrontendFreePage(&Frontend->Page83);
+    __FrontendFreePage(&Frontend->Page80);
+    Frontend->InquiryInitialized = FALSE;
 
     ASSERT3P(Frontend->BackendPath, ==, NULL);
     ASSERT3P(Frontend->BackendWatch, ==, NULL);
