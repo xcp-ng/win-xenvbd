@@ -2568,7 +2568,8 @@ RingDestroy(
         PXENVBD_BLKIF_RING  BlkifRing = Ring->Ring[Index];
 
         Ring->Ring[Index] = NULL;
-        BlkifRingDestroy(BlkifRing);
+        if (BlkifRing)
+            BlkifRingDestroy(BlkifRing);
     }
 
     __RingFree(Ring->Ring);
