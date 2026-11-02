@@ -378,6 +378,50 @@ ignore:
     return TRUE;
 }
 
+static FORCEINLINE NTSTATUS
+__AdapterGetVirtualDevice(
+    _In_ PXENVBD_ADAPTER    Adapter,
+    _In_ PSTR               DeviceId,
+    _Out_ PULONG            VirtualDevice
+    )
+{
+    PCHAR                   Buffer;
+    CHAR                    Path[MAXNAMELEN];
+    NTSTATUS                status;
+
+    status = RtlStringCbPrintfA(Path,
+                                sizeof(Path),
+                                "device/vbd/%s",
+                                DeviceId);
+    if (!NT_SUCCESS(status))
+        goto fail1;
+
+    status = XENBUS_STORE(Read,
+                          &Adapter->StoreInterface,
+                          NULL,
+                          Path,
+                          "virtual-device",
+                          &Buffer);
+    if (!NT_SUCCESS(status))
+        goto fail2;
+
+    *VirtualDevice = strtoul(Buffer, NULL, 10);
+
+    XENBUS_STORE(Free,
+                 &Adapter->StoreInterface,
+                 Buffer);
+
+    return STATUS_SUCCESS;
+
+fail2:
+    Error("fail2\n");
+
+fail1:
+    Error("fail1 (%08x)\n", status);
+
+    return status;
+}
+
 BOOLEAN
 AdapterIsTargetEmulated(
     _In_ PXENVBD_ADAPTER    Adapter,
@@ -495,6 +539,7 @@ __AdapterEnumerate(
 
     // add new targets
     for (Index = 0; Devices[Index].Buffer != NULL; ++Index) {
+        ULONG           VirtualDevice;
         NTSTATUS        status;
 
         Device = &Devices[Index];
@@ -505,8 +550,15 @@ __AdapterEnumerate(
         if (__AdapterHiddenTarget(Adapter, Device->Buffer))
             continue;
 
+        status = __AdapterGetVirtualDevice(Adapter,
+                                           Device->Buffer,
+                                           &VirtualDevice);
+        if (!NT_SUCCESS(status))
+            continue;
+
         status = TargetCreate(Adapter,
                               Device->Buffer,
+                              VirtualDevice,
                               &Target);
         if (status == STATUS_RETRY)
             NeedReboot = TRUE;

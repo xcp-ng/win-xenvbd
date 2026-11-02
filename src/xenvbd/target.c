@@ -1475,11 +1475,9 @@ TargetD0ToD3(
 
 static FORCEINLINE ULONG
 __ParseVbd(
-    _In_ PSTR   DeviceIdStr
+    _In_ ULONG  DeviceId
     )
 {
-    ULONG       DeviceId = strtoul(DeviceIdStr, NULL, 10);
-
     ASSERT3U((DeviceId & ~((1 << 29) - 1)), ==, 0);
 
     if (DeviceId & (1 << 28))
@@ -1504,6 +1502,7 @@ NTSTATUS
 TargetCreate(
     _In_ PXENVBD_ADAPTER    Adapter,
     _In_ PSTR               DeviceId,
+    _In_ ULONG              VirtualDevice,
     _Outptr_ PXENVBD_TARGET *_Target
     )
 {
@@ -1511,7 +1510,7 @@ TargetCreate(
     PXENVBD_TARGET          Target;
     ULONG                   TargetId;
 
-    TargetId = __ParseVbd(DeviceId);
+    TargetId = __ParseVbd(VirtualDevice);
     if (TargetId >= XENVBD_MAX_TARGETS)
         return STATUS_RETRY;
 
