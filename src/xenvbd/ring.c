@@ -2656,19 +2656,8 @@ BlkifRingDisable(
     __BlkifRingAcquireLock(BlkifRing);
     BlkifRing->Enabled = FALSE;
 
-    while (!IsListEmpty(&BlkifRing->SubmittedList)) {
-        PLIST_ENTRY ListEntry;
-        PXENVBD_REQUEST Request;
-
-        ListEntry = RemoveHeadList(&BlkifRing->SubmittedList);
-        ASSERT3P(ListEntry, !=, &BlkifRing->SubmittedList);
-
-        Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
-        BlkifRing->ResponsesProcessed++;
-        __BlkifRingCompleteResponse(BlkifRing, Request, BLKIF_RSP_ERROR);
-
+    if (!IsListEmpty(&BlkifRing->SubmittedList))
         BlkifRing->Poisoned = TRUE;
-    }
 
     while (!IsListEmpty(&BlkifRing->PreparedQueue)) {
         PLIST_ENTRY ListEntry;
@@ -2712,9 +2701,22 @@ BlkifRingDisconnect(
                   BlkifRing->Channel);
     BlkifRing->Channel = NULL;
 
+    __BlkifRingAcquireLock(BlkifRing);
+
+    while (!IsListEmpty(&BlkifRing->SubmittedList)) {
+        PLIST_ENTRY     ListEntry;
+        PXENVBD_REQUEST Request;
+
+        ListEntry = RemoveHeadList(&BlkifRing->SubmittedList);
+        ASSERT3P(ListEntry, !=, &BlkifRing->SubmittedList);
+
+        Request = CONTAINING_RECORD(ListEntry, XENVBD_REQUEST, ListEntry);
+        BlkifRing->ResponsesProcessed++;
+        __BlkifRingCompleteResponse(BlkifRing, Request, BLKIF_RSP_ERROR);
+    }
+
     // Normally the backend has closed by now, so anything still deferred
     // should be revocable
-    __BlkifRingAcquireLock(BlkifRing);
     BlkifRingReclaim(BlkifRing);
     Deferring = !IsListEmpty(&BlkifRing->DeferredList);
     __BlkifRingReleaseLock(BlkifRing);
