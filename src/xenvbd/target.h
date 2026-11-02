@@ -45,6 +45,7 @@ extern NTSTATUS
 TargetCreate(
     _In_ PXENVBD_ADAPTER    Adapter,
     _In_ PSTR               DeviceId,
+    _In_ ULONG              VirtualDevice,
     _Outptr_ PXENVBD_TARGET *_Target
     );
 
