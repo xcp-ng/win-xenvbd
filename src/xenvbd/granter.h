@@ -84,6 +84,13 @@ GranterGet(
     _Outptr_ PVOID          *Handle
     );
 
+_Check_return_
+extern NTSTATUS
+GranterTryPut(
+    _Inout_ PXENVBD_GRANTER Granter,
+    _In_ PVOID              Handle
+    );
+
 extern VOID
 GranterPut(
     _Inout_ PXENVBD_GRANTER Granter,
