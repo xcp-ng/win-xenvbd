@@ -50,6 +50,18 @@ GranterDestroy(
     _Inout_ PXENVBD_GRANTER Granter
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
+extern VOID
+GranterD3ToD0(
+    _Inout_ PXENVBD_GRANTER Granter
+    );
+
+_IRQL_requires_(PASSIVE_LEVEL)
+extern VOID
+GranterD0ToD3(
+    _Inout_ PXENVBD_GRANTER Granter
+    );
+
 extern NTSTATUS
 GranterConnect(
     _Inout_ PXENVBD_GRANTER Granter
