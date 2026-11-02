@@ -103,12 +103,6 @@ GranterTryPut(
     _In_ PVOID              Handle
     );
 
-extern VOID
-GranterPut(
-    _Inout_ PXENVBD_GRANTER Granter,
-    _In_ PVOID              Handle
-    );
-
 extern ULONG
 GranterReference(
     _In_ PXENVBD_GRANTER    Granter,
