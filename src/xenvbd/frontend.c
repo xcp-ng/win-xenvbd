@@ -1907,11 +1907,11 @@ FrontendCreate(
     if (!NT_SUCCESS(status))
         goto fail3;
 
-    status = RingCreate(Frontend, &Frontend->Ring);
+    status = GranterCreate(Frontend, &Frontend->Granter);
     if (!NT_SUCCESS(status))
         goto fail4;
 
-    status = GranterCreate(Frontend, &Frontend->Granter);
+    status = RingCreate(Frontend, &Frontend->Ring);
     if (!NT_SUCCESS(status))
         goto fail5;
 
@@ -1928,12 +1928,12 @@ FrontendCreate(
 
 fail6:
     Error("fail6\n");
-    GranterDestroy(Frontend->Granter);
-    Frontend->Granter = NULL;
-fail5:
-    Error("fail5\n");
     RingDestroy(Frontend->Ring);
     Frontend->Ring = NULL;
+fail5:
+    Error("fail5\n");
+    GranterDestroy(Frontend->Granter);
+    Frontend->Granter = NULL;
 fail4:
     Error("fail4\n");
     RtlZeroMemory(Frontend->TargetPath, sizeof(Frontend->TargetPath));
@@ -1970,11 +1970,11 @@ FrontendDestroy(
     ThreadJoin(Frontend->BackendThread);
     Frontend->BackendThread = NULL;
 
-    GranterDestroy(Frontend->Granter);
-    Frontend->Granter = NULL;
-
     RingDestroy(Frontend->Ring);
     Frontend->Ring = NULL;
+
+    GranterDestroy(Frontend->Granter);
+    Frontend->Granter = NULL;
 
     RtlZeroMemory(&Frontend->StateLock, sizeof(KSPIN_LOCK));
 
