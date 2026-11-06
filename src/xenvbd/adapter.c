@@ -54,6 +54,7 @@
 #include "target.h"
 #include "srbext.h"
 #include "thread.h"
+#include "gnttab_shim.h"
 
 #include "util.h"
 #include "debug.h"
@@ -76,6 +77,7 @@ struct _XENVBD_ADAPTER {
     XENBUS_EVTCHN_INTERFACE     EvtchnInterface;
     XENBUS_STORE_INTERFACE      StoreInterface;
     XENBUS_GNTTAB_INTERFACE     GnttabInterface;
+    PXENVBD_GNTTAB_SHIM         GnttabShim;
     XENBUS_DEBUG_INTERFACE      DebugInterface;
     XENBUS_SUSPEND_INTERFACE    SuspendInterface;
     XENBUS_UNPLUG_INTERFACE     UnplugInterface;
@@ -1357,6 +1359,43 @@ fail1:
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
+AdapterQueryGnttabInterface(
+    _In_ PXENVBD_ADAPTER                Adapter
+    )
+{
+    struct _XENBUS_GNTTAB_INTERFACE_V4  GnttabInterfaceV4;
+    NTSTATUS                            status;
+
+    status = AdapterQueryInterface(Adapter,
+                                   XENBUS_GNTTAB,
+                                   &Adapter->GnttabInterface,
+                                   FALSE);
+    if (NT_SUCCESS(status))
+        return STATUS_SUCCESS;
+
+    RtlZeroMemory(&GnttabInterfaceV4, sizeof(GnttabInterfaceV4));
+
+    status = __AdapterQueryInterface(Adapter,
+                                     &GUID_XENBUS_GNTTAB_INTERFACE,
+                                     4,
+                                     (PINTERFACE)&GnttabInterfaceV4,
+                                     sizeof(GnttabInterfaceV4),
+                                     FALSE);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = GnttabShimCreate(&GnttabInterfaceV4,
+                              &Adapter->GnttabInterface,
+                              &Adapter->GnttabShim);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    Warning("GNTTAB V5 not available, using V4 shim\n");
+    return STATUS_SUCCESS;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS
 AdapterInitialize(
     _Inout_ PXENVBD_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT     DeviceObject,
@@ -1391,10 +1430,7 @@ AdapterInitialize(
     if (!NT_SUCCESS(status))
         goto fail2;
 
-    status = AdapterQueryInterface(Adapter,
-                                   XENBUS_GNTTAB,
-                                   &Adapter->GnttabInterface,
-                                   FALSE);
+    status = AdapterQueryGnttabInterface(Adapter);
     if (!NT_SUCCESS(status))
         goto fail3;
 
@@ -1507,6 +1543,10 @@ fail4:
     Error("fail4\n");
     RtlZeroMemory(&Adapter->GnttabInterface,
                   sizeof (XENBUS_GNTTAB_INTERFACE));
+    if (Adapter->GnttabShim != NULL) {
+        GnttabShimDestroy(Adapter->GnttabShim);
+        Adapter->GnttabShim = NULL;
+    }
 fail3:
     Error("fail3\n");
     RtlZeroMemory(&Adapter->EvtchnInterface,
@@ -1588,6 +1628,10 @@ AdapterTeardown(
 
     RtlZeroMemory(&Adapter->GnttabInterface,
                   sizeof (XENBUS_GNTTAB_INTERFACE));
+    if (Adapter->GnttabShim != NULL) {
+        GnttabShimDestroy(Adapter->GnttabShim);
+        Adapter->GnttabShim = NULL;
+    }
 
     RtlZeroMemory(&Adapter->EvtchnInterface,
                   sizeof (XENBUS_EVTCHN_INTERFACE));
